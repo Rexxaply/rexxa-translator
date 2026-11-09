@@ -37,6 +37,8 @@ ICONS = {
     "steps": '<circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="12" r="2"/>'
              '<path d="M8 6h4l4 5M8 18h4l4-5"/>',
     "bold": '<path d="M7 4h6a4 4 0 0 1 0 8H7zM7 12h7a4 4 0 0 1 0 8H7z"/>',
+    "undo": '<path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+    "redo": '<path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
     "italic": '<path d="M19 4h-9M14 20H5M15 4L9 20"/>',
     "al_left": '<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>',
     "al_center": '<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>',

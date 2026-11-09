@@ -3,6 +3,13 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub.
 
+## 1.6.0
+- Undo **Ctrl+Z** dan redo **Ctrl+Y** (juga tombol di toolbar): geser/ubah ukuran kotak, tambah/hapus balon, edit teks & gaya, hasil proses.
+- Gambar HASIL kini bisa diklik: balon bisa dipilih dan digeser dari sisi kiri maupun kanan.
+- Kotak balon bisa digeser bebas dan diubah ukurannya dari ke-4 sisi dan ke-4 sudut.
+- Kursor panah biasa; berubah jadi ikon geser di atas kotak. Layar tetap bisa digeser dengan menyeret area kosong.
+- Gambar ASLI dan HASIL selalu sama besar dan sejajar.
+
 ## 1.5.1
 - Jendela update kini menampilkan changelog lengkap dari versi terpasang sampai versi terbaru.
 

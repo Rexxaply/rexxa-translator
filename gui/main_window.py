@@ -183,6 +183,8 @@ class MainWindow(QMainWindow):
         b.setPopupMode(QToolButton.InstantPopup)
         tb.addWidget(b)
         tb.addWidget(tool_btn("save", "Simpan proyek (Ctrl+S)", self.save_project))
+        tb.addWidget(tool_btn("undo", "Undo (Ctrl+Z)", self.undo))
+        tb.addWidget(tool_btn("redo", "Redo (Ctrl+Y)", self.redo))
         tb.addWidget(vline())
 
         self.b_box = tool_btn("box", "Tambah kotak teks manual (B)", self.toggle_draw, checkable=True)
@@ -297,10 +299,14 @@ class MainWindow(QMainWindow):
 
         # ---- tengah: Asli | Hasil
         self.cv_src = PageCanvas(editable=True)
-        self.cv_out = PageCanvas(editable=False)
-        self.cv_src.block_selected.connect(self._on_canvas_select)
-        self.cv_src.block_geometry_changed.connect(self._on_geom_changed)
-        self.cv_src.block_double_clicked.connect(self._focus_translation)
+        self.cv_out = PageCanvas(editable=True, ghost=True)   # sisi Hasil: kotak tak terlihat tapi bisa diklik
+        for cv in (self.cv_src, self.cv_out):
+            other = self.cv_out if cv is self.cv_src else self.cv_src
+            cv.block_selected.connect(self._on_canvas_select)
+            cv.edit_started.connect(self._on_edit_started)
+            cv.block_moving.connect(lambda b, o=other: o.reload_boxes())
+            cv.block_geometry_changed.connect(self._on_geom_changed)
+            cv.block_double_clicked.connect(self._focus_translation)
         self.cv_src.box_drawn.connect(self._add_box)
         # sinkron zoom & geser
         self.cv_src.zoom_changed.connect(lambda s: self._sync_zoom(self.cv_src, self.cv_out, s))
@@ -341,6 +347,9 @@ class MainWindow(QMainWindow):
         self.views.addWidget(column("ASLI", self.cv_src))
         self.views.addWidget(self.col_out)
         self.views.setChildrenCollapsible(False)
+        self.views.setStretchFactor(0, 1)      # ASLI & HASIL selalu sama lebar
+        self.views.setStretchFactor(1, 1)
+        self.views.splitterMoved.connect(lambda *_: QTimer.singleShot(0, self._fit_both))
 
         # ---- kanan: properti / daftar balon / log
         self.tabs = QTabWidget()
@@ -499,7 +508,7 @@ class MainWindow(QMainWindow):
         self.zoom_lbl.setAlignment(Qt.AlignCenter)
         zl.addWidget(self.zoom_lbl)
         zl.addWidget(tool_btn("plus", "Perbesar", lambda: self._zoom_step(1.25)))
-        zl.addWidget(tool_btn("fit", "Pas layar (F)", self.cv_src.fit))
+        zl.addWidget(tool_btn("fit", "Pas layar (F)", self._fit_both))
         sb.addPermanentWidget(zb)
         self.count_lbl = QLabel("0 balon")
         self.count_lbl.setObjectName("dim")
@@ -527,7 +536,10 @@ class MainWindow(QMainWindow):
         act("Delete", self.delete_selected, local=True)
         act("PgDown", lambda: self._step_page(1), local=True)
         act("PgUp", lambda: self._step_page(-1), local=True)
-        act("F", self.cv_src.fit, local=True)
+        act("F", self._fit_both, local=True)
+        act("Ctrl+Z", self.undo)
+        act("Ctrl+Y", self.redo)
+        act("Ctrl+Shift+Z", self.redo)
 
     # ================================================================== util
     def log(self, msg: str):
@@ -593,18 +605,37 @@ class MainWindow(QMainWindow):
 
     # ================================================================== zoom & tampilan
     def _sync_zoom(self, src, dst, s):
+        self._fit_pending = False
         if abs(dst.zoom() - s) > 1e-4:
             dst.set_zoom(s)
             dst.horizontalScrollBar().setValue(src.horizontalScrollBar().value())
             dst.verticalScrollBar().setValue(src.verticalScrollBar().value())
         self.zoom_lbl.setText(f"{round(s * 100)}%")
 
+    def _fit_both(self):
+        """Asli & Hasil memakai skala yang SAMA (yang muat di kedua panel), lalu dipusatkan."""
+        self._fit_pending = True
+        cvs = [self.cv_src] + ([self.cv_out] if self.col_out.isVisible() and self.cv_out.pix_item else [])
+        if not self.cv_src.pix_item:
+            return
+        s = min(cv.fit_scale() for cv in cvs)
+        for cv in (self.cv_src, self.cv_out):
+            cv.set_zoom(s)
+            if cv.pix_item:
+                cv.centerOn(cv.pix_item)
+        self.zoom_lbl.setText(f"{round(s * 100)}%")
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if getattr(self, "_fit_pending", True):   # tetap pas layar sampai pengguna zoom sendiri
+            QTimer.singleShot(0, self._fit_both)
+
     def _zoom_step(self, f):
         self.cv_src.set_zoom(self.cv_src.zoom() * f, emit=True)
 
     def _toggle_split(self, on):
         self.col_out.setVisible(on)
-        QTimer.singleShot(0, self.cv_src.fit)
+        QTimer.singleShot(0, self._fit_both)
 
     # ================================================================== buka / simpan
     def _load_paths(self, paths):
@@ -716,14 +747,14 @@ class MainWindow(QMainWindow):
         hs, vs = self.cv_src.horizontalScrollBar().value(), self.cv_src.verticalScrollBar().value()
         self.cv_src.set_page(p.path, p.blocks, fit=False)
         out, kind = self._out_image(p)
-        self.cv_out.set_page(out, [], fit=False)
+        self.cv_out.set_page(out, p.blocks, fit=False)
         self.col_out.header.setText({
             "TERJEMAHAN": "TERJEMAHAN",
             "BERSIH": "TERJEMAHAN · TEKS DIHAPUS",
             "PRATINJAU": "TERJEMAHAN · belum diproses — klik ⚡ Terjemahkan",
         }[kind])
         if fit:
-            QTimer.singleShot(0, self.cv_src.fit)
+            QTimer.singleShot(0, self._fit_both)
         else:
             self.cv_src.set_zoom(z)
             self.cv_out.set_zoom(z)
@@ -734,8 +765,8 @@ class MainWindow(QMainWindow):
         self._fill_table()
         keep = self.sel if self.sel in p.blocks else None
         self.sel = keep
-        if keep:
-            self.cv_src.select_block(keep)
+        for cv in (self.cv_src, self.cv_out):
+            cv.select_block(keep, ensure_visible=False)
         self._load_props(keep)
 
     # ================================================================== daftar balon (tabel)
@@ -759,6 +790,7 @@ class MainWindow(QMainWindow):
         if not p or item.row() >= len(p.blocks):
             return
         b = p.blocks[item.row()]
+        self._snap(("text", b.id))
         if item.column() == 1:
             b.source = item.text()
         elif item.column() == 2:
@@ -776,8 +808,9 @@ class MainWindow(QMainWindow):
     # ================================================================== seleksi & properti
     def _select(self, b, from_table=False, from_canvas=False):
         self.sel = b
-        if b and not from_canvas:
-            self.cv_src.select_block(b)
+        for cv in (self.cv_src, self.cv_out):      # sorot balon yang sama di kedua sisi
+            if cv.selected is not b:
+                cv.select_block(b, ensure_visible=not from_canvas)
         if b and not from_table:
             p = self.page()
             if p and b in p.blocks:
@@ -787,10 +820,11 @@ class MainWindow(QMainWindow):
         self._load_props(b)
 
     def _on_canvas_select(self, block):
-        if block is not None:
-            self._select(block, from_canvas=True)
-            if self.tabs.currentIndex() == 2:
-                self.tabs.setCurrentIndex(0)
+        self._select(block, from_canvas=True)
+        if block is not None and self.tabs.currentIndex() == 2:
+            self.tabs.setCurrentIndex(0)
+        if block is None:
+            self.table.clearSelection()
 
     def _focus_translation(self, block):
         self._select(block)
@@ -841,12 +875,14 @@ class MainWindow(QMainWindow):
     def _on_src_text(self):
         if self._loading or not self.sel:
             return
+        self._snap(("text", self.sel.id))
         self.sel.source = self.e_src.toPlainText()
         self._sync_table_row(self.sel)
 
     def _on_tr_text(self):
         if self._loading or not self.sel:
             return
+        self._snap(("text", self.sel.id))
         self.sel.translation = self.e_tr.toPlainText()
         self._sync_table_row(self.sel)
         self._schedule_render()
@@ -863,6 +899,7 @@ class MainWindow(QMainWindow):
 
     def _set_align(self, k):
         if self.sel:
+            self._snap()
             self.sel.align = k
             for kk, btn in self.p_al.items():
                 btn.setChecked(kk == k)
@@ -872,6 +909,7 @@ class MainWindow(QMainWindow):
         b = self.sel
         if self._loading or not b:
             return
+        self._snap(("prop", b.id))
         old = (b.clean, b.kind)
         b.font = self.p_font.currentData() or ""
         b.font_size = self.p_size.value()
@@ -881,13 +919,15 @@ class MainWindow(QMainWindow):
         b.clean = self.p_clean.isChecked()
         if (b.clean, b.kind) != old:
             self.need_clean.add(self.page().path)
-            for box in self.cv_src.boxes:
-                box.refresh_style()
+            for cv in (self.cv_src, self.cv_out):
+                for box in cv.boxes:
+                    box.refresh_style()
         self._schedule_render()
 
     def _on_italic(self, on):
         if self._loading or not self.sel:
             return
+        self._snap()
         self.sel.italic = bool(on)      # pilihan khusus balon ini
         self._schedule_render()
 
@@ -897,13 +937,22 @@ class MainWindow(QMainWindow):
             return
         c = QColorDialog.getColor(QColor(getattr(b, attr)), self)
         if c.isValid():
+            self._snap()
             setattr(b, attr, c.name())
             self._color_btn(self.p_color if attr == "color" else self.p_stroke_color, c.name())
             self._schedule_render()
 
     # ================================================================== edit kotak
+    def _on_edit_started(self, block):
+        self._pending_snap = self._state()
+
     def _on_geom_changed(self, block):
         p = self.page()
+        if getattr(self, "_pending_snap", None) is not None:
+            self._push_undo(self._pending_snap)
+            self._pending_snap = None
+        for cv in (self.cv_src, self.cv_out):
+            cv.reload_boxes()
         if p:
             self.need_clean.add(p.path)
             self._schedule_render()
@@ -914,6 +963,7 @@ class MainWindow(QMainWindow):
             return
         b = TextBlock(x=int(rect.x()), y=int(rect.y()), w=int(rect.width()), h=int(rect.height()),
                       kind="free", stroke_width=int(self.settings.get("default_stroke", 0)))
+        self._snap()
         p.blocks.append(b)
         self.need_clean.add(p.path)
         self.b_box.setChecked(False)
@@ -933,11 +983,81 @@ class MainWindow(QMainWindow):
     def delete_selected(self):
         p, b = self.page(), self.sel
         if p and b in (p.blocks if p else []):
+            self._snap()
             p.blocks.remove(b)
             self.sel = None
             self.need_clean.add(p.path)
             self._show_current()
             self._schedule_render()
+
+    # ================================================================== undo / redo
+    def _hist(self, page):
+        if not hasattr(self, "_history"):
+            self._history = {}
+        return self._history.setdefault(page.path, {"undo": [], "redo": []})
+
+    def _state(self, page=None):
+        page = page or self.page()
+        return [b.to_dict() for b in page.blocks] if page else None
+
+    def _push_undo(self, state, page=None):
+        page = page or self.page()
+        if page is None or state is None:
+            return
+        h = self._hist(page)
+        if h["undo"] and h["undo"][-1] == state:
+            return
+        h["undo"].append(state)
+        del h["undo"][:-150]          # simpan maks. 150 langkah per halaman
+        h["redo"].clear()
+
+    def _snap(self, key=None, page=None):
+        """Simpan keadaan SEBELUM perubahan. Ketikan/geser angka beruntun pada balon yang sama
+        digabung jadi satu langkah undo (selama jedanya < 1,5 detik)."""
+        import time
+        page = page or self.page()
+        if page is None:
+            return
+        now = time.monotonic()
+        if key is not None and key == getattr(self, "_snap_key", None) and now - self._snap_t < 1.5:
+            self._snap_t = now
+            return
+        self._snap_key, self._snap_t = key, now
+        self._push_undo(self._state(page), page)
+
+    def _restore(self, state):
+        p = self.page()
+        sel_id = self.sel.id if self.sel else None
+        p.blocks = [TextBlock.from_dict(d) for d in state]
+        self.sel = next((b for b in p.blocks if b.id == sel_id), None)
+        self.need_clean.add(p.path)
+        self._snap_key = None
+        self._show_current()
+        self._schedule_render()
+
+    def undo(self):
+        p = self.page()
+        if not p or self.thread:
+            return
+        h = self._hist(p)
+        if not h["undo"]:
+            self.status_lbl.setText("Tidak ada yang bisa di-undo")
+            return
+        h["redo"].append(self._state())
+        self._restore(h["undo"].pop())
+        self.status_lbl.setText(f"Undo  ·  {len(h['undo'])} langkah tersisa")
+
+    def redo(self):
+        p = self.page()
+        if not p or self.thread:
+            return
+        h = self._hist(p)
+        if not h["redo"]:
+            self.status_lbl.setText("Tidak ada yang bisa di-redo")
+            return
+        h["undo"].append(self._state())
+        self._restore(h["redo"].pop())
+        self.status_lbl.setText("Redo")
 
     # ================================================================== render otomatis
     def _schedule_render(self):
@@ -1007,6 +1127,8 @@ class MainWindow(QMainWindow):
             self.open_folder()
             return
         i, proj, st = self.cur, self.project, dict(self.settings)
+        if any(x in stages for x in ("detect", "ocr", "translate")):
+            self._snap(page=p)
         if "render" in stages:
             self.need_clean.discard(p.path)
 
@@ -1027,6 +1149,8 @@ class MainWindow(QMainWindow):
                 return
             todo = list(enumerate(self.project.pages))
         proj, st = self.project, dict(self.settings)
+        for _, pg in todo:
+            self._snap(page=pg)
 
         def job(w: Worker):
             for n, (i, p) in enumerate(todo, 1):
@@ -1066,6 +1190,7 @@ class MainWindow(QMainWindow):
         if not p or not b or self.thread:
             return
         proj, st, i = self.project, dict(self.settings), self.cur
+        self._snap()
         rendered = bool(p.cleaned_path and Path(p.cleaned_path).exists())
         recalc = p.path in self.need_clean
         if rendered:
