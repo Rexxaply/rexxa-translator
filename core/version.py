@@ -1,11 +1,11 @@
 """Versi aplikasi & pengecekan update.
 
-Rilis di GitHub (dibuat otomatis oleh .github/workflows/release.yml saat push tag vX.Y.Z) berisi:
+Rilis di GitHub (dibuat otomatis oleh .github/workflows/release.yml saat versi di bawah naik) berisi:
   update.json                       -> {"version","engine","app":{url,sha256,size},"full":{...},"notes"}
   RexxaTranslator-app-X.Y.Z.zip     -> hanya folder app/ (kode)        — update cepat, beberapa ratus KB
   RexxaTranslator-X.Y.Z-win64.zip   -> aplikasi lengkap (mesin + kode) — update penuh / instal baru
 
-Saat merilis: naikkan __version__ di sini, tulis catatan di CHANGELOG.md, lalu push tag yang sama.
+Saat merilis: naikkan __version__ di sini, tulis catatan di CHANGELOG.md, commit, lalu push ke main.
 """
 from __future__ import annotations
 

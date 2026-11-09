@@ -58,12 +58,12 @@ app\  (core, gui, assets)          KODE APLIKASI                            (±0
 ```
 1. Ubah kode. Naikkan __version__ di core/version.py (mis. 1.5.0) dan tulis catatan di CHANGELOG.md
 2. git commit -am "Rilis 1.5.0"
-3. git tag v1.5.0
-4. git push && git push --tags
+3. git push
 ```
 
-GitHub Actions (`.github/workflows/release.yml`) lalu membangun .exe di Windows, mengujinya, dan
-menerbitkan Release berisi `update.json`, zip kode, dan zip lengkap (±20–30 menit).
+Begitu `core/version.py` berubah di `main`, GitHub Actions (`.github/workflows/release.yml`)
+membangun .exe di Windows, mengujinya, membuat tag `v1.5.0`, dan menerbitkan Release berisi
+`update.json`, zip kode, dan zip lengkap (±20–30 menit). Tidak perlu membuat tag manual.
 Jika menambah **pustaka pihak ketiga baru**, tambahkan juga ke `requirements*.txt` dan
 `_bundle_hint()` di `main.py`, lalu naikkan `ENGINE_VERSION`.
 

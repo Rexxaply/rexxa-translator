@@ -2,7 +2,7 @@
 
   python build.py              build lengkap (.exe + app/) ke dist/RexxaTranslator
   python build.py --release    + buat paket rilis di dist/: zip penuh, zip kode, update.json
-                               (dipakai GitHub Actions saat push tag vX.Y.Z)
+                               (dipakai GitHub Actions)
   python build.py --app-only   hanya paket kode (tanpa PyInstaller) — untuk menguji update cepat
 
 Hasil di dist/:

@@ -1,19 +1,29 @@
-# Build .exe Windows & terbitkan Release otomatis setiap push tag versi.
+# Build .exe Windows & terbitkan Release otomatis.
 #
+# Cara merilis versi baru:
 #   1. Naikkan __version__ di core/version.py (mis. 1.5.0) dan tulis catatan di CHANGELOG.md
-#   2. git commit -am "Rilis 1.5.0"  &&  git tag v1.5.0  &&  git push && git push --tags
-#   3. Tunggu ±20-30 menit -> Release muncul -> aplikasi pengguna menawarkan update.
+#   2. git commit -am "Rilis 1.5.0"  &&  git push
+#   3. Tunggu ±20-30 menit -> tag v1.5.0 + Release dibuat otomatis -> aplikasi pengguna menawarkan update.
 #
-# Bisa juga dijalankan manual dari tab Actions (tanpa membuat Release, hasilnya jadi artifact).
+# Kalau versi itu sudah pernah dirilis, workflow hanya membangun & menguji (tanpa rilis baru).
+# Push tag vX.Y.Z manual juga tetap didukung. Bisa juga dijalankan manual dari tab Actions.
 name: Rilis
 
 on:
   push:
+    branches: [main]
+    paths:
+      - "core/version.py"
+      - ".github/workflows/release.yml"
     tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: rilis
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -21,6 +31,20 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+
+      - name: Tentukan versi
+        id: v
+        shell: bash
+        run: |
+          VER=$(python -c "import re;print(re.search(r'__version__\s*=\s*\"([^\"]+)\"',open('core/version.py',encoding='utf-8').read()).group(1))")
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VER" >/dev/null 2>&1 && [[ "$GITHUB_REF" != refs/tags/* ]]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "v$VER sudah pernah dirilis -> hanya build & uji"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Akan merilis v$VER"
+          fi
 
       - uses: actions/setup-python@v5
         with:
@@ -52,19 +76,23 @@ jobs:
           Write-Host "OK: .exe lulus uji"
 
       - name: Terbitkan Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.v.outputs.release == 'true' && github.event_name != 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.v.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Rexxa Translator ${{ steps.v.outputs.version }}
           body_path: dist/release-notes.md
+          make_latest: true
           files: |
             dist/update.json
             dist/RexxaTranslator-app-*.zip
             dist/RexxaTranslator-*-win64.zip
 
-      - name: Simpan hasil (run manual)
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+      - name: Simpan hasil (tanpa rilis)
+        if: steps.v.outputs.release != 'true' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: RexxaTranslator
+          name: RexxaTranslator-${{ steps.v.outputs.version }}
           path: dist/RexxaTranslator
           retention-days: 7
