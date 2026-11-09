@@ -92,15 +92,10 @@ class SettingsDialog(QDialog):
         f.addRow("Folder output", row2)
         tabs.addTab(w, "Typeset & Output")
 
-        # --- Update
+        # --- Tentang (update selalu otomatis dari GitHub, tidak perlu diatur)
         w = QWidget(); f = QFormLayout(w)
-        f.addRow("Versi terpasang", QLabel(f"<b>{version.__version__}</b>"))
-        self.upd_src = QLineEdit(self.s.get("update_source", ""))
-        self.upd_src.setPlaceholderText(f"{version.DEFAULT_REPO}  (default)")
-        f.addRow("Sumber update", self.upd_src)
-        self.upd_auto = QCheckBox("Cek otomatis saat aplikasi dibuka (maks. sekali sehari)")
-        self.upd_auto.setChecked(bool(self.s.get("update_auto_check", True)))
-        f.addRow("", self.upd_auto)
+        f.addRow("Versi", QLabel(f"<b>Rexxa Translator {version.__version__}</b>"))
+        f.addRow("Update", QLabel("Otomatis — dicek saat aplikasi dibuka"))
         f.addRow(QLabel("<b>Data pribadi</b> (pengaturan, API key, font) — aman saat update:"))
         drow = QHBoxLayout()
         dl = QLineEdit(str(paths.data_dir())); dl.setReadOnly(True)
@@ -108,7 +103,7 @@ class SettingsDialog(QDialog):
         ob.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(paths.data_dir()))))
         drow.addWidget(dl, 1); drow.addWidget(ob)
         f.addRow("Folder", drow)
-        tabs.addTab(w, "Update")
+        tabs.addTab(w, "Tentang")
 
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
@@ -140,8 +135,7 @@ class SettingsDialog(QDialog):
                  font=self.font.currentData() or (self.font.currentText() if Path(self.font.currentText()).exists() else ""),
                  max_font_size=self.maxsize.value(), default_stroke=self.stroke.value(),
                  uppercase=self.upper.isChecked(), output_format=self.fmt.currentText(),
-                 output_dir=self.outdir.text().strip(),
-                 update_source=self.upd_src.text().strip(), update_auto_check=self.upd_auto.isChecked())
+                 output_dir=self.outdir.text().strip())
         return s
 
 

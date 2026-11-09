@@ -29,8 +29,6 @@ DEFAULT_SETTINGS = {
     "output_dir": "",               # kosong = <folder gambar>/translated
     "last_source_lang": "ja",       # bahasa terakhir dipilih di toolbar
     "last_target_lang": "id",
-    "update_source": "",            # "owner/repo" GitHub atau URL version.json
-    "update_auto_check": True,
     "update_last_check": "",        # tanggal ISO, cek maks. sekali sehari
     "update_skip_version": "",      # versi yang dipilih "Lewati"
 }

@@ -3,6 +3,10 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub.
 
+## 1.4.1
+- Update sepenuhnya otomatis: tidak perlu mengisi sumber update lagi (tab Update di Pengaturan diganti tab Tentang).
+- Update dicek setiap kali aplikasi dibuka.
+
 ## 1.4.0
 - Update otomatis dari GitHub: klik **Update sekarang**, aplikasi mengunduh, memasang, lalu membuka ulang sendiri.
 - Update rutin kini kecil & cepat (hanya kode aplikasi); mesin (.exe, PyTorch, OCR) hanya diunduh ulang bila berubah.

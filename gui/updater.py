@@ -32,18 +32,14 @@ class UpdateChecker(QObject):
         self._pending = None
 
     def source(self):
-        return (self.window.settings.get("update_source") or version.DEFAULT_REPO).strip()
+        # selalu repo resmi; isian lama dari versi sebelumnya diabaikan
+        return version.DEFAULT_REPO
 
     # ------------------------------------------------------------------ cek
     def check(self, manual: bool = False):
         st = self.window.settings
         if self._busy:
             return
-        if not manual:
-            if not st.get("update_auto_check", True):
-                return
-            if st.get("update_last_check") == date.today().isoformat():
-                return
         self._busy = True
         src = self.source()
         if manual:
