@@ -335,6 +335,9 @@ class MainWindow(QMainWindow):
             v.addWidget(hw)
             v.addWidget(canvas, 1)
             w.header = lbl
+            # lebar ditentukan layout (50:50), bukan isi panel -> kedua panel selalu sama lebar
+            w.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
+            w.setMinimumWidth(120)
             return w
 
         self.out_mode = QComboBox()
@@ -343,13 +346,15 @@ class MainWindow(QMainWindow):
         self.out_mode.setToolTip("Tampilkan hasil akhir, atau gambar yang teksnya sudah dihapus")
         self.out_mode.currentIndexChanged.connect(lambda: self._show_current())
         self.col_out = column("TERJEMAHAN", self.cv_out, self.out_mode)
-        self.views = QSplitter(Qt.Horizontal)
-        self.views.addWidget(column("ASLI", self.cv_src))
-        self.views.addWidget(self.col_out)
-        self.views.setChildrenCollapsible(False)
-        self.views.setStretchFactor(0, 1)      # ASLI & HASIL selalu sama lebar
-        self.views.setStretchFactor(1, 1)
-        self.views.splitterMoved.connect(lambda *_: QTimer.singleShot(0, self._fit_both))
+        # ASLI | TERJEMAHAN dibagi rata 50:50 (bukan splitter, supaya tidak bisa timpang)
+        self.views = QWidget()
+        vl = QHBoxLayout(self.views)
+        vl.setContentsMargins(0, 0, 0, 0)
+        vl.setSpacing(1)
+        self.col_src = column("ASLI", self.cv_src)
+        vl.addWidget(self.col_src, 1)
+        vl.addWidget(self.col_out, 1)
+        self.views.setObjectName("viewsPair")
 
         # ---- kanan: properti / daftar balon / log
         self.tabs = QTabWidget()
@@ -367,6 +372,7 @@ class MainWindow(QMainWindow):
         split.addWidget(self.tabs)
         split.setSizes([190, 940, 340])
         split.setStretchFactor(1, 1)
+        split.splitterMoved.connect(lambda *_: QTimer.singleShot(0, self._fit_both))
         self.setCentralWidget(split)
 
     def _build_props(self):
@@ -1329,6 +1335,7 @@ QStatusBar QLabel { padding: 0 8px; }
 QProgressBar { background: #2a2c34; border: none; border-radius: 4px; }
 QProgressBar::chunk { background: #ff4d6d; border-radius: 4px; }
 QSplitter::handle { background: #26282f; width: 1px; }
+QWidget#viewsPair { background: #26282f; }
 QMenu { background: #23252b; border: 1px solid #33363f; padding: 4px; }
 QMenu::item { padding: 6px 18px 6px 10px; border-radius: 4px; }
 QMenu::item:selected { background: #ff4d6d; color: white; }

@@ -3,6 +3,9 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.6.7
+- Layar ASLI dan TERJEMAHAN kini selalu sama lebar (dibagi rata 50:50).
+
 ## 1.6.6
 - Perbaikan: teks di balon kata kembali terhapus bersih (di 1.6.4–1.6.5 sebagian huruf, mis. "Katsuki-san!", tertinggal dan tertumpuk dengan terjemahan).
 
@@ -14,8 +17,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 
 ## 1.6.3
 - Perbaikan error **"'NoneType' object has no attribute 'write'"** saat OCR pertama kali dipakai di versi .exe (progres unduhan model kini dicatat ke `%APPDATA%\RexxaTranslator\rexxa.log`).
-
-## 1.6.2
-- Deteksi: balon yang **menyatu tanpa garis pemisah** (mis. "RIGHT..." + "SOMETHING LIKE THIS") kini dibelah tepat di bagian yang menyempit, jadi tiap balon dideteksi, di-OCR, dan diterjemahkan sendiri-sendiri.
-- OCR hanya membaca teks di dalam balonnya sendiri (tidak ikut membaca balon tetangga), tanda baca kecil seperti "..." tetap terbaca.
-- Deteksi jauh lebih cepat di halaman dengan banyak screentone.
