@@ -338,7 +338,8 @@ SHEAR = 0.2            # kemiringan italic palsu
 
 def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str = "id",
                 default_font_path: str = "", uppercase: bool = True, max_size: int = 64,
-                italic: bool = True, line_spacing: float = 1.05) -> np.ndarray:
+                italic: bool = True, line_spacing: float = 1.05, default_size: int = 0,
+                default_bold: bool = False) -> np.ndarray:
     pil = Image.fromarray(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)).convert("RGBA")
     measure = ImageDraw.Draw(pil)
     base_font = default_font_path or default_font(target_lang)
@@ -348,8 +349,12 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
         text = (b.translation or "").strip()
         if not text:
             continue
-        if uppercase and latin:
+        case = b.case or ("upper" if uppercase else "none")
+        bold = b.bold or (default_bold and not b.preset)   # balon tanpa preset ikut tebal preset 1
+        if latin and case == "upper":
             text = text.upper()
+        elif latin and case == "lower":
+            text = text.lower()
         font_path = b.font or base_font
         want_italic = (b.italic if b.italic is not None else italic) and latin
         shear = 0.0
@@ -369,8 +374,9 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
         full_w = aw
         if shear:  # sisakan ruang untuk kemiringan
             aw = max(10, int(aw - ah * shear * (0.25 if oval else 0.5)))
-        if b.font_size > 0:
-            size = b.font_size
+        fixed = b.font_size if b.font_size > 0 else int(default_size or 0)
+        if fixed > 0:
+            size = fixed
             lines = wrap_text(measure, text, _font(font_path, size), aw, stroke)
         elif oval:
             size, lines = fit_text_ellipse(measure, text, font_path, aw, ah, stroke, max_size=max_size,
@@ -398,7 +404,7 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
                 x = pad + (aw - w_line) // 2
             d.text((x, y), line, font=font, fill=b.color,
                    stroke_width=stroke, stroke_fill=b.stroke_color if stroke else None)
-            if b.bold and not stroke:  # bold palsu untuk font tanpa varian tebal
+            if bold and not stroke:  # bold palsu untuk font tanpa varian tebal
                 d.text((x + max(1, size // 28), y), line, font=font, fill=b.color)
             y += lh
         if shear:

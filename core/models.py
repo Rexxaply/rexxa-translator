@@ -25,6 +25,8 @@ class TextBlock:
     align: str = "center"     # left | center | right
     bold: bool = False
     italic: object = None     # None = ikut pengaturan umum; True/False = khusus balon ini
+    case: object = None       # None = ikut pengaturan umum; "upper" | "lower" | "none"
+    preset: int = 0           # preset teks terakhir yang dipakai (0 = belum)
     clean: bool = True        # hapus teks asli di area ini
     mask_poly: list = field(default_factory=list)  # kontur balon [[x,y],...] opsional
     text_rect: list = field(default_factory=list)  # [x,y,w,h] teks asli hasil deteksi (untuk OCR)

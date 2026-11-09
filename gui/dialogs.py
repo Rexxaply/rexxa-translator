@@ -11,7 +11,10 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog,
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QFont, QFontDatabase
 
-from core import paths, translator, typeset, version
+from core import paths, pipeline, translator, typeset, version
+
+from . import shortcuts as SC
+from .settings_panels import DataPanel, ShortcutPanel, TextPanel
 
 DETECT = [("Balon (OpenCV, cepat)", "bubble"), ("EasyOCR (teks di mana saja)", "easyocr"),
           ("Hybrid (balon + teks bebas)", "hybrid")]
@@ -36,16 +39,13 @@ class FontPanel(QWidget):
     """Tab Font: instal font sendiri (.ttf/.otf/.ttc), lihat pratinjau, jadikan default, hapus.
     Font disalin ke folder data pribadi, jadi tetap ada walau aplikasi di-update."""
 
-    def __init__(self, current_default: str, parent=None):
+    def __init__(self, get_default, set_default, on_changed=None, parent=None):
         super().__init__(parent)
         self.setAcceptDrops(True)
-        self._default = current_default or ""
+        self._get_default, self._set_default_cb, self._on_changed = get_default, set_default, on_changed
         v = QVBoxLayout(self)
 
-        v.addWidget(QLabel("<b>Font default</b>"))
-        self.combo = QComboBox()
-        self.combo.setToolTip("Font yang dipakai untuk semua balon (bisa diganti per balon di panel Tipografi)")
-        v.addWidget(self.combo)
+        v.addWidget(QLabel("<b>Font default</b> diatur di tab <b>Teks</b> → Preset 1."))
         self.auto_hint = QLabel()
         self.auto_hint.setWordWrap(True)
         self.auto_hint.setStyleSheet("color:#8a8e9a;")
@@ -85,9 +85,11 @@ class FontPanel(QWidget):
 
     # ------------------------------------------------------------ data
     def default_font(self) -> str:
-        return self.combo.currentData() or ""
+        return self._get_default() or ""
 
     def _reload(self, select=None):
+        if self._on_changed:
+            self._on_changed()
         win = typeset.windows_comic_fonts()
         auto = typeset.default_font("id")
         self.auto_hint.setText(
@@ -95,16 +97,6 @@ class FontPanel(QWidget):
             + (" Terdeteksi di Windows: " + ", ".join(sorted({typeset.font_name(f) for f in win})) + "." if win else
                " Wild Words / Anime Ace yang terpasang di Windows atau diinstal di sini otomatis diutamakan.")
             + "</small>")
-
-        cur = self.combo.currentData() if self.combo.count() else self._default
-        self.combo.blockSignals(True)
-        self.combo.clear()
-        self.combo.addItem("(otomatis) — font komik terbaik yang tersedia", "")
-        for f in typeset.list_fonts():
-            self.combo.addItem(typeset.font_name(f) + "   ·   " + Path(f).name, f)
-        i = self.combo.findData(cur)
-        self.combo.setCurrentIndex(max(0, i))
-        self.combo.blockSignals(False)
 
         self.list.clear()
         for f in typeset.user_fonts():
@@ -159,9 +151,7 @@ class FontPanel(QWidget):
             self.install(files)
 
     def _set_default(self, path):
-        i = self.combo.findData(path)
-        if i >= 0:
-            self.combo.setCurrentIndex(i)
+        self._set_default_cb(path)
         self._reload(select=[path])
 
     def _make_default(self):
@@ -177,7 +167,7 @@ class FontPanel(QWidget):
         if QMessageBox.question(self, "Hapus font", f"Hapus font ini dari aplikasi?\n\n{names}") != QMessageBox.Yes:
             return
         if self.default_font() in sel:
-            self.combo.setCurrentIndex(0)
+            self._set_default_cb("")
         for f in sel:
             _qt_unload(f)
             try:
@@ -217,11 +207,12 @@ def _qt_unload(path):
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, settings: dict, parent=None):
+    def __init__(self, settings: dict, parent=None, project=None):
         super().__init__(parent)
         self.setWindowTitle("Pengaturan")
-        self.resize(600, 520)
+        self.resize(640, 560)
         self.s = dict(settings)
+        self.factory_reset = False
         tabs = QTabWidget()
 
         # --- Proses
@@ -259,8 +250,7 @@ class SettingsDialog(QDialog):
         f.addRow("Ukuran font maks", self.maxsize)
         self.stroke = QSpinBox(); self.stroke.setRange(0, 10); self.stroke.setValue(int(self.s["default_stroke"]))
         f.addRow("Stroke default", self.stroke)
-        self.upper = QCheckBox("HURUF KAPITAL semua"); self.upper.setChecked(self.s.get("uppercase", True)); f.addRow("", self.upper)
-        self.ital = QCheckBox("Huruf miring (italic) — gaya scanlation"); self.ital.setChecked(self.s.get("italic", True)); f.addRow("", self.ital)
+        f.addRow("", QLabel("<small>Font, tebal, miring & KAPITAL diatur di tab <b>Teks</b> (preset).</small>"))
         self.fmt = QComboBox(); self.fmt.addItems(["png", "jpg", "webp"]); self.fmt.setCurrentText(self.s["output_format"])
         f.addRow("Format output", self.fmt)
         row2 = QHBoxLayout()
@@ -270,9 +260,20 @@ class SettingsDialog(QDialog):
         f.addRow("Folder output", row2)
         tabs.addTab(w, "Typeset & Output")
 
+        # --- Teks (preset 1–5, ukuran font, penamaan file)
+        self.text = TextPanel(self.s)
+        tabs.addTab(self.text, "Teks")
+
         # --- Font
-        self.fonts = FontPanel(self.s.get("font", ""))
+        self.fonts = FontPanel(self.text.default_font, self.text.set_default_font, self.text.refresh_fonts)
         tabs.addTab(self.fonts, "Font")
+
+        # --- Shortcut & Data
+        self.sc = ShortcutPanel(self.s)
+        tabs.addTab(self.sc, "Shortcut")
+        self.data = DataPanel(self.s, project, self.sc, self._on_factory_reset)
+        tabs.addTab(self.data, "Data")
+        tabs.currentChanged.connect(lambda i: tabs.widget(i) is self.data and self.data.refresh())
 
         # --- Tentang (update selalu otomatis dari GitHub, tidak perlu diatur)
         w = QWidget(); f = QFormLayout(w)
@@ -288,8 +289,22 @@ class SettingsDialog(QDialog):
         tabs.addTab(w, "Tentang")
 
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        bb.accepted.connect(self.accept); bb.rejected.connect(self.reject)
+        bb.accepted.connect(self._ok); bb.rejected.connect(self.reject)
         lay = QVBoxLayout(self); lay.addWidget(tabs); lay.addWidget(bb)
+
+    def _on_factory_reset(self):
+        self.factory_reset = True
+        QMessageBox.information(self, "Reset aplikasi", "Pengaturan dikembalikan ke awal.")
+        self.accept()
+
+    def _ok(self):
+        clash = SC.conflicts(self.sc.mapping())
+        if clash:
+            names = {sid: label for sid, _g, label, _d, _l in SC.SHORTCUTS}
+            msg = "\n".join(f"{k.upper()}: " + ", ".join(names[i] for i in ids) for k, ids in clash)
+            QMessageBox.warning(self, "Shortcut bentrok", "Satu tombol dipakai beberapa aksi:\n\n" + msg)
+            return
+        self.accept()
 
     def _apply_preset(self, name):
         if name in translator.LLM_PRESETS:
@@ -309,10 +324,11 @@ class SettingsDialog(QDialog):
                  llm_preset=self.preset.currentText(), llm_base_url=self.base.text().strip(),
                  llm_model=self.model.text().strip(), llm_api_key=self.key.text().strip(),
                  llm_temperature=self.temp.value(), llm_extra_prompt=self.extra.toPlainText().strip(),
-                 font=self.fonts.default_font(),
                  max_font_size=self.maxsize.value(), default_stroke=self.stroke.value(),
-                 uppercase=self.upper.isChecked(), italic=self.ital.isChecked(), output_format=self.fmt.currentText(),
-                 output_dir=self.outdir.text().strip())
+                 output_format=self.fmt.currentText(), output_dir=self.outdir.text().strip())
+        s.update(self.text.values())
+        s.update(self.sc.values())
+        pipeline.sync_default_style(s)
         return s
 
 

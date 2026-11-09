@@ -26,6 +26,7 @@ from core.translator import LANG_NAMES
 from core.version import __version__
 from .canvas import PageCanvas
 from .dialogs import GlossaryDialog, SettingsDialog
+from . import shortcuts as SC
 from .icons import icon
 from .updater import UpdateChecker
 
@@ -450,6 +451,21 @@ class MainWindow(QMainWindow):
         for f in typeset.list_fonts():
             self.p_font.addItem(typeset.font_name(f), f)
         s2.lay.addWidget(self.p_font)
+        prow = QHBoxLayout()
+        prow.setSpacing(4)
+        prow.addWidget(small_label("Preset"))
+        self.p_presets = []
+        for n in range(1, 6):
+            b = QToolButton(text=str(n))
+            b.setObjectName("presetBtn")
+            b.setCheckable(True)
+            b.setFixedSize(30, 26)
+            b.clicked.connect(lambda _=False, n=n: self.apply_preset(n))
+            self.p_presets.append(b)
+            prow.addWidget(b)
+        prow.addStretch()
+        s2.lay.addLayout(prow)
+        self._update_preset_tips()
         g = QGridLayout()
         g.setHorizontalSpacing(6)
         self.p_size = QSpinBox()
@@ -555,31 +571,43 @@ class MainWindow(QMainWindow):
         sb.addPermanentWidget(self.count_lbl)
 
     def _build_shortcuts(self):
-        def act(seq, slot, local=False):
-            a = QAction(self)
-            a.setShortcut(QKeySequence(seq))
-            a.triggered.connect(slot)
+        """Buat aksi untuk setiap pintasan di gui/shortcuts.py; tombolnya bisa diubah di Pengaturan."""
+        handlers = {
+            "open": self.open_folder,
+            "save": self.save_project,
+            "settings": self.edit_settings,
+            "translate_page": lambda: self.run_stages(["detect", "ocr", "translate", "render"]),
+            "translate_all": self.run_all,
+            "render": self.render_current,
+            "undo": self.undo,
+            "redo": self.redo,
+            "redo_alt": self.redo,
+            "box": lambda: (self.b_box.toggle(), self.toggle_draw()),
+            "delete": self.delete_selected,
+            "next_page": lambda: self._step_page(1),
+            "prev_page": lambda: self._step_page(-1),
+            "fit": self._fit_both,
+        }
+        for n in range(1, 6):
+            handlers[f"preset{n}"] = lambda n=n: self.apply_preset(n)
+        self._shortcut_actions = {}
+        for sid, _group, label, _default, local in SC.SHORTCUTS:
+            a = QAction(label, self)
+            a.triggered.connect(handlers[sid])
             if local:  # hanya saat fokus di gambar/daftar halaman (tidak bentrok saat mengetik)
                 a.setShortcutContext(Qt.WidgetWithChildrenShortcut)
                 for w in (self.cv_src, self.cv_out, self.pages):
                     w.addAction(a)
             else:
                 self.addAction(a)
+            self._shortcut_actions[sid] = a
+        self.apply_shortcuts()
 
-        act("Ctrl+O", self.open_folder)
-        act("Ctrl+S", self.save_project)
-        act("Ctrl+R", self.render_current)
-        act("Ctrl+,", self.edit_settings)
-        act("F5", lambda: self.run_stages(["detect", "ocr", "translate", "render"]))
-        act("F6", self.run_all)
-        act("B", lambda: (self.b_box.toggle(), self.toggle_draw()), local=True)
-        act("Delete", self.delete_selected, local=True)
-        act("PgDown", lambda: self._step_page(1), local=True)
-        act("PgUp", lambda: self._step_page(-1), local=True)
-        act("F", self._fit_both, local=True)
-        act("Ctrl+Z", self.undo)
-        act("Ctrl+Y", self.redo)
-        act("Ctrl+Shift+Z", self.redo)
+    def apply_shortcuts(self):
+        for sid, seq in SC.current(self.settings).items():
+            a = self._shortcut_actions.get(sid)
+            if a:
+                a.setShortcut(QKeySequence(seq) if seq else QKeySequence())
 
     # ================================================================== util
     def log(self, msg: str):
@@ -894,6 +922,8 @@ class MainWindow(QMainWindow):
             self.p_font.setCurrentIndex(max(0, i))
             self.p_size.setValue(b.font_size)
             self.p_bold.setChecked(b.bold)
+            for n, btn in enumerate(self.p_presets, 1):
+                btn.setChecked(b.preset == n)
             self.p_ital.setChecked(b.italic if b.italic is not None else bool(self.settings.get("italic", True)))
             for k, btn in self.p_al.items():
                 btn.setChecked(k == b.align)
@@ -965,6 +995,27 @@ class MainWindow(QMainWindow):
                 for box in cv.boxes:
                     box.refresh_style()
         self._schedule_render()
+
+    def _update_preset_tips(self):
+        case_txt = {"upper": "KAPITAL", "lower": "huruf kecil", "none": "huruf biasa"}
+        for n, (btn, p) in enumerate(zip(self.p_presets, pipeline.presets(self.settings)), 1):
+            font = typeset.font_name(p["font"]) if p["font"] else "font default"
+            style = ", ".join(x for x in ("tebal" if p["bold"] else "", "miring" if p["italic"] else "",
+                                         case_txt.get(p["case"], "")) if x)
+            btn.setToolTip(f"Preset {n}{' (default)' if n == 1 else ''}: {font} · {style}\n"
+                           f"Pintasan: {SC.current(self.settings).get(f'preset{n}', '')} · ubah di Pengaturan → Teks")
+
+    def apply_preset(self, n: int):
+        """Terapkan preset teks ke balon terpilih (tombol 1–5)."""
+        b = self.sel
+        if not b:
+            self.status_lbl.setText(f"Pilih balon dulu untuk menerapkan Preset {n}")
+            return
+        self._snap()
+        pipeline.apply_preset(b, self.settings, n)
+        self._load_props(b)
+        self._schedule_render()
+        self.status_lbl.setText(f"Preset {n} diterapkan ke balon #{self.page().blocks.index(b) + 1}")
 
     def _on_italic(self, on):
         if self._loading or not self.sel:
@@ -1249,8 +1300,10 @@ class MainWindow(QMainWindow):
                 img = detector.load_image(p.path)
                 b.source = ocr.ocr_block(img, b, st["ocr_engine"], proj.source_lang, st["gpu"])
             if b.source.strip():
+                # "Terjemah ulang" = minta terjemahan baru (lewati cache); OCR ulang boleh pakai cache
                 b.translation = translator.translate([b.source], proj.source_lang, proj.target_lang,
-                                                     st["translate_engine"], st, proj.glossary)[0]
+                                                     st["translate_engine"], st, proj.glossary,
+                                                     use_cache=(kind == "ocr"))[0]
             w.log.emit(f"{b.source}  →  {b.translation}")
             if rendered:
                 pipeline.step_render(p, proj, st, recalc_clean=recalc)
@@ -1260,11 +1313,16 @@ class MainWindow(QMainWindow):
 
     # ================================================================== dialog & export
     def edit_settings(self):
-        d = SettingsDialog(self.settings, self)
+        d = SettingsDialog(self.settings, self, project=self.project)
         if d.exec():
-            self.settings = d.result_settings()
+            if d.factory_reset:
+                self.settings = pipeline.load_settings()       # pengaturan awal
+            else:
+                self.settings = d.result_settings()
             pipeline.save_settings(self.settings)
             self._refresh_fonts()
+            self.apply_shortcuts()
+            self._update_preset_tips()
             self._schedule_render()
             self.log("Pengaturan disimpan.")
 
@@ -1352,6 +1410,13 @@ QTabBar::tab { background: #1a1b20; color: #8a8e9a; padding: 9px 14px; font-weig
   border: none; border-bottom: 2px solid transparent; }
 QTabBar::tab:selected { color: white; border-bottom: 2px solid #ff4d6d; }
 QTabBar::tab:hover { color: #d6d8de; }
+QFrame#card { background: #1f2026; border: 1px solid #2a2c34; border-radius: 8px; }
+QFrame#card QLabel { background: transparent; }
+QToolButton#styleToggle { background: #23252b; border: 1px solid #30333b; }
+QToolButton#styleToggle:checked { background: #ff4d6d; border-color: #ff4d6d; color: white; }
+QKeySequenceEdit QLineEdit { background: #23252b; }
+QToolButton#presetBtn { background: #23252b; border: 1px solid #30333b; font-weight: 600; padding: 0; }
+QToolButton#presetBtn:checked { background: #ff4d6d; border-color: #ff4d6d; color: white; }
 QToolButton#sectionHeader { background: #23252b; color: #e4e6ea; font-weight: 600; font-size: 8.5pt;
   text-align: left; padding: 8px 6px; border-radius: 6px; border: none; }
 QWidget#sectionBody { background: transparent; }

@@ -8,8 +8,10 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import threading
 
 import requests
 
@@ -71,30 +73,30 @@ def translate_deepl(texts, src, tgt, glossary, api_key):
     return [t["text"] for t in r.json()["translations"]]
 
 
-SYSTEM_PROMPT = """You are a professional manga/manhwa translator and scanlation editor.
-Translate each numbered speech bubble from {src} to {tgt}.
-Rules:
-- Keep the tone, character voice and emotion; make it sound natural like real dialogue, not literal.
-- Bubbles are in reading order and belong to the same page; use them as context.
-- Keep honorifics (-san, -kun, senpai) unless the target language naturally drops them.
-- Keep sound effects short. If a bubble is only punctuation (…, !?), keep it.
-- Keep it concise so it fits inside a speech bubble.
-{glossary}{extra}
-Reply ONLY with a JSON object mapping each number to its translation, e.g. {{"1": "...", "2": "..."}}."""
+# Prompt dibuat ringkas: dikirim di SETIAP permintaan, jadi tiap kata = token yang dibayar.
+SYSTEM_PROMPT = ("Translate manga speech bubbles {src}->{tgt}. Natural, concise dialogue; keep tone, "
+                 "character voice & honorifics; short SFX. Items are one page in reading order (use as "
+                 "context). {glossary}{extra}Reply JSON only: {{\"id\":\"translation\"}}")
+
+
+def _glossary_for(texts, glossary):
+    """Hanya istilah glosarium yang benar-benar muncul di teks (hemat token)."""
+    joined = "\n".join(texts)
+    used = {k: v for k, v in (glossary or {}).items() if k and k in joined}
+    return ("Glossary: " + "; ".join(f"{k}={v}" for k, v in used.items()) + ". ") if used else ""
 
 
 def translate_llm(texts, src, tgt, glossary, base_url, api_key, model, extra_prompt="", temperature=0.3):
     if not base_url:
         raise TranslateError("Base URL LLM belum diisi.")
-    gl = ""
-    if glossary:
-        gl = "- Always use this glossary:\n" + "\n".join(f"  {k} => {v}" for k, v in glossary.items()) + "\n"
-    sys = SYSTEM_PROMPT.format(src=LANG_NAMES.get(src, src), tgt=LANG_NAMES.get(tgt, tgt),
-                               glossary=gl, extra=("- " + extra_prompt + "\n") if extra_prompt else "")
-    numbered = {str(i + 1): t for i, t in enumerate(texts) if t.strip()}
-    if not numbered:
+    items = [t for t in texts if t.strip()]
+    if not items:
         return ["" for _ in texts]
-    user = json.dumps(numbered, ensure_ascii=False, indent=0)
+    sys = SYSTEM_PROMPT.format(src=LANG_NAMES.get(src, src), tgt=LANG_NAMES.get(tgt, tgt),
+                               glossary=_glossary_for(items, glossary),
+                               extra=(extra_prompt.strip().rstrip(".") + ". ") if extra_prompt.strip() else "")
+    numbered = {str(i + 1): t for i, t in enumerate(texts) if t.strip()}
+    user = json.dumps(numbered, ensure_ascii=False, separators=(",", ":"))   # JSON padat, tanpa spasi
 
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -104,7 +106,11 @@ def translate_llm(texts, src, tgt, glossary, base_url, api_key, model, extra_pro
     r = requests.post(base_url.rstrip("/") + "/chat/completions", json=body, headers=headers, timeout=180)
     if r.status_code != 200:
         raise TranslateError(f"LLM error {r.status_code}: {r.text[:300]}")
-    content = r.json()["choices"][0]["message"]["content"]
+    js = r.json()
+    usage = js.get("usage") or {}
+    STATS["tokens_in"] += int(usage.get("prompt_tokens") or 0)
+    STATS["tokens_out"] += int(usage.get("completion_tokens") or 0)
+    content = js["choices"][0]["message"]["content"]
     data = _parse_json(content)
     return [str(data.get(str(i + 1), "")) if texts[i].strip() else "" for i in range(len(texts))]
 
@@ -120,8 +126,75 @@ def _parse_json(content: str) -> dict:
         raise TranslateError(f"JSON LLM rusak: {e}")
 
 
-def translate(texts: list[str], src: str, tgt: str, engine: str, settings: dict, glossary: dict | None = None):
-    glossary = glossary or {}
+# ---------------------------------------------------------------- cache & penghematan
+
+STATS = {"sent": 0, "cached": 0, "skipped": 0, "dupes": 0, "tokens_in": 0, "tokens_out": 0}
+_cache: dict | None = None
+_lock = threading.Lock()
+CACHE_MAX = 20000
+
+
+def _cache_path():
+    from .paths import data_dir
+    return data_dir() / "translation_cache.json"
+
+
+def _load_cache() -> dict:
+    global _cache
+    if _cache is None:
+        try:
+            _cache = json.loads(_cache_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _cache = {}
+    return _cache
+
+
+def _save_cache():
+    with _lock:
+        c = _load_cache()
+        if len(c) > CACHE_MAX:                       # buang entri tertua
+            for k in list(c)[: len(c) - CACHE_MAX]:
+                del c[k]
+        tmp = _cache_path().with_suffix(".tmp")
+        tmp.write_text(json.dumps(c, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        tmp.replace(_cache_path())
+
+
+def clear_cache():
+    global _cache
+    with _lock:
+        _cache = {}
+        try:
+            _cache_path().unlink()
+        except OSError:
+            pass
+
+
+def cache_info() -> tuple[int, int]:
+    """(jumlah entri, ukuran byte)"""
+    p = _cache_path()
+    return len(_load_cache()), (p.stat().st_size if p.exists() else 0)
+
+
+def _key(engine, settings, src, tgt, glossary, text):
+    model = settings.get("llm_model", "") if engine == "llm" else ""
+    extra = settings.get("llm_extra_prompt", "") if engine == "llm" else ""
+    gl = json.dumps(sorted((k, v) for k, v in (glossary or {}).items() if k in text), ensure_ascii=False)
+    raw = "\x1f".join([engine, model, extra, src, tgt, gl, text])
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def needs_translation(text: str) -> bool:
+    """Teks tanpa huruf (…, !?, ---, angka) tidak perlu dikirim ke mesin penerjemah."""
+    return any(ch.isalpha() for ch in text)
+
+
+def reset_stats():
+    for k in STATS:
+        STATS[k] = 0
+
+
+def _raw_translate(texts, src, tgt, engine, settings, glossary):
     if engine == "google":
         return translate_google(texts, src, tgt, glossary)
     if engine == "deepl":
@@ -132,3 +205,50 @@ def translate(texts: list[str], src: str, tgt: str, engine: str, settings: dict,
                              settings.get("llm_model", ""), settings.get("llm_extra_prompt", ""),
                              float(settings.get("llm_temperature", 0.3)))
     raise TranslateError(f"Engine terjemahan tidak dikenal: {engine}")
+
+
+def translate(texts: list[str], src: str, tgt: str, engine: str, settings: dict, glossary: dict | None = None,
+              use_cache: bool = True):
+    """Terjemahkan daftar teks dengan hemat:
+    - teks kosong / hanya tanda baca tidak dikirim (disalin apa adanya),
+    - teks yang sama di satu halaman dikirim sekali,
+    - teks yang pernah diterjemahkan diambil dari cache (bila use_cache)."""
+    glossary = glossary or {}
+    out = [""] * len(texts)
+    todo: dict[str, list[int]] = {}
+    cache = _load_cache() if use_cache and settings.get("translation_cache", True) else None
+    for i, t in enumerate(texts):
+        t = (t or "").strip()
+        if not t:
+            continue
+        if not needs_translation(t):
+            out[i] = t
+            STATS["skipped"] += 1
+            continue
+        if cache is not None:
+            hit = cache.get(_key(engine, settings, src, tgt, glossary, t))
+            if hit is not None:
+                out[i] = hit
+                STATS["cached"] += 1
+                continue
+        if t in todo:
+            STATS["dupes"] += 1
+        todo.setdefault(t, []).append(i)
+    if todo:
+        uniq = list(todo)
+        res = _raw_translate(uniq, src, tgt, engine, settings, glossary)
+        STATS["sent"] += len(uniq)
+        store = settings.get("translation_cache", True)
+        with _lock:
+            c = _load_cache()
+            for t, tr in zip(uniq, res):
+                for i in todo[t]:
+                    out[i] = tr
+                if store and tr:
+                    c[_key(engine, settings, src, tgt, glossary, t)] = tr
+        if store:
+            try:
+                _save_cache()
+            except OSError:
+                pass
+    return out
