@@ -3,6 +3,9 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub.
 
+## 1.6.4
+- Teks **putih bergaris tepi hitam di atas gambar** (narasi/caption, mis. "IT HAPPENED A FEW DAYS AGO..") kini bisa diterjemahkan lewat kotak manual (**B**): huruf beserta garis tepinya terhapus bersih, dan terjemahannya otomatis **putih dengan stroke hitam**.
+
 ## 1.6.3
 - Perbaikan error **"'NoneType' object has no attribute 'write'"** saat OCR pertama kali dipakai di versi .exe (progres unduhan model kini dicatat ke `%APPDATA%\RexxaTranslator\rexxa.log`).
 

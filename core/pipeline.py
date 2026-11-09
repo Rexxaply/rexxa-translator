@@ -71,6 +71,7 @@ def step_detect(page: Page, project: Project, settings: dict):
     page.blocks = detector.detect(img, settings["detect_mode"], project.source_lang, settings["gpu"])
     for b in page.blocks:
         b.stroke_width = int(settings.get("default_stroke", 0))
+        inpaint.auto_style(img, b)
     page.status = "dideteksi"
 
 

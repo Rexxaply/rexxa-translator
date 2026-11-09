@@ -64,6 +64,100 @@ def text_pixel_mask(img: np.ndarray, region: np.ndarray, dilate: int = 3) -> np.
     return txt
 
 
+def _letter_components(mask: np.ndarray, region: np.ndarray):
+    """Komponen berbentuk huruf di dalam region: tidak menyentuh tepi region, tidak terlalu
+    besar/kecil. Mengembalikan (mask_huruf, [tinggi huruf])."""
+    ys, xs = np.nonzero(region)
+    if xs.size == 0:
+        return np.zeros_like(mask), []
+    rx0, ry0, rx1, ry1 = xs.min(), ys.min(), xs.max(), ys.max()
+    rh = max(1, ry1 - ry0)
+    m = cv2.bitwise_and(mask, region)
+    n, lbl, st, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+    keep = np.zeros_like(mask)
+    heights = []
+    for i in range(1, n):
+        x, y, w, h, a = st[i]
+        if x <= rx0 or y <= ry0 or x + w >= rx1 or y + h >= ry1:      # menyentuh tepi = latar
+            continue
+        # satu baris huruf yang saling menempel boleh hampir selebar kotak
+        if h < max(4, rh * 0.03) or h > rh * 0.6 or a < 10:
+            continue
+        fill = a / float(w * h)
+        if fill < 0.12 or fill > 0.95:
+            continue
+        keep[lbl == i] = 255
+        heights.append(h)
+    return keep, heights
+
+
+def text_polarity(img: np.ndarray, region: np.ndarray):
+    """Tentukan jenis teks di region: 'dark' (huruf gelap, mis. di balon putih) atau
+    'light' (huruf putih, sering bergaris tepi hitam, di atas gambar/latar gelap).
+    Mengembalikan (polaritas, mask_huruf, median_tinggi_huruf)."""
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    light, lh = _letter_components((gray >= 215).astype(np.uint8) * 255, region)
+    dark, dh = _letter_components((gray <= 80).astype(np.uint8) * 255, region)
+    # huruf terang yang dibingkai garis gelap = ciri kuat teks putih bergaris tepi
+    if lh:
+        ring = cv2.dilate(light, np.ones((3, 3), np.uint8), iterations=3) & ~light
+        dark_ring = ((gray <= 110) & (ring > 0)).sum() / max(1, (ring > 0).sum())
+    else:
+        dark_ring = 0
+    if len(lh) >= 2 and (len(lh) >= len(dh) * 0.6 or dark_ring > 0.35):
+        return "light", light, float(np.median(lh))
+    if dh:
+        return "dark", dark, float(np.median(dh))
+    return "dark", np.zeros_like(region), 0.0
+
+
+def text_pixel_mask(img: np.ndarray, region: np.ndarray, dilate: int = 3) -> np.ndarray:
+    """Piksel huruf yang harus dihapus di region (huruf + garis tepinya)."""
+    pol, letters, h = text_polarity(img, region)
+    if letters.any():
+        if pol == "light":
+            # huruf putih + SELURUH garis tepi hitamnya: lebarkan sedikit, lalu ikutkan piksel gelap
+            # yang menempel (garis tepi tebal), supaya tidak tersisa bercak hitam setelah inpaint
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            r = max(2, int(round(h * 0.18)))
+            k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1))
+            txt = cv2.dilate(letters, k)
+            darkpx = ((gray <= 115).astype(np.uint8) * 255) & region
+            for _ in range(3):
+                grow = cv2.dilate(txt, np.ones((3, 3), np.uint8), iterations=2)
+                txt = txt | (darkpx & grow)
+            # tutup celah antar-huruf supaya tidak tersisa pulau putih/gelap di tengah teks
+            kc = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(h * 0.7) | 1, int(h * 0.7) | 1))
+            txt = cv2.morphologyEx(txt, cv2.MORPH_CLOSE, kc)
+            txt = cv2.dilate(txt, np.ones((3, 3), np.uint8), iterations=2)
+        else:
+            txt = cv2.dilate(letters, np.ones((3, 3), np.uint8), iterations=max(1, dilate))
+        return cv2.bitwise_and(txt, cv2.dilate(region, np.ones((3, 3), np.uint8)))
+    # cadangan: kontras terhadap median latar
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    vals = gray[region > 0]
+    if vals.size == 0:
+        return np.zeros_like(region)
+    bg = np.median(vals)
+    txt = ((gray < bg - 60) if bg > 127 else (gray > bg + 60)).astype(np.uint8) * 255
+    txt = cv2.bitwise_and(txt, region)
+    if dilate:
+        txt = cv2.dilate(txt, np.ones((3, 3), np.uint8), iterations=dilate)
+        txt = cv2.bitwise_and(txt, cv2.dilate(region, np.ones((3, 3), np.uint8)))
+    return txt
+
+
+def auto_style(img: np.ndarray, b: TextBlock):
+    """Teks bebas berhuruf putih (di atas gambar) -> terjemahan putih bergaris tepi hitam."""
+    if b.kind == "bubble":
+        return
+    region = block_region_mask(img.shape, b)
+    pol, _, h = text_polarity(img, region)
+    if pol == "light":
+        b.color, b.stroke_color = "#FFFFFF", "#000000"
+        b.stroke_width = max(b.stroke_width, max(2, int(round(h * 0.12))) if h else 3)
+
+
 def _fill_bubble(img, b):
     # bagian dalam balon (tanpa garis tepi) diisi warna dominan latar balon
     shrink = max(4, int(min(b.w, b.h) * 0.035)) if b.mask_poly else 0
@@ -96,7 +190,7 @@ def _fill_bubble(img, b):
 
 
 def _inpaint_opencv(img, mask):
-    return cv2.inpaint(img, mask, 5, cv2.INPAINT_TELEA)
+    return cv2.inpaint(img, mask, 7, cv2.INPAINT_TELEA)
 
 
 def _inpaint_lama(img, mask):

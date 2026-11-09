@@ -964,6 +964,11 @@ class MainWindow(QMainWindow):
         b = TextBlock(x=int(rect.x()), y=int(rect.y()), w=int(rect.width()), h=int(rect.height()),
                       kind="free", stroke_width=int(self.settings.get("default_stroke", 0)))
         self._snap()
+        try:
+            from core import detector, inpaint
+            inpaint.auto_style(detector.load_image(p.path), b)   # huruf putih -> putih + stroke hitam
+        except Exception:
+            pass
         p.blocks.append(b)
         self.need_clean.add(p.path)
         self.b_box.setChecked(False)
