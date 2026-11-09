@@ -9,6 +9,7 @@ from . import detector, inpaint, ocr, paths, translator, typeset
 from .models import Page, Project
 
 DEFAULT_SETTINGS = {
+    "settings_rev": 2,
     "detect_mode": "bubble",        # bubble | easyocr | hybrid
     "ocr_engine": "auto",           # auto | manga-ocr | easyocr
     "translate_engine": "google",   # google | deepl | llm
@@ -23,7 +24,8 @@ DEFAULT_SETTINGS = {
     "llm_temperature": 0.3,
     "font": "",
     "max_font_size": 48,
-    "uppercase": False,
+    "uppercase": True,              # gaya scanlation: HURUF KAPITAL
+    "italic": True,                 # dan sedikit miring
     "default_stroke": 0,
     "output_format": "png",         # png | jpg | webp
     "output_dir": "",               # kosong = <folder gambar>/translated
@@ -47,6 +49,8 @@ def load_settings() -> dict:
             s.update(json.loads(p.read_text(encoding="utf-8")))
         except (json.JSONDecodeError, OSError):
             pass
+    if int(s.get("settings_rev", 0)) < 2:   # 1.5.0: gaya huruf baru ala scanlation sebagai default
+        s.update(uppercase=True, italic=True, settings_rev=2)
     return s
 
 
@@ -102,7 +106,8 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
     else:
         base = detector.load_image(page.cleaned_path)
     final = typeset.render_page(base, page.blocks, project.target_lang, settings.get("font", ""),
-                                settings.get("uppercase", False), int(settings.get("max_font_size", 48)))
+                                settings.get("uppercase", True), int(settings.get("max_font_size", 48)),
+                                italic=settings.get("italic", True))
     ext = settings.get("output_format", "png")
     p = output_dir(page, settings) / f"{Path(page.path).stem}.{ext}"
     detector.save_image(str(p), final)

@@ -409,9 +409,11 @@ class MainWindow(QMainWindow):
         self.p_size.setPrefix("A  ")
         self.p_size.setToolTip("Ukuran font (Auto = menyesuaikan balon)")
         self.p_bold = tool_btn("bold", "Tebal", checkable=True)
+        self.p_ital = tool_btn("italic", "Miring (default ikut Pengaturan → Typeset)", checkable=True)
         self.p_al = {}
-        g.addWidget(self.p_size, 0, 0, 1, 2)
-        g.addWidget(self.p_bold, 0, 2)
+        g.addWidget(self.p_size, 0, 0)
+        g.addWidget(self.p_bold, 0, 1)
+        g.addWidget(self.p_ital, 0, 2)
         for i, (k, ic) in enumerate((("left", "al_left"), ("center", "al_center"), ("right", "al_right"))):
             b = tool_btn(ic, {"left": "Rata kiri", "center": "Rata tengah", "right": "Rata kanan"}[k], checkable=True)
             b.clicked.connect(lambda _=False, k=k: self._set_align(k))
@@ -436,6 +438,7 @@ class MainWindow(QMainWindow):
         self.p_size.valueChanged.connect(self._on_prop_change)
         self.p_stroke.valueChanged.connect(self._on_prop_change)
         self.p_bold.toggled.connect(self._on_prop_change)
+        self.p_ital.toggled.connect(self._on_italic)
 
         # --- Balon
         s3 = Section("Balon")
@@ -815,6 +818,7 @@ class MainWindow(QMainWindow):
             self.p_font.setCurrentIndex(max(0, i))
             self.p_size.setValue(b.font_size)
             self.p_bold.setChecked(b.bold)
+            self.p_ital.setChecked(b.italic if b.italic is not None else bool(self.settings.get("italic", True)))
             for k, btn in self.p_al.items():
                 btn.setChecked(k == b.align)
             self._color_btn(self.p_color, b.color)
@@ -879,6 +883,12 @@ class MainWindow(QMainWindow):
             self.need_clean.add(self.page().path)
             for box in self.cv_src.boxes:
                 box.refresh_style()
+        self._schedule_render()
+
+    def _on_italic(self, on):
+        if self._loading or not self.sel:
+            return
+        self.sel.italic = bool(on)      # pilihan khusus balon ini
         self._schedule_render()
 
     def _pick_color(self, attr):

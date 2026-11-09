@@ -52,6 +52,35 @@ def release_notes(ver: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+# Font komik berlisensi bebas (SIL OFL) yang ikut dibundel sebagai default.
+BUNDLED_FONTS = {
+    "ComicNeue-BoldItalic.ttf": "https://github.com/google/fonts/raw/main/ofl/comicneue/ComicNeue-BoldItalic.ttf",
+    "ComicNeue-Bold.ttf": "https://github.com/google/fonts/raw/main/ofl/comicneue/ComicNeue-Bold.ttf",
+    "ComicNeue-OFL.txt": "https://github.com/google/fonts/raw/main/ofl/comicneue/OFL.txt",
+}
+
+
+def fetch_fonts():
+    """Unduh font bundel ke fonts/ bila belum ada (butuh internet; dilewati bila gagal)."""
+    import urllib.request
+    d = ROOT / "fonts"
+    d.mkdir(exist_ok=True)
+    for name, url in BUNDLED_FONTS.items():
+        dst = d / name
+        if dst.exists() and dst.stat().st_size > 0:
+            continue
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "RexxaTranslator-build"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                data = r.read()
+            if name.endswith(".ttf") and data[:4] not in (b"\x00\x01\x00\x00", b"true", b"OTTO"):
+                raise ValueError("bukan file font")
+            dst.write_bytes(data)
+            print(f"Font diunduh: {name}")
+        except Exception as e:
+            print(f"[!] Gagal mengunduh {name}: {e} — aplikasi memakai font cadangan.")
+
+
 def has(mod: str) -> bool:
     return importlib.util.find_spec(mod) is not None
 
@@ -118,6 +147,7 @@ def main():
     DIST.mkdir(exist_ok=True)
     app_dir = DIST / NAME / "app"
 
+    fetch_fonts()
     if not a.app_only:
         pyinstaller()
     copy_app(app_dir)

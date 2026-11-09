@@ -155,19 +155,69 @@ def _group_letters(cands, shape):
     for mem in _clusters(keep, link_b):
         r = _bbox([l["rect"] for l in mem])
         n = sum(l["n"] for l in mem)
-        blocks.append(dict(rect=r, n=n, lines=len(mem), med_h=float(np.median([l["size"] for l in mem])),
-                           cv=float(np.mean([l["cv"] for l in mem])),
-                           vertical=sum(l["kind"] == "v" for l in mem) > len(mem) / 2))
+        blocks.append(_block_from_lines(mem))
     return blocks
 
 
-def _find_bubble(gray, rect, closek):
+def _block_from_lines(mem):
+    return dict(rect=_bbox([l["rect"] for l in mem]), n=sum(l["n"] for l in mem), lines=len(mem),
+                med_h=float(np.median([l["size"] for l in mem])),
+                cv=float(np.mean([l["cv"] for l in mem])),
+                vertical=sum(l["kind"] == "v" for l in mem) > len(mem) / 2,
+                line_list=mem)
+
+
+def _white_regions(gray, groups, closek):
+    """Peta area putih per halaman. Yang ditutup putih hanya kotak tiap BARIS (bukan kotak
+    seluruh blok), supaya garis pemisah antara dua balon yang menempel tetap utuh."""
+    white = (gray > 185).astype(np.uint8) * 255
+    for g in groups:
+        for l in g["line_list"]:
+            x, y, w, h = l["rect"]
+            white[max(0, y - 2):y + h + 2, max(0, x - 2):x + w + 2] = 255
+    white = cv2.erode(white, np.ones((closek, closek), np.uint8))
+    return cv2.connectedComponentsWithStats(white, connectivity=4)
+
+
+def _line_region(lbl, rect):
+    """Label area putih yang paling banyak ditempati sebuah baris."""
+    x, y, w, h = rect
+    vals = lbl[y:y + h, x:x + w].ravel()
+    vals = vals[vals > 0]
+    if vals.size == 0:
+        return 0
+    return int(np.bincount(vals).argmax())
+
+
+def _split_by_bubble(g, lbl, stats, shape):
+    """Pecah blok bila baris-barisnya berada di balon (area putih tertutup) yang berbeda,
+    mis. dua balon yang saling menempel: "RIGHT..." | "SOMETHING LIKE THIS"."""
+    H, W = shape
+    lines = g["line_list"]
+    if len(lines) < 2:
+        return [g]
+    by_region = {}
+    for l in lines:
+        r = _line_region(lbl, l["rect"])
+        if r == 0:
+            return [g]
+        bx, by, bw, bh, area = stats[r]
+        if bx <= 1 or by <= 1 or bx + bw >= W - 1 or by + bh >= H - 1 or area > 0.2 * H * W:
+            return [g]          # bukan balon tertutup -> jangan dipecah
+        by_region.setdefault(r, []).append(l)
+    if len(by_region) < 2:
+        return [g]
+    return [_block_from_lines(mem) for mem in by_region.values()]
+
+
+def _find_bubble(gray, rect, closek, line_rects=None):
     """Area putih tertutup yang membungkus kelompok teks."""
     H, W = gray.shape
     x, y, w, h = rect
     white = (gray > 185).astype(np.uint8) * 255
     pad = 3
-    white[max(0, y - pad):y + h + pad, max(0, x - pad):x + w + pad] = 255  # tutup huruf
+    for lx, ly, lw, lh in line_rects or [rect]:  # tutup huruf per baris (jangan tembus garis balon)
+        white[max(0, ly - pad):ly + lh + pad, max(0, lx - pad):lx + lw + pad] = 255
     white = cv2.erode(white, np.ones((closek, closek), np.uint8))  # putus sambungan tipis
     n, lbl, st, _ = cv2.connectedComponentsWithStats(white, connectivity=4)
     cy, cx = y + h // 2, x + w // 2
@@ -242,17 +292,21 @@ def detect_bubbles(img: np.ndarray) -> list[TextBlock]:
     H, W = gray.shape
     groups = _group_letters(_letter_candidates(gray), gray.shape)
     closek = max(3, int(min(H, W) * 0.004)) | 1
-    blocks: list[TextBlock] = []
+    _, lbl, stats, _ = _white_regions(gray, groups, closek)
+    split = []
     for g in groups:
+        split += _split_by_bubble(g, lbl, stats, gray.shape)
+    blocks: list[TextBlock] = []
+    for g in split:
         x, y, w, h = g["rect"]
-        if g["n"] < 4 or g["cv"] > 0.3:
+        if g["n"] < 3 or g["cv"] > 0.3:
             continue
         if (gray[y:y + h, x:x + w] < 120).mean() < 0.12:
             continue
         ring = _ring_light(gray, g["rect"], int(g["med_h"] * 0.8))
         if ring < 0.5:          # teks putih di atas gambar gelap -> lewati (pakai mode hybrid)
             continue
-        b = _find_bubble(gray, g["rect"], closek)
+        b = _find_bubble(gray, g["rect"], closek, [l["rect"] for l in g["line_list"]])
         if b is not None:
             (bx, by, bw, bh), hull = b
             blocks.append(TextBlock(x=int(bx), y=int(by), w=int(bw), h=int(bh), kind="bubble",

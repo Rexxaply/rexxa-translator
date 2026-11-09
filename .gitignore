@@ -9,3 +9,6 @@ settings.json
 *.mtproj
 translated/
 selftest.txt
+fonts/*.ttf
+fonts/*.otf
+fonts/ComicNeue-OFL.txt

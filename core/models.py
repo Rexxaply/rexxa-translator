@@ -24,6 +24,7 @@ class TextBlock:
     stroke_width: int = 0
     align: str = "center"     # left | center | right
     bold: bool = False
+    italic: object = None     # None = ikut pengaturan umum; True/False = khusus balon ini
     clean: bool = True        # hapus teks asli di area ini
     mask_poly: list = field(default_factory=list)  # kontur balon [[x,y],...] opsional
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])

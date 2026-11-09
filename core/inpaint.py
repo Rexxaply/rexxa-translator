@@ -75,11 +75,13 @@ def _fill_bubble(img, b):
     light = vals[gray >= np.percentile(gray, 60)]
     color = np.median(light if len(light) else vals, axis=0).astype(np.uint8)
     txt = text_pixel_mask(img, inner, dilate=0)
-    # buang sisa garis tepi: komponen yang menempel batas area dalam
+    # buang sisa garis tepi: komponen PANJANG yang menempel batas area dalam.
+    # Coretan kecil yang menempel (tanda hubung, titik, ujung huruf) tetap dianggap teks.
     border = inner - cv2.erode(inner, np.ones((3, 3), np.uint8), iterations=2)
-    n, lbl = cv2.connectedComponents(txt)
+    n, lbl, st, _ = cv2.connectedComponentsWithStats(txt)
+    long_px = max(12, int(min(b.w, b.h) * 0.22))
     for i in np.unique(lbl[(border > 0) & (txt > 0)]):
-        if i:
+        if i and max(st[i][2], st[i][3]) >= long_px:
             txt[lbl == i] = 0
     txt = cv2.dilate(txt, np.ones((3, 3), np.uint8), iterations=2)
     # isi seluruh area teks + sedikit margin, tetap di dalam balon

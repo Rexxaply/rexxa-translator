@@ -3,6 +3,13 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub.
 
+## 1.5.0
+- Deteksi: dua balon yang saling menempel (mis. "RIGHT..." | "SOMETHING LIKE THIS") kini terpisah jadi dua balon.
+- Gaya huruf ala scanlation: HURUF KAPITAL + miring, font komik otomatis (Wild Words / Anime Ace bila terpasang di Windows, selain itu Comic Neue yang kini ikut dibundel).
+- Teks mengikuti bentuk oval balon, kata tidak lagi dipotong-potong (hanya dipisah di tanda hubung yang memang ada, mis. "KATSUKI-" / "SAN!").
+- Tombol miring (I) per balon di panel Tipografi.
+- Tanda baca kecil di dekat garis balon (mis. "-") ikut terhapus.
+
 ## 1.4.1
 - Update sepenuhnya otomatis: tidak perlu mengisi sumber update lagi (tab Update di Pengaturan diganti tab Tentang).
 - Update dicek setiap kali aplikasi dibuka.

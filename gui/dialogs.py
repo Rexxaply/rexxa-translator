@@ -77,12 +77,14 @@ class SettingsDialog(QDialog):
         btn = QPushButton("…"); btn.setFixedWidth(30); btn.clicked.connect(self._pick_font)
         row.addWidget(self.font, 1); row.addWidget(btn)
         f.addRow("Font default", row)
-        f.addRow("", QLabel(f"<small>Taruh font .ttf/.otf favorit di folder:<br>{typeset.fonts_dir()}</small>"))
+        f.addRow("", QLabel(f"<small>(otomatis) memakai Wild Words / Anime Ace bila terpasang di Windows,<br>"
+                            f"selain itu Comic Neue. Font lain: taruh .ttf/.otf di<br>{typeset.fonts_dir()}</small>"))
         self.maxsize = QSpinBox(); self.maxsize.setRange(8, 200); self.maxsize.setValue(int(self.s["max_font_size"]))
         f.addRow("Ukuran font maks", self.maxsize)
         self.stroke = QSpinBox(); self.stroke.setRange(0, 10); self.stroke.setValue(int(self.s["default_stroke"]))
         f.addRow("Stroke default", self.stroke)
-        self.upper = QCheckBox("HURUF KAPITAL semua"); self.upper.setChecked(self.s["uppercase"]); f.addRow("", self.upper)
+        self.upper = QCheckBox("HURUF KAPITAL semua"); self.upper.setChecked(self.s.get("uppercase", True)); f.addRow("", self.upper)
+        self.ital = QCheckBox("Huruf miring (italic) — gaya scanlation"); self.ital.setChecked(self.s.get("italic", True)); f.addRow("", self.ital)
         self.fmt = QComboBox(); self.fmt.addItems(["png", "jpg", "webp"]); self.fmt.setCurrentText(self.s["output_format"])
         f.addRow("Format output", self.fmt)
         row2 = QHBoxLayout()
@@ -134,7 +136,7 @@ class SettingsDialog(QDialog):
                  llm_temperature=self.temp.value(), llm_extra_prompt=self.extra.toPlainText().strip(),
                  font=self.font.currentData() or (self.font.currentText() if Path(self.font.currentText()).exists() else ""),
                  max_font_size=self.maxsize.value(), default_stroke=self.stroke.value(),
-                 uppercase=self.upper.isChecked(), output_format=self.fmt.currentText(),
+                 uppercase=self.upper.isChecked(), italic=self.ital.isChecked(), output_format=self.fmt.currentText(),
                  output_dir=self.outdir.text().strip())
         return s
 
