@@ -14,7 +14,7 @@ import re
 
 import requests
 
-__version__ = "1.6.4"
+__version__ = "1.6.5"
 
 DEFAULT_REPO = "Rexxaply/rexxa-translator"
 
@@ -79,13 +79,13 @@ def fetch_latest(source: str, timeout: int = 10) -> dict:
             "engine": d.get("engine"), "app": d.get("app"), "full": full}
 
 
-def changelog_between(info: dict, current: str = __version__) -> list[dict]:
-    """Catatan semua versi SETELAH versi terpasang sampai versi terbaru (terbaru dulu)."""
+def changelog_between(info: dict, current: str = __version__, limit: int = 5) -> list[dict]:
+    """Catatan versi SETELAH versi terpasang sampai versi terbaru (terbaru dulu, maks. `limit`)."""
     items = [c for c in (info.get("changelog") or [])
              if is_newer(c.get("version", ""), current) and not is_newer(c.get("version", ""), info.get("version", ""))]
     if not items and info.get("notes"):       # rilis lama tanpa daftar changelog
         items = [{"version": (info.get("version") or "").lstrip("vV"), "notes": info["notes"]}]
-    return sorted(items, key=lambda c: parse_version(c["version"]), reverse=True)
+    return sorted(items, key=lambda c: parse_version(c["version"]), reverse=True)[:limit]
 
 
 def update_kind(info: dict) -> str:

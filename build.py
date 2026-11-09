@@ -81,6 +81,9 @@ def fetch_fonts():
             print(f"[!] Gagal mengunduh {name}: {e} — aplikasi memakai font cadangan.")
 
 
+CHANGELOG_LIMIT = 5   # jumlah versi yang ditampilkan di jendela update
+
+
 def all_release_notes() -> list[dict]:
     """Semua bagian '## X.Y.Z' dari CHANGELOG.md, terbaru dulu: [{"version","notes"}]."""
     p = ROOT / "CHANGELOG.md"
@@ -90,7 +93,7 @@ def all_release_notes() -> list[dict]:
     out = []
     for m in re.finditer(r"^##\s*v?(\d+(?:\.\d+)*)\b.*?$(.*?)(?=^##\s|\Z)", text, re.S | re.M):
         out.append({"version": m.group(1), "notes": m.group(2).strip()})
-    return out
+    return out[:CHANGELOG_LIMIT]
 
 
 def has(mod: str) -> bool:
