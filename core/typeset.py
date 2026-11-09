@@ -116,6 +116,72 @@ def italic_variant(path: str) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------- instal font milik pengguna
+
+class FontError(Exception):
+    pass
+
+
+def font_name(path: str) -> str:
+    """Nama tampilan font, mis. 'Wild Words Roman' / 'Comic Neue Bold Italic'."""
+    try:
+        fam, style = ImageFont.truetype(path, 20).getname()
+        style = "" if (style or "").lower() in ("regular", "normal", "roman", "") else f" {style}"
+        return f"{fam}{style}"
+    except Exception:
+        return Path(path).stem
+
+
+def user_fonts() -> list[str]:
+    d = user_fonts_dir()
+    return sorted((str(p) for p in d.iterdir() if p.suffix.lower() in FONT_EXT), key=lambda p: font_name(p).lower())
+
+
+def install_font(src: str) -> str:
+    """Salin file font ke folder font pengguna (%APPDATA%\\RexxaTranslator\\fonts).
+    Font di sana tetap ada walau aplikasi di-update. Mengembalikan path tujuan."""
+    import shutil
+    sp = Path(src)
+    if sp.suffix.lower() not in FONT_EXT:
+        raise FontError(f"{sp.name}: bukan file font (.ttf / .otf / .ttc).")
+    try:
+        ImageFont.truetype(str(sp), 20)
+    except Exception:
+        raise FontError(f"{sp.name}: file font rusak atau tidak didukung.")
+    d = user_fonts_dir()
+    dst = d / sp.name
+    if dst.exists():
+        if dst.stat().st_size == sp.stat().st_size:
+            return str(dst)                      # sudah terpasang
+        n = 2
+        while (d / f"{sp.stem}-{n}{sp.suffix}").exists():
+            n += 1
+        dst = d / f"{sp.stem}-{n}{sp.suffix}"
+    shutil.copy2(sp, dst)
+    _font.cache_clear()
+    return str(dst)
+
+
+def remove_font(path: str):
+    p = Path(path).resolve()
+    if p.parent != user_fonts_dir().resolve():
+        raise FontError("Hanya font yang diinstal lewat aplikasi yang bisa dihapus di sini.")
+    p.unlink(missing_ok=True)
+    _font.cache_clear()
+
+
+def windows_comic_fonts() -> list[str]:
+    """Font komik (Wild Words, Anime Ace, …) yang terpasang di Windows."""
+    out = []
+    for d in SYSTEM_FONT_DIRS:
+        if str(d) not in (".", "") and d.exists():
+            try:
+                out += [str(p) for p in d.iterdir() if p.suffix.lower() in FONT_EXT and _comic_rank(p) < len(COMIC_PREF)]
+            except OSError:
+                pass
+    return out
+
+
 @lru_cache(maxsize=256)
 def _font(path: str, size: int):
     try:
