@@ -408,7 +408,7 @@ class MainWindow(QMainWindow):
         self.p_font = QComboBox()
         self.p_font.addItem("Font default", "")
         for f in typeset.list_fonts():
-            self.p_font.addItem(Path(f).stem, f)
+            self.p_font.addItem(typeset.font_name(f), f)
         s2.lay.addWidget(self.p_font)
         g = QGridLayout()
         g.setHorizontalSpacing(6)
@@ -847,7 +847,7 @@ class MainWindow(QMainWindow):
                 self.e_tr.setPlainText(b.translation)
             i = self.p_font.findData(b.font)
             if i < 0 and b.font:
-                self.p_font.addItem(Path(b.font).stem, b.font)
+                self.p_font.addItem(typeset.font_name(b.font), b.font)
                 i = self.p_font.count() - 1
             self.p_font.setCurrentIndex(max(0, i))
             self.p_size.setValue(b.font_size)
@@ -1217,7 +1217,20 @@ class MainWindow(QMainWindow):
         if d.exec():
             self.settings = d.result_settings()
             pipeline.save_settings(self.settings)
+            self._refresh_fonts()
+            self._schedule_render()
             self.log("Pengaturan disimpan.")
+
+    def _refresh_fonts(self):
+        """Isi ulang pilihan font di panel Tipografi (mis. setelah instal/hapus font)."""
+        cur = self.p_font.currentData()
+        self._loading = True
+        self.p_font.clear()
+        self.p_font.addItem("Font default", "")
+        for f in typeset.list_fonts():
+            self.p_font.addItem(typeset.font_name(f), f)
+        self.p_font.setCurrentIndex(max(0, self.p_font.findData(cur)))
+        self._loading = False
 
     def edit_glossary(self):
         d = GlossaryDialog(self.project.glossary, self)

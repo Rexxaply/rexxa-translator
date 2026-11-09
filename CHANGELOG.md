@@ -3,6 +3,11 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub.
 
+## 1.6.1
+- Tab **Font** baru di Pengaturan: instal font sendiri (.ttf/.otf/.ttc) lewat tombol atau seret file, pratinjau, jadikan default, hapus.
+- Font yang diinstal disimpan di folder data pribadi, jadi tetap ada walau aplikasi di-update.
+- Wild Words / Anime Ace yang diinstal lewat aplikasi otomatis diutamakan.
+
 ## 1.6.0
 - Undo **Ctrl+Z** dan redo **Ctrl+Y** (juga tombol di toolbar): geser/ubah ukuran kotak, tambah/hapus balon, edit teks & gaya, hasil proses.
 - Gambar HASIL kini bisa diklik: balon bisa dipilih dan digeser dari sisi kiri maupun kanan.
