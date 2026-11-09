@@ -1,0 +1,70 @@
+# Build .exe Windows & terbitkan Release otomatis setiap push tag versi.
+#
+#   1. Naikkan __version__ di core/version.py (mis. 1.5.0) dan tulis catatan di CHANGELOG.md
+#   2. git commit -am "Rilis 1.5.0"  &&  git tag v1.5.0  &&  git push && git push --tags
+#   3. Tunggu ±20-30 menit -> Release muncul -> aplikasi pengguna menawarkan update.
+#
+# Bisa juga dijalankan manual dari tab Actions (tanpa membuat Release, hasilnya jadi artifact).
+name: Rilis
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Pasang paket
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-ai.txt --extra-index-url https://download.pytorch.org/whl/cpu
+          pip install --upgrade --force-reinstall --no-deps torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install pyinstaller
+
+      - name: Cek torch & torchvision cocok
+        run: python -c "import torch, torchvision, torchvision.ops as o; o.nms(torch.zeros((1,4)), torch.zeros(1), 0.5); print('torch', torch.__version__, 'torchvision', torchvision.__version__)"
+
+      - name: Build
+        run: python build.py --release
+
+      - name: Uji .exe (memuat semua modul + OCR + torchvision)
+        shell: pwsh
+        run: |
+          $env:REXXA_SELFTEST = "1"
+          $env:REXXA_SELFTEST_OUT = "$PWD\selftest.txt"
+          $p = Start-Process -FilePath "dist\RexxaTranslator\RexxaTranslator.exe" -PassThru -Wait
+          if (Test-Path selftest.txt) { Get-Content selftest.txt }
+          if ($p.ExitCode -ne 0) { Write-Error "Uji .exe GAGAL (exit $($p.ExitCode))"; exit 1 }
+          Write-Host "OK: .exe lulus uji"
+
+      - name: Terbitkan Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: dist/release-notes.md
+          files: |
+            dist/update.json
+            dist/RexxaTranslator-app-*.zip
+            dist/RexxaTranslator-*-win64.zip
+
+      - name: Simpan hasil (run manual)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: RexxaTranslator
+          path: dist/RexxaTranslator
+          retention-days: 7

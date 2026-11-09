@@ -1,0 +1,4 @@
+# Paket AI (besar, ±2-4 GB termasuk PyTorch). Dibutuhkan untuk OCR & inpaint AI.
+manga-ocr>=0.1.11            # OCR Jepang khusus manga
+easyocr>=1.7                 # OCR Korea / Mandarin / Inggris + deteksi teks bebas
+simple-lama-inpainting>=0.1  # LaMa: hapus teks di atas gambar/arsiran

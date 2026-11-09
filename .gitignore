@@ -1,0 +1,11 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+settings.json
+*.mtproj
+translated/
+selftest.txt
