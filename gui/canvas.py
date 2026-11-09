@@ -193,12 +193,15 @@ class BoxItem(QGraphicsRectItem):
         nx, ny = int(round(self.pos().x())), int(round(self.pos().y()))
         nw, nh = int(round(self.rect().width())), int(round(self.rect().height()))
         if (nx, ny, nw, nh) != (b.x, b.y, b.w, b.h):
-            if b.mask_poly:
-                if (nw, nh) == (b.w, b.h):     # digeser saja: kontur balon ikut digeser
-                    dx, dy = nx - b.x, ny - b.y
+            if (nw, nh) == (b.w, b.h):         # digeser saja: kontur & area teks ikut digeser
+                dx, dy = nx - b.x, ny - b.y
+                if b.mask_poly:
                     b.mask_poly = [[px + dx, py + dy] for px, py in b.mask_poly]
-                else:                          # diubah ukuran: kontur lama tidak berlaku
-                    b.mask_poly = []
+                if b.text_rect:
+                    b.text_rect = [b.text_rect[0] + dx, b.text_rect[1] + dy, b.text_rect[2], b.text_rect[3]]
+            else:                              # diubah ukuran: kontur & area teks lama tidak berlaku
+                b.mask_poly = []
+                b.text_rect = []
             b.x, b.y, b.w, b.h = nx, ny, nw, nh
 
     def reload(self):

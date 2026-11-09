@@ -40,7 +40,7 @@ def _letter_candidates(gray):
     bg = cv2.dilate(gray, np.ones((9, 9), np.uint8))
     dark = ((gray < 170) & (bg.astype(int) - gray > 55)).astype(np.uint8)
     n, lbl, stats, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
-    hmin = max(5, int(H * 0.004))
+    hmin = max(6, int(H * 0.005))
     hmax = int(H * 0.05)
     light = gray > 190
     mid = (gray > 170) & (gray <= 190) | ((gray >= 60) & (gray <= 170) & (dark == 0))
@@ -76,12 +76,30 @@ class DSU:
     def u(s, a, b): s.p[s.f(a)] = s.f(b)
 
 
-def _clusters(items, link):
-    d = DSU(len(items))
-    for i in range(len(items)):
-        for j in range(i + 1, len(items)):
-            if link(items[i], items[j]):
-                d.u(i, j)
+def _clusters(items, link, rect=lambda it: it):
+    """Gabungkan item yang saling 'link'. Hanya membandingkan item yang berdekatan (grid spasial),
+    jadi tetap cepat walau ada ribuan kandidat dari screentone."""
+    n = len(items)
+    d = DSU(n)
+    if n == 0:
+        return []
+    rects = [rect(it) for it in items]
+    cell = max(8, int(np.median([max(r[2], r[3]) for r in rects]) * 3))
+    grid = {}
+    for i, (x, y, w, h) in enumerate(rects):
+        for gx in range(x // cell, (x + w) // cell + 1):
+            for gy in range(y // cell, (y + h) // cell + 1):
+                grid.setdefault((gx, gy), []).append(i)
+    seen = set()
+    for i, (x, y, w, h) in enumerate(rects):
+        for gx in range(x // cell - 1, (x + w) // cell + 2):
+            for gy in range(y // cell - 1, (y + h) // cell + 2):
+                for j in grid.get((gx, gy), ()):
+                    if j <= i or (i, j) in seen:
+                        continue
+                    seen.add((i, j))
+                    if link(items[i], items[j]):
+                        d.u(i, j)
     out = {}
     for i in range(len(items)):
         out.setdefault(d.f(i), []).append(items[i])
@@ -125,7 +143,7 @@ def _group_letters(cands, shape):
 
     lines = []
     for link, kind in ((link_h, "h"), (link_v, "v")):
-        for mem in _clusters(cands, link):
+        for mem in _clusters(cands, link):  # noqa: B023
             if len(mem) >= 3 or (len(mem) == 2 and kind == "h"):
                 r = _bbox(mem)
                 hs = np.array([c[3] for c in mem], float)
@@ -152,7 +170,7 @@ def _group_letters(cands, shape):
         return gx < 0.8 * s and gy < 0.8 * s
 
     blocks = []
-    for mem in _clusters(keep, link_b):
+    for mem in _clusters(keep, link_b, rect=lambda l: l["rect"]):
         r = _bbox([l["rect"] for l in mem])
         n = sum(l["n"] for l in mem)
         blocks.append(_block_from_lines(mem))
@@ -236,6 +254,68 @@ def _find_bubble(gray, rect, closek, line_rects=None):
     return cv2.boundingRect(hull), hull.reshape(-1, 2)
 
 
+def _region_of(g, lbl):
+    votes = [r for r in (_line_region(lbl, l["rect"]) for l in g["line_list"]) if r]
+    return max(set(votes), key=votes.count) if votes else 0
+
+
+def _split_region(lbl, region, groups, closek):
+    """Satu area putih berisi beberapa kelompok teks (balon-balon yang menyatu tanpa garis pemisah).
+    Cari "leher" di antara lobus balon: bagian dalam area dikikis bertahap (ambang peta jarak naik)
+    sampai tiap kelompok teks berada di inti yang terpisah; lalu tiap inti ditumbuhkan kembali
+    sampai bertemu — batasnya jatuh tepat di bagian yang menyempit.
+    Mengembalikan [(rect, hull) | None] sesuai urutan groups (None = tidak bisa dibelah)."""
+    ys, xs = np.nonzero(lbl == region)
+    H, W = lbl.shape
+    pad = closek * 2
+    x0, y0 = max(0, xs.min() - pad), max(0, ys.min() - pad)
+    x1, y1 = min(W, xs.max() + 1 + pad), min(H, ys.max() + 1 + pad)
+    mask = (lbl[y0:y1, x0:x1] == region).astype(np.uint8)
+    dist = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
+
+    def text_px(g):
+        out = []
+        for lx, ly, lw, lh in (l["rect"] for l in g["line_list"]):
+            out.append((slice(max(0, ly - y0), ly - y0 + lh), slice(max(0, lx - x0), lx - x0 + lw)))
+        return out
+
+    tps = [text_px(g) for g in groups]
+    dmax = float(dist.max())
+    cores = None
+    for frac in np.linspace(0.15, 0.85, 15):
+        n, core = cv2.connectedComponents((dist > dmax * frac).astype(np.uint8))
+        owner = []
+        for tp in tps:
+            vals = np.concatenate([core[sy, sx].ravel() for sy, sx in tp])
+            vals = vals[vals > 0]
+            owner.append(int(np.bincount(vals).argmax()) if vals.size else 0)
+        if all(owner) and len(set(owner)) == len(owner):
+            cores = (core, owner)
+            break
+    if cores is None:
+        return [None] * len(groups)
+
+    core, owner = cores
+    # tumbuhkan inti dengan kecepatan sama (BFS lewat watershed di atas gambar datar)
+    markers = np.zeros(mask.shape, np.int32)
+    markers[mask == 0] = 1
+    for k, o in enumerate(owner):
+        markers[core == o] = k + 2
+    cv2.watershed(np.zeros(mask.shape + (3,), np.uint8), markers)
+    out = []
+    for k in range(len(groups)):
+        part = (markers == k + 2).astype(np.uint8) * 255
+        part = cv2.dilate(part, np.ones((closek, closek), np.uint8))
+        cnts, _ = cv2.findContours(part, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not cnts:
+            out.append(None)
+            continue
+        c = max(cnts, key=cv2.contourArea) + np.array([[[x0, y0]]])
+        hull = cv2.convexHull(c)
+        out.append((cv2.boundingRect(hull), hull.reshape(-1, 2)))
+    return out
+
+
 def _ring_light(gray, rect, pad):
     H, W = gray.shape
     x, y, w, h = rect
@@ -296,28 +376,53 @@ def detect_bubbles(img: np.ndarray) -> list[TextBlock]:
     split = []
     for g in groups:
         split += _split_by_bubble(g, lbl, stats, gray.shape)
-    blocks: list[TextBlock] = []
+    good = []
     for g in split:
         x, y, w, h = g["rect"]
         if g["n"] < 3 or g["cv"] > 0.3:
             continue
         if (gray[y:y + h, x:x + w] < 120).mean() < 0.12:
             continue
-        ring = _ring_light(gray, g["rect"], int(g["med_h"] * 0.8))
-        if ring < 0.5:          # teks putih di atas gambar gelap -> lewati (pakai mode hybrid)
+        g["ring"] = _ring_light(gray, g["rect"], int(g["med_h"] * 0.8))
+        if g["ring"] < 0.5:     # teks putih di atas gambar gelap -> lewati (pakai mode hybrid)
             continue
-        b = _find_bubble(gray, g["rect"], closek, [l["rect"] for l in g["line_list"]])
+        good.append(g)
+
+    # balon yang menyatu: beberapa kelompok teks di SATU area putih tertutup -> belah per kelompok
+    shared = {}
+    for g in good:
+        r = _region_of(g, lbl)
+        if r:
+            bx, by, bw, bh, area = stats[r]
+            closed = not (bx <= 1 or by <= 1 or bx + bw >= W - 1 or by + bh >= H - 1) and area <= 0.2 * H * W
+            if closed:
+                shared.setdefault(r, []).append(g)
+    lobes = {}
+    for r, gs in shared.items():
+        if len(gs) >= 2:
+            for g, res in zip(gs, _split_region(lbl, r, gs, closek)):
+                lobes[id(g)] = res
+
+    blocks: list[TextBlock] = []
+    for g in good:
+        x, y, w, h = g["rect"]
+        ring = g["ring"]
+        text_rect = [int(v) for v in g["rect"]]
+        if id(g) in lobes:
+            b = lobes[id(g)]          # None = gagal dibelah -> diperlakukan sebagai teks bebas
+        else:
+            b = _find_bubble(gray, g["rect"], closek, [l["rect"] for l in g["line_list"]])
         if b is not None:
             (bx, by, bw, bh), hull = b
             blocks.append(TextBlock(x=int(bx), y=int(by), w=int(bw), h=int(bh), kind="bubble",
-                                    vertical=bool(g["vertical"]),
+                                    vertical=bool(g["vertical"]), text_rect=text_rect,
                                     mask_poly=hull.astype(int).tolist()))
         elif ring > 0.75:
             # balon terbuka / tanpa garis: lebarkan kotak ke area putih di sekitarnya
             x0, y0, x1, y1 = _grow_light(gray, x, y, x + w, y + h, step=max(2, int(g["med_h"] * 0.25)),
                                          limit=int(g["med_h"] * 3))
             blocks.append(TextBlock(x=x0, y=y0, w=x1 - x0, h=y1 - y0, kind="free",
-                                    vertical=bool(g["vertical"])))
+                                    vertical=bool(g["vertical"]), text_rect=text_rect))
     return _dedupe(blocks)
 
 

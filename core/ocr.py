@@ -26,9 +26,22 @@ def _get_manga_ocr():
 
 
 def _crop(img: np.ndarray, b: TextBlock, pad: int = 4) -> np.ndarray:
+    """Potongan gambar untuk OCR. Pakai area teks hasil deteksi bila ada (lebih tepat & tidak ikut
+    membaca teks balon tetangga yang menyatu); selain itu seluruh kotak."""
     h, w = img.shape[:2]
-    x0, y0 = max(0, b.x - pad), max(0, b.y - pad)
-    x1, y1 = min(w, b.x + b.w + pad), min(h, b.y + b.h + pad)
+    if b.text_rect and len(b.text_rect) == 4:
+        x, y, bw, bh = b.text_rect
+        # ruang tambahan untuk tanda baca kecil ("…", "!", "?") yang tidak ikut terdeteksi sebagai huruf,
+        # tetapi tidak melewati kotak balonnya sendiri (supaya tidak ikut membaca balon tetangga)
+        line_h = max(8, min(bw, bh) if bh < bw * 1.3 else min(bw, bh))
+        px, py = max(pad, int(line_h * 1.5)), max(pad, int(line_h * 0.5))
+        x0, y0 = max(0, b.x, x - px), max(0, b.y, y - py)
+        x1, y1 = min(w, b.x + b.w, x + bw + px), min(h, b.y + b.h, y + bh + py)
+        if x1 - x0 > 4 and y1 - y0 > 4:
+            return img[y0:y1, x0:x1]
+    x, y, bw, bh = b.x, b.y, b.w, b.h
+    x0, y0 = max(0, x - pad), max(0, y - pad)
+    x1, y1 = min(w, x + bw + pad), min(h, y + bh + pad)
     return img[y0:y1, x0:x1]
 
 

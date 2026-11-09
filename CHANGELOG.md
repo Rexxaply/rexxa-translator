@@ -3,6 +3,11 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub.
 
+## 1.6.2
+- Deteksi: balon yang **menyatu tanpa garis pemisah** (mis. "RIGHT..." + "SOMETHING LIKE THIS") kini dibelah tepat di bagian yang menyempit, jadi tiap balon dideteksi, di-OCR, dan diterjemahkan sendiri-sendiri.
+- OCR hanya membaca teks di dalam balonnya sendiri (tidak ikut membaca balon tetangga), tanda baca kecil seperti "..." tetap terbaca.
+- Deteksi jauh lebih cepat di halaman dengan banyak screentone.
+
 ## 1.6.1
 - Tab **Font** baru di Pengaturan: instal font sendiri (.ttf/.otf/.ttc) lewat tombol atau seret file, pratinjau, jadikan default, hapus.
 - Font yang diinstal disimpan di folder data pribadi, jadi tetap ada walau aplikasi di-update.
