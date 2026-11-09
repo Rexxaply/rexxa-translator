@@ -14,7 +14,7 @@ import re
 
 import requests
 
-__version__ = "1.5.0"
+__version__ = "1.5.1"
 
 DEFAULT_REPO = "Rexxaply/rexxa-translator"
 
@@ -63,7 +63,7 @@ def fetch_latest(source: str, timeout: int = 10) -> dict:
             m = requests.get(meta["browser_download_url"], headers={"User-Agent": headers["User-Agent"]},
                              timeout=timeout)
             m.raise_for_status()
-            info.update({k: v for k, v in m.json().items() if k in ("version", "engine", "app", "full", "notes")
+            info.update({k: v for k, v in m.json().items() if k in ("version", "engine", "app", "full", "notes", "changelog")
                          and v not in (None, "")})
         else:  # rilis lama/manual tanpa update.json: pakai zip apa pun sebagai unduhan penuh
             z = _asset(d, lambda n: n.lower().endswith(".zip"))
@@ -77,6 +77,15 @@ def fetch_latest(source: str, timeout: int = 10) -> dict:
     full = d.get("full") or ({"url": d["url"], "sha256": "", "size": 0} if d.get("url") else None)
     return {"version": str(d.get("version", "")), "notes": d.get("notes", ""), "page": d.get("url", ""),
             "engine": d.get("engine"), "app": d.get("app"), "full": full}
+
+
+def changelog_between(info: dict, current: str = __version__) -> list[dict]:
+    """Catatan semua versi SETELAH versi terpasang sampai versi terbaru (terbaru dulu)."""
+    items = [c for c in (info.get("changelog") or [])
+             if is_newer(c.get("version", ""), current) and not is_newer(c.get("version", ""), info.get("version", ""))]
+    if not items and info.get("notes"):       # rilis lama tanpa daftar changelog
+        items = [{"version": (info.get("version") or "").lstrip("vV"), "notes": info["notes"]}]
+    return sorted(items, key=lambda c: parse_version(c["version"]), reverse=True)
 
 
 def update_kind(info: dict) -> str:

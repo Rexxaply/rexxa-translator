@@ -6,13 +6,73 @@ from datetime import date
 
 from PySide6.QtCore import QObject, QProcess, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QApplication, QMessageBox, QProgressDialog
+from PySide6.QtWidgets import (QApplication, QDialog, QHBoxLayout, QLabel, QMessageBox, QProgressDialog,
+                               QPushButton, QTextBrowser, QVBoxLayout)
 
 from core import pipeline, selfupdate, version
 
 
 def _mb(n):
     return f"{n / 1048576:.1f} MB" if n >= 1048576 else f"{max(1, n // 1024)} KB"
+
+
+class UpdateDialog(QDialog):
+    """Jendela "Update tersedia" berisi changelog dari versi terpasang sampai versi terbaru."""
+
+    def __init__(self, parent, info, remote, kind):
+        super().__init__(parent)
+        self.choice = "later"
+        self.setWindowTitle("Update tersedia")
+        self.resize(560, 460)
+        v = QVBoxLayout(self)
+        v.setSpacing(10)
+
+        head = QLabel(f"<span style='font-size:13pt; font-weight:600'>Rexxa Translator {remote}</span>"
+                      f"<br><span style='color:#8a8e9a'>Versi kamu: {version.__version__}</span>")
+        v.addWidget(head)
+
+        items = version.changelog_between(info)
+        md = []
+        for c in items:
+            md.append(f"### {c['version']}\n\n{c['notes'] or '-'}\n")
+        log = QTextBrowser()
+        log.setOpenExternalLinks(True)
+        log.setMarkdown("\n".join(md) if md else "_Tidak ada catatan rilis._")
+        log.setStyleSheet("QTextBrowser { background:#1a1b20; border:1px solid #2e3038; border-radius:8px; padding:8px; }")
+        v.addWidget(small("CHANGELOG"))
+        v.addWidget(log, 1)
+
+        size = (info.get(kind) or {}).get("size", 0) if kind in ("app", "full") else 0
+        foot = {"app": f"Ukuran unduhan {_mb(size)} · aplikasi akan terbuka ulang sendiri",
+                "full": f"Ukuran unduhan {_mb(size)} · update penuh, aplikasi ditutup lalu dibuka lagi",
+                "manual": "Unduh dari halaman rilis, lalu ekstrak menimpa folder lama"}[kind]
+        v.addWidget(small(foot))
+
+        row = QHBoxLayout()
+        b_skip = QPushButton("Lewati versi ini")
+        b_later = QPushButton("Nanti")
+        b_go = QPushButton("Update sekarang" if kind != "manual" else "Buka halaman rilis")
+        b_go.setDefault(True)
+        b_go.setStyleSheet("QPushButton { background:#ff4d6d; color:white; font-weight:600; border:none; padding:7px 16px; }"
+                           "QPushButton:hover { background:#ff6680; }")
+        row.addWidget(b_skip)
+        row.addStretch()
+        row.addWidget(b_later)
+        row.addWidget(b_go)
+        v.addLayout(row)
+        b_go.clicked.connect(lambda: self._done("go"))
+        b_skip.clicked.connect(lambda: self._done("skip"))
+        b_later.clicked.connect(lambda: self._done("later"))
+
+    def _done(self, choice):
+        self.choice = choice
+        self.accept()
+
+
+def small(text):
+    l = QLabel(text)
+    l.setStyleSheet("color:#8a8e9a; font-size:8.5pt; font-weight:600;")
+    return l
 
 
 class UpdateChecker(QObject):
@@ -75,33 +135,15 @@ class UpdateChecker(QObject):
         self._offer(info, remote)
 
     def _offer(self, info, remote):
-        w = self.window
         kind = version.update_kind(info)
-        notes = (info.get("notes") or "").strip()
-        size = (info.get(kind) or {}).get("size", 0) if kind in ("app", "full") else 0
-        how = {
-            "app": f"Update cepat — hanya kode aplikasi ({_mb(size)}). Aplikasi akan restart sendiri.",
-            "full": f"Update penuh — mesin aplikasi ikut diperbarui ({_mb(size)}). "
-                    "Aplikasi akan tertutup, dipasang, lalu terbuka lagi.",
-            "manual": "Unduh versi baru dari halaman rilis, lalu ekstrak menimpa folder lama.",
-        }[kind]
-        box = QMessageBox(w)
-        box.setWindowTitle("Update tersedia")
-        box.setIcon(QMessageBox.Information)
-        box.setText(f"<b>Rexxa Translator {remote}</b> sudah tersedia.<br>Versi kamu: {version.__version__}")
-        body = (notes[:1500] + ("…" if len(notes) > 1500 else "") + "\n\n") if notes else ""
-        box.setInformativeText(body + how + "\nPengaturan, API key, dan font kamu tetap aman.")
-        b_go = box.addButton("Update sekarang" if kind != "manual" else "Buka halaman rilis", QMessageBox.AcceptRole)
-        b_skip = box.addButton("Lewati versi ini", QMessageBox.RejectRole)
-        box.addButton("Nanti", QMessageBox.RejectRole)
-        box.setDefaultButton(b_go)
-        box.exec()
-        if box.clickedButton() is b_go:
+        d = UpdateDialog(self.window, info, remote, kind)
+        d.exec()
+        if d.choice == "go":
             if kind == "manual":
                 QDesktopServices.openUrl(QUrl(info.get("page") or f"https://github.com/{self.source()}/releases"))
             else:
                 self._start_download(info, kind, remote)
-        elif box.clickedButton() is b_skip:
+        elif d.choice == "skip":
             self.window.settings["update_skip_version"] = remote
             pipeline.save_settings(self.window.settings)
 

@@ -81,6 +81,18 @@ def fetch_fonts():
             print(f"[!] Gagal mengunduh {name}: {e} — aplikasi memakai font cadangan.")
 
 
+def all_release_notes() -> list[dict]:
+    """Semua bagian '## X.Y.Z' dari CHANGELOG.md, terbaru dulu: [{"version","notes"}]."""
+    p = ROOT / "CHANGELOG.md"
+    if not p.exists():
+        return []
+    text = p.read_text(encoding="utf-8")
+    out = []
+    for m in re.finditer(r"^##\s*v?(\d+(?:\.\d+)*)\b.*?$(.*?)(?=^##\s|\Z)", text, re.S | re.M):
+        out.append({"version": m.group(1), "notes": m.group(2).strip()})
+    return out
+
+
 def has(mod: str) -> bool:
     return importlib.util.find_spec(mod) is not None
 
@@ -158,7 +170,7 @@ def main():
 
     repo = os.environ.get("GITHUB_REPOSITORY", DEFAULT_REPO)
     base_url = f"https://github.com/{repo}/releases/download/v{ver}"
-    meta = {"version": ver, "engine": eng, "notes": release_notes(ver)}
+    meta = {"version": ver, "engine": eng, "notes": release_notes(ver), "changelog": all_release_notes()}
 
     app_zip = zip_dir(app_dir, DIST / f"{NAME}-app-{ver}.zip", "app")
     meta["app"] = {"url": f"{base_url}/{app_zip.name}", "sha256": sha256(app_zip), "size": app_zip.stat().st_size}

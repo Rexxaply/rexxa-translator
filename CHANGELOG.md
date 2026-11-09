@@ -3,6 +3,9 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub.
 
+## 1.5.1
+- Jendela update kini menampilkan changelog lengkap dari versi terpasang sampai versi terbaru.
+
 ## 1.5.0
 - Deteksi: dua balon yang saling menempel (mis. "RIGHT..." | "SOMETHING LIKE THIS") kini terpisah jadi dua balon.
 - Gaya huruf ala scanlation: HURUF KAPITAL + miring, font komik otomatis (Wild Words / Anime Ace bila terpasang di Windows, selain itu Comic Neue yang kini ikut dibundel).
