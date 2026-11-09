@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QColo
                                QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
                                QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox,
                                QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSizePolicy,
-                               QSpinBox, QSplitter, QTableWidget, QTableWidgetItem, QTabWidget,
+                               QSpinBox, QSplitter, QSplitterHandle, QTableWidget, QTableWidgetItem, QTabWidget,
                                QToolBar, QToolButton, QVBoxLayout, QWidget)
 
 from core import pipeline, typeset
@@ -130,6 +130,37 @@ def spacer():
     w = QWidget()
     w.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
     return w
+
+
+class _ResetHandle(QSplitterHandle):
+    def mouseDoubleClickEvent(self, e):
+        self.splitter().equalize()
+
+
+class EqualSplitter(QSplitter):
+    """Splitter yang awalnya membagi rata, dan kembali rata saat pembatasnya diklik dua kali."""
+    reset_done = Signal()
+
+    def __init__(self, *a):
+        super().__init__(*a)
+        self._first = True
+
+    def createHandle(self):
+        h = _ResetHandle(self.orientation(), self)
+        h.setToolTip("Seret untuk mengubah lebar · klik dua kali = kembali 50:50")
+        return h
+
+    def equalize(self):
+        n = sum(1 for i in range(self.count()) if self.widget(i).isVisible())
+        if n:
+            self.setSizes([1000] * self.count())   # Qt menyesuaikan secara proporsional -> sama rata
+            self.reset_done.emit()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        if self._first:
+            self._first = False
+            QTimer.singleShot(0, self.equalize)
 
 
 # ====================================================================== window
@@ -346,15 +377,18 @@ class MainWindow(QMainWindow):
         self.out_mode.setToolTip("Tampilkan hasil akhir, atau gambar yang teksnya sudah dihapus")
         self.out_mode.currentIndexChanged.connect(lambda: self._show_current())
         self.col_out = column("TERJEMAHAN", self.cv_out, self.out_mode)
-        # ASLI | TERJEMAHAN dibagi rata 50:50 (bukan splitter, supaya tidak bisa timpang)
-        self.views = QWidget()
-        vl = QHBoxLayout(self.views)
-        vl.setContentsMargins(0, 0, 0, 0)
-        vl.setSpacing(1)
+        # ASLI | TERJEMAHAN: bisa digeser, default 50:50 (klik dua kali pembatas = kembali 50:50)
+        self.views = EqualSplitter(Qt.Horizontal)
+        self.views.setObjectName("viewsSplit")
+        self.views.setHandleWidth(6)
+        self.views.setChildrenCollapsible(False)
         self.col_src = column("ASLI", self.cv_src)
-        vl.addWidget(self.col_src, 1)
-        vl.addWidget(self.col_out, 1)
-        self.views.setObjectName("viewsPair")
+        self.views.addWidget(self.col_src)
+        self.views.addWidget(self.col_out)
+        self.views.setStretchFactor(0, 1)
+        self.views.setStretchFactor(1, 1)
+        self.views.splitterMoved.connect(lambda *_: QTimer.singleShot(0, self._fit_both))
+        self.views.reset_done.connect(lambda: QTimer.singleShot(0, self._fit_both))
 
         # ---- kanan: properti / daftar balon / log
         self.tabs = QTabWidget()
@@ -641,6 +675,8 @@ class MainWindow(QMainWindow):
 
     def _toggle_split(self, on):
         self.col_out.setVisible(on)
+        if on:
+            QTimer.singleShot(0, self.views.equalize)
         QTimer.singleShot(0, self._fit_both)
 
     # ================================================================== buka / simpan
@@ -1335,7 +1371,8 @@ QStatusBar QLabel { padding: 0 8px; }
 QProgressBar { background: #2a2c34; border: none; border-radius: 4px; }
 QProgressBar::chunk { background: #ff4d6d; border-radius: 4px; }
 QSplitter::handle { background: #26282f; width: 1px; }
-QWidget#viewsPair { background: #26282f; }
+QSplitter#viewsSplit::handle { background: #26282f; }
+QSplitter#viewsSplit::handle:hover { background: #ff4d6d; }
 QMenu { background: #23252b; border: 1px solid #33363f; padding: 4px; }
 QMenu::item { padding: 6px 18px 6px 10px; border-radius: 4px; }
 QMenu::item:selected { background: #ff4d6d; color: white; }
