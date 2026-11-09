@@ -73,6 +73,10 @@ def _selftest(code):
             out.append(opt)
         except ImportError:
             out.append(f"{opt} (TIDAK ADA)")
+    # .exe tanpa konsol: pustaka yang menulis progres ke stdout/stderr tidak boleh error
+    sys.stderr.write("selftest: stderr OK\n")
+    sys.stdout.write("selftest: stdout OK\n")
+    out.append("stdout/stderr aman")
     import torch
     import torchvision.ops as ops
     ops.nms(torch.zeros((1, 4)), torch.zeros(1), 0.5)
@@ -83,7 +87,26 @@ def _selftest(code):
             f.write("\n".join(out))
 
 
+def _ensure_std_streams():
+    """.exe tanpa konsol: sys.stdout/stderr = None -> arahkan ke log supaya pustaka yang mencetak
+    progres (tqdm, huggingface, loguru) tidak error. Kode aplikasi (core/) juga melakukan ini."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    base = os.environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), ".config")
+    d = os.path.join(base, "RexxaTranslator")
+    try:
+        os.makedirs(d, exist_ok=True)
+        stream = open(os.path.join(d, "rexxa.log"), "a", encoding="utf-8", errors="replace", buffering=1)
+    except OSError:
+        stream = open(os.devnull, "w", encoding="utf-8")
+    if sys.stdout is None:
+        sys.stdout = stream
+    if sys.stderr is None:
+        sys.stderr = stream
+
+
 def main():
+    _ensure_std_streams()
     base = _base_dir()
     code = _code_dir(base)
     if getattr(sys, "frozen", False):          # dari source: tidak ada "mesin", update = kode saja
