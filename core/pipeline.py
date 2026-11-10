@@ -227,13 +227,15 @@ def match_sfx_fonts(img, blocks, settings):
                 pass
 
 
-def step_ocr(page: Page, project: Project, settings: dict, progress=None):
+def step_ocr(page: Page, project: Project, settings: dict, progress=None, only=None):
+    """only: daftar blok yang dibaca (None = semua)."""
     img = detector.load_image(page.path)
-    ocr.ocr_page(img, [b for b in page.blocks if b.kind != "title"], settings["ocr_engine"],
-                 project.source_lang, settings["gpu"], progress)
+    targets = [b for b in (page.blocks if only is None else only) if b.kind != "title"]
+    if targets:
+        ocr.ocr_page(img, targets, settings["ocr_engine"], project.source_lang, settings["gpu"], progress)
     # kotak yang dibuat manual / belum diberi gaya: baca warna teks aslinya
     from . import textstyle
-    for b in page.blocks:
+    for b in targets:
         if b.kind != "title" and not b.preset and not b.color2 and (b.color or "#000000").upper() == "#000000":
             textstyle.apply(img, b)
     # SFX yang tidak terbaca sebagai kata (mis. SFX Jepang saat sumbernya Inggris) dibiarkan apa adanya
@@ -257,11 +259,14 @@ def sfx_text_ok(text: str, lang: str) -> bool:
     return any(re.search(r"[AEIOUYaeiouy]", w) for w in words)
 
 
-def step_translate(page: Page, project: Project, settings: dict, log=None):
+def step_translate(page: Page, project: Project, settings: dict, log=None, only=None):
     for b in page.blocks:
         if b.kind == "title" and project.series_title:
             b.translation = project.series_title       # judul seri: tidak diterjemahkan ulang
-    blocks = [b for b in page.blocks if b.kind != "title"]
+    blocks = [b for b in (page.blocks if only is None else only) if b.kind != "title"]
+    if not blocks:
+        page.status = "diterjemah"
+        return
     texts = [b.source for b in blocks]
     translator.reset_stats()
     res = translator.translate(texts, project.source_lang, project.target_lang,
@@ -387,7 +392,28 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
 
 
 def process_page(page: Page, project: Project, settings: dict, stages=("detect", "ocr", "translate", "render"),
-                 log=print):
+                 log=print, keep_boxes: bool = False):
+    """keep_boxes=True: bila halaman SUDAH punya kotak (hasil deteksi atau kotak manual), kotak itu
+    dipakai apa adanya (tidak dideteksi ulang). Hanya kotak yang belum punya teks yang di-OCR, dan
+    hanya yang belum punya terjemahan yang diterjemahkan, jadi hasil edit tangan tidak tertimpa."""
+    if keep_boxes and page.blocks and "detect" in stages:
+        stages = [s for s in stages if s != "detect"]
+        need_ocr = [b for b in page.blocks if b.kind != "title" and not (b.source or "").strip()]
+        if "ocr" in stages:
+            log(f"[{page.name}] memakai {len(page.blocks)} kotak yang ada · OCR {len(need_ocr)} kotak baru…")
+            if need_ocr:
+                step_ocr(page, project, settings, only=need_ocr)
+        if "translate" in stages:
+            need_tr = [b for b in page.blocks if b.kind != "title" and (b.source or "").strip()
+                       and not (b.translation or "").strip()]
+            if need_tr:
+                log(f"[{page.name}] menerjemahkan {len(need_tr)} kotak ({settings['translate_engine']})…")
+                step_translate(page, project, settings, log, only=need_tr)
+        if "render" in stages:
+            log(f"[{page.name}] hapus teks & typeset…")
+            step_render(page, project, settings, recalc_clean=True)
+            log(f"[{page.name}] selesai -> {page.output_path}")
+        return
     if "detect" in stages:
         log(f"[{page.name}] deteksi balon…")
         step_detect(page, project, settings)

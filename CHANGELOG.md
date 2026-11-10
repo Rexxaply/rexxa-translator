@@ -3,6 +3,11 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.21.2
+- **Kotak tersambung ke tombol Terjemahkan**: bila halaman sudah punya kotak (hasil deteksi atau kotak manual), tombol **Terjemahkan** (F5) dan **Terjemahkan SEMUA** (F6) kini **memakai kotak yang ada**, tidak mendeteksi ulang. Kotak yang belum punya teks di-OCR, yang belum punya terjemahan diterjemahkan, lalu halaman dirender. Teks & terjemahan yang sudah diedit tidak tertimpa.
+- Alur baru yang enak: Deteksi balon semua halaman → tambah/hapus/rapikan kotak (mode "kotak saja") → Terjemahkan SEMUA.
+- Untuk mengulang dari nol: menu ⚡ → **Terjemahkan ulang halaman ini dari awal (deteksi ulang)**.
+
 ## 1.21.1
 - **Pilihan untuk kotak manual**: klik panah kecil di tombol "Tambah kotak" (B) untuk memilih apa yang dilakukan setelah kotak dibuat:
   - **Tambah kotak saja** (default baru): tidak menjalankan apa-apa, teks bisa diketik sendiri.
@@ -23,6 +28,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 ## 1.19.0
 - **Tampilan alert baru** untuk semua pesan aplikasi (simpan, error, peringatan, konfirmasi, update, data, font): kartu gelap membulat, lencana ikon berwarna sesuai jenis pesan, judul tebal di tengah, keterangan redup, dan tombol selebar sama (utama merah muda, bahaya merah lembut, biasa abu-abu).
 - Pesan keluar aplikasi: **"Simpan perubahan sebelum menutup?"** dengan tombol **Simpan .mtproj / Jangan simpan / Batal**.
-
-## 1.18.1
-- Tombol yang tidak bisa ditekan kini benar-benar **redup** (ikonnya ikut gelap), bukan hanya tidak bisa diklik: Simpan, Undo, Redo, alat sunting, halaman sebelumnya/berikutnya, Export, dan ukuran kuas (aktif hanya saat Healing brush dipilih). Sebelum ada gambar yang dibuka, alat-alat yang butuh halaman juga redup.

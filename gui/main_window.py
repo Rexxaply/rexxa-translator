@@ -307,6 +307,8 @@ class MainWindow(QMainWindow):
         # tombol utama: satu klik = deteksi + OCR + terjemah + render
         m_go = QMenu(self)
         m_go.addAction(icon("zapall"), "Terjemahkan SEMUA halaman  (F6)", self.run_all)
+        m_go.addAction(icon("zap"), "Terjemahkan ulang halaman ini dari awal (deteksi ulang)",
+                       lambda: self.run_stages(["detect", "ocr", "translate", "render"]))
         m_go.addSeparator()
         m_go.addAction(icon("scan"), "Deteksi balon SEMUA halaman  (Shift+F6)", self.detect_all)
         m_go.addSeparator()
@@ -325,7 +327,7 @@ class MainWindow(QMainWindow):
         self.b_go.setToolTip("Deteksi → OCR → terjemah → hapus teks → typeset halaman ini (F5)")
         self.b_go.setPopupMode(QToolButton.MenuButtonPopup)
         self.b_go.setMenu(m_go)
-        self.b_go.clicked.connect(lambda: self.run_stages(["detect", "ocr", "translate", "render"]))
+        self.b_go.clicked.connect(self.translate_page)
         tb.addWidget(self.b_go)
         self.b_stop = tool_btn("stop", "Hentikan proses", self.stop_job)
         tb.addWidget(self.b_stop)
@@ -807,7 +809,7 @@ class MainWindow(QMainWindow):
             "save": self.save_project,
             "save_as": self.save_project_as,
             "settings": self.edit_settings,
-            "translate_page": lambda: self.run_stages(["detect", "ocr", "translate", "render"]),
+            "translate_page": self.translate_page,
             "translate_all": self.run_all,
             "detect_all": self.detect_all,
             "render": self.render_current,
@@ -1885,7 +1887,16 @@ class MainWindow(QMainWindow):
             self.worker.stop = True
             self.log("Menghentikan setelah halaman ini…")
 
-    def run_stages(self, stages):
+    def translate_page(self):
+        """Tombol Terjemahkan / F5. Bila halaman sudah punya kotak (hasil deteksi atau kotak manual),
+        kotak itu dipakai: yang belum punya teks di-OCR, yang belum diterjemahkan diterjemahkan."""
+        p = self.page()
+        if p and p.blocks:
+            self.run_stages(["detect", "ocr", "translate", "render"], keep_boxes=True)
+        else:
+            self.run_stages(["detect", "ocr", "translate", "render"])
+
+    def run_stages(self, stages, keep_boxes=False):
         p = self.page()
         if not p:
             self.open_folder()
@@ -1897,7 +1908,7 @@ class MainWindow(QMainWindow):
             self.need_clean.discard(p.path)
 
         def job(w: Worker):
-            pipeline.process_page(p, proj, st, stages, log=w.log.emit)
+            pipeline.process_page(p, proj, st, stages, log=w.log.emit, keep_boxes=keep_boxes)
             w.page_updated.emit(i)
 
         self._start(job, f"{', '.join(stages)} · {p.name}")
@@ -1956,12 +1967,14 @@ class MainWindow(QMainWindow):
             self.open_folder()
             return
         todo = [(i, p) for i, p in enumerate(self.project.pages) if p.status != "selesai"]
+        keep = True        # halaman yang sudah punya kotak (deteksi / manual) tidak dideteksi ulang
         if not todo:
             from .alert import ask
             if not ask(self, APP_NAME, "Semua halaman sudah selesai.\nProses ulang semua halaman dari awal?",
                        yes="Proses ulang", no="Batal"):
                 return
             todo = list(enumerate(self.project.pages))
+            keep = False
         proj, st = self.project, dict(self.settings)
         for _, pg in todo:
             self._snap(page=pg)
@@ -1973,7 +1986,7 @@ class MainWindow(QMainWindow):
                     break
                 w.progress.emit(n - 1, len(todo))
                 try:
-                    pipeline.process_page(p, proj, st, log=w.log.emit)
+                    pipeline.process_page(p, proj, st, log=w.log.emit, keep_boxes=keep)
                 except ImportError:
                     raise
                 except Exception as e:
