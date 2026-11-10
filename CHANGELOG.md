@@ -3,6 +3,9 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.7.3
+- Sidebar lebih ramping (HALAMAN ±128 px, PROPERTI ±240 px) supaya fokus ke halaman manga; isi panel dipadatkan, kotak warna jadi kotak kecil (kode warna muncul saat disorot).
+
 ## 1.7.2
 - Perbaikan: aplikasi 1.7.1 gagal dibuka ("QVBoxLayout already deleted").
 - Bila sebuah update membuat jendela gagal dibuka, aplikasi kini otomatis kembali ke versi sebelumnya.
@@ -21,6 +24,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 
 ## 1.6.8
 - Pembatas antara layar ASLI dan TERJEMAHAN bisa digeser lagi; posisi awalnya tetap 50:50. Klik dua kali pembatas untuk kembali ke 50:50.
-
-## 1.6.7
-- Layar ASLI dan TERJEMAHAN kini selalu sama lebar (dibagi rata 50:50).
