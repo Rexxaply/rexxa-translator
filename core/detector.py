@@ -9,19 +9,50 @@ Hasil kedua mode bisa digabung (mode "hybrid").
 """
 from __future__ import annotations
 
+import os
+import threading
+
 import cv2
 import numpy as np
 
 from .models import TextBlock
 
 
+_IMG_CACHE: dict = {}          # path -> (mtime, size, gambar); beberapa gambar terakhir saja
+_IMG_CACHE_LOCK = threading.Lock()
+IMG_CACHE_MB = 160             # diperkecil di mode hemat (core.perf)
+
+
 def load_image(path: str) -> np.ndarray:
-    """cv2.imread tidak bisa path unicode di Windows, jadi pakai imdecode."""
+    """cv2.imread tidak bisa path unicode di Windows, jadi pakai imdecode.
+    Gambar yang baru dibuka disimpan sebentar di memori: satu halaman dibaca 4-6 kali selama
+    deteksi -> OCR -> font -> hapus teks -> render, jadi tidak perlu di-decode ulang tiap kali.
+    Selalu mengembalikan SALINAN (pemanggil boleh mengubahnya)."""
+    try:
+        st = os.stat(path)
+        key = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        key = None
+    with _IMG_CACHE_LOCK:
+        hit = _IMG_CACHE.get(path)
+        if hit is not None and key is not None and hit[0] == key:
+            _IMG_CACHE[path] = _IMG_CACHE.pop(path)        # tandai baru dipakai
+            return hit[1].copy()
     data = np.fromfile(path, dtype=np.uint8)
     img = cv2.imdecode(data, cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError(f"Gagal membuka gambar: {path}")
+    if key is not None and IMG_CACHE_MB > 0 and img.nbytes <= IMG_CACHE_MB * 1024 * 1024 // 2:
+        with _IMG_CACHE_LOCK:
+            _IMG_CACHE[path] = (key, img.copy())
+            while sum(v[1].nbytes for v in _IMG_CACHE.values()) > IMG_CACHE_MB * 1024 * 1024:
+                _IMG_CACHE.pop(next(iter(_IMG_CACHE)))
     return img
+
+
+def clear_image_cache():
+    with _IMG_CACHE_LOCK:
+        _IMG_CACHE.clear()
 
 
 def save_image(path: str, img: np.ndarray, fast: bool = False):

@@ -498,29 +498,63 @@ def _auto_fonts_safe(page, project, settings, log=None, only=None):
             log(f"[{page.name}] cocokkan font dilewati: {e}")
 
 
+def stage_read(page: Page, project: Project, settings: dict, log=print, keep_boxes: bool = False):
+    """Tahap 1 (CPU): deteksi + OCR + cocokkan font."""
+    if keep_boxes and page.blocks:
+        need_ocr = [b for b in page.blocks if b.kind != "title" and not (b.source or "").strip()]
+        log(f"[{page.name}] memakai {len(page.blocks)} kotak yang ada · OCR {len(need_ocr)} kotak baru…")
+        if need_ocr:
+            step_ocr(page, project, settings, only=need_ocr)
+            _auto_fonts_safe(page, project, settings, log, only=[b for b in need_ocr if b in page.blocks])
+        return
+    log(f"[{page.name}] deteksi balon…")
+    step_detect(page, project, settings)
+    log(f"[{page.name}] {len(page.blocks)} blok ditemukan")
+    if page.blocks:
+        log(f"[{page.name}] OCR…")
+        step_ocr(page, project, settings)
+        _auto_fonts_safe(page, project, settings, log)
+
+
+def stage_finish(page: Page, project: Project, settings: dict, log=print, keep_boxes: bool = False):
+    """Tahap 2: terjemah (menunggu jaringan) + hapus teks & typeset (CPU)."""
+    if keep_boxes:
+        need_tr = [b for b in page.blocks if b.kind != "title" and (b.source or "").strip()
+                   and not (b.translation or "").strip()]
+        if need_tr:
+            log(f"[{page.name}] menerjemahkan {len(need_tr)} kotak ({settings['translate_engine']})…")
+            step_translate(page, project, settings, log, only=need_tr)
+    elif page.blocks:
+        log(f"[{page.name}] menerjemahkan ({settings['translate_engine']})…")
+        step_translate(page, project, settings, log)
+    log(f"[{page.name}] hapus teks & typeset…")
+    step_render(page, project, settings, recalc_clean=True)
+    log(f"[{page.name}] selesai -> {page.output_path}")
+
+
 def process_page(page: Page, project: Project, settings: dict, stages=("detect", "ocr", "translate", "render"),
                  log=print, keep_boxes: bool = False):
     """keep_boxes=True: bila halaman SUDAH punya kotak (hasil deteksi atau kotak manual), kotak itu
     dipakai apa adanya (tidak dideteksi ulang). Hanya kotak yang belum punya teks yang di-OCR, dan
     hanya yang belum punya terjemahan yang diterjemahkan, jadi hasil edit tangan tidak tertimpa."""
-    if keep_boxes and page.blocks and "detect" in stages:
-        stages = [s for s in stages if s != "detect"]
-        need_ocr = [b for b in page.blocks if b.kind != "title" and not (b.source or "").strip()]
+    stages = tuple(stages)
+    keep = bool(keep_boxes and page.blocks)
+    if stages == ("detect", "ocr", "translate", "render"):
+        stage_read(page, project, settings, log, keep)
+        stage_finish(page, project, settings, log, keep)
+        return
+    if keep and "detect" in stages:
+        stages = tuple(x for x in stages if x != "detect")
         if "ocr" in stages:
-            log(f"[{page.name}] memakai {len(page.blocks)} kotak yang ada · OCR {len(need_ocr)} kotak baru…")
-            if need_ocr:
-                step_ocr(page, project, settings, only=need_ocr)
-                _auto_fonts_safe(page, project, settings, log, only=[b for b in need_ocr if b in page.blocks])
-        if "translate" in stages:
-            need_tr = [b for b in page.blocks if b.kind != "title" and (b.source or "").strip()
-                       and not (b.translation or "").strip()]
-            if need_tr:
-                log(f"[{page.name}] menerjemahkan {len(need_tr)} kotak ({settings['translate_engine']})…")
-                step_translate(page, project, settings, log, only=need_tr)
-        if "render" in stages:
-            log(f"[{page.name}] hapus teks & typeset…")
-            step_render(page, project, settings, recalc_clean=True)
-            log(f"[{page.name}] selesai -> {page.output_path}")
+            stage_read(page, project, settings, log, True)
+        if "translate" in stages or "render" in stages:
+            if "render" in stages:
+                stage_finish(page, project, settings, log, True)
+            else:
+                need_tr = [b for b in page.blocks if b.kind != "title" and (b.source or "").strip()
+                           and not (b.translation or "").strip()]
+                if need_tr:
+                    step_translate(page, project, settings, log, only=need_tr)
         return
     if "detect" in stages:
         log(f"[{page.name}] deteksi balon…")

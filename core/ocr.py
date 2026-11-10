@@ -229,7 +229,11 @@ def ocr_block(img: np.ndarray, b: TextBlock, engine: str, lang: str, gpu: bool =
         reader = get_easyocr(lang, gpu)
         base = _upscale(crop)
         best = _easy_read(reader, base, lang)
-        if best[1] < 0.9:
+        need_retry = best[1] < 0.55 or not best[0].strip()
+        if not need_retry and lang == "en":
+            from . import ocrfix
+            need_retry = best[1] < 0.8 and not ocrfix.plausible(clean_text(best[0], lang), lang)
+        if need_retry:
             # hasil kurang yakin: coba versi yang diluruskan (teks miring) dan versi huruf berongga
             # yang diisi gelap (judul / SFX bergaris tepi), lalu ambil yang paling yakin
             ang = text_angle(crop)

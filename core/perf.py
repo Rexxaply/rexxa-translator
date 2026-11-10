@@ -1,7 +1,9 @@
 """Hemat sumber daya saat menerjemahkan banyak halaman (supaya PC spesifikasi rendah tidak
 kehabisan memori / force close, dan aplikasi tetap responsif).
 
-- Mode "hemat" dipilih otomatis bila RAM < 8 GB atau CPU <= 4 inti (bisa dipaksa di Pengaturan).
+- Mode "hemat" dipilih otomatis bila RAM < 6 GB atau CPU <= 2 inti (bisa dipaksa di Pengaturan).
+- Mode normal (mis. 4 inti): Terjemahkan Semua berjalan 2 tahap bersamaan -- halaman berikutnya
+  dideteksi & di-OCR sementara halaman ini diterjemahkan & dirender -- dengan thread dibagi rata.
 - Jumlah thread OpenCV / PyTorch dibatasi supaya 1 inti tetap bebas untuk tampilan aplikasi.
 - Setelah setiap halaman: cache gambar per halaman dilepas & memori dibersihkan.
 - AI hapus teks (LaMa) memproses potongan yang lebih kecil di mode hemat.
@@ -62,7 +64,7 @@ def low_end(settings: dict | None = None) -> bool:
         return False
     global _low
     if _low is None:
-        _low = total_ram_gb() < 7.5 or (os.cpu_count() or 4) <= 4
+        _low = total_ram_gb() < 5.5 or (os.cpu_count() or 4) <= 2
     return _low
 
 
@@ -71,10 +73,18 @@ def describe(settings: dict | None = None) -> str:
             + ("hemat" if low_end(settings) else "normal"))
 
 
-def apply(settings: dict | None = None):
-    """Batasi thread supaya aplikasi tetap responsif (dipanggil sebelum proses besar)."""
+def pipelined(settings: dict | None = None) -> bool:
+    """Terjemahkan Semua dengan 2 tahap bersamaan (baca halaman berikutnya sambil menerjemahkan &
+    merender halaman ini). Mati di mode hemat."""
+    return not low_end(settings) and (os.cpu_count() or 2) >= 3
+
+
+def apply(settings: dict | None = None, stages: int = 1):
+    """Batasi thread supaya aplikasi tetap responsif (dipanggil sebelum proses besar).
+    stages = jumlah tahap yang berjalan bersamaan (thread dibagi rata, 1 inti tetap untuk tampilan)."""
     n = os.cpu_count() or 2
-    use = max(1, n - 1) if not low_end(settings) else max(1, min(n - 1, 2))
+    free = max(1, n - 1)
+    use = max(1, -(-free // max(1, stages))) if not low_end(settings) else max(1, min(free, 2))
     try:
         import cv2
         cv2.setNumThreads(use)
@@ -87,8 +97,9 @@ def apply(settings: dict | None = None):
             torch.set_num_threads(use)
     except Exception:
         pass
-    from . import inpaint
+    from . import detector, inpaint
     inpaint.LAMA_MAX_SIDE = 640 if low_end(settings) else 1024
+    detector.IMG_CACHE_MB = 60 if low_end(settings) else 160
 
 
 def release(page=None, keep_current: bool = False):

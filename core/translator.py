@@ -47,14 +47,19 @@ def translate_google(texts, src, tgt, glossary):
     from deep_translator import GoogleTranslator
     s = {"zh": "zh-CN", "zh-tw": "zh-TW"}.get(src, src)
     t = {"zh": "zh-CN", "zh-tw": "zh-TW"}.get(tgt, tgt)
-    tr = GoogleTranslator(source=s, target=t)
-    out = []
-    for txt in texts:
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(txt):
         if not txt.strip():
-            out.append("")
-            continue
-        out.append(tr.translate(apply_glossary_plain(txt, glossary)) or "")
-    return out
+            return ""
+        # satu penerjemah per permintaan (aman dipakai bersamaan)
+        return GoogleTranslator(source=s, target=t).translate(apply_glossary_plain(txt, glossary)) or ""
+
+    if len(texts) <= 1:
+        return [one(x) for x in texts]
+    # beberapa permintaan sekaligus: menunggu jaringan, bukan CPU -> jauh lebih cepat, tetap ringan
+    with ThreadPoolExecutor(max_workers=min(4, len(texts))) as ex:
+        return list(ex.map(one, texts))
 
 
 def translate_deepl(texts, src, tgt, glossary, api_key):

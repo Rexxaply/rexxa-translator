@@ -2538,46 +2538,95 @@ class MainWindow(QMainWindow):
         cur_page = self.page()
 
         def job(w: Worker):
+            import queue
+            import threading
             import time
             from core import perf
-            perf.apply(st)
+            pipe = perf.pipelined(st)
+            perf.apply(st, stages=2 if pipe else 1)
             low = perf.low_end(st)
-            w.log.emit(f"Terjemahkan semua: {perf.describe(st)}")
-            for n, (i, p) in enumerate(todo, 1):
-                if w.stop:
-                    w.log.emit("Dihentikan.")
-                    break
-                w.progress.emit(n - 1, len(todo))
+            w.log.emit(f"Terjemahkan semua: {perf.describe(st)}"
+                       + (" · 2 tahap bersamaan (baca halaman berikutnya sambil merender)" if pipe else ""))
+            total = len(todo)
+            done = [0]
+            fatal = []
+
+            def safe(fn, p, kp):
                 try:
-                    pipeline.process_page(p, proj, st, log=w.log.emit, keep_boxes=keep)
-                except ImportError:
-                    raise
+                    fn(p, proj, st, log=w.log.emit, keep_boxes=kp)
+                    return True
+                except ImportError as e:
+                    fatal.append(e)
                 except MemoryError:
-                    # memori habis: bersihkan lalu ulangi halaman ini dengan cara yang lebih ringan
+                    # memori habis: bersihkan lalu ulangi dengan cara yang lebih ringan (tanpa AI hapus teks)
                     perf.release()
-                    w.log.emit(f"[{p.name}] memori penuh — mencoba lagi dengan mode hemat (tanpa AI hapus teks)…")
+                    w.log.emit(f"[{p.name}] memori penuh — mencoba lagi dengan mode hemat…")
                     try:
-                        light = dict(st, clean_method="opencv")
-                        pipeline.process_page(p, proj, light, log=w.log.emit, keep_boxes=True)
+                        fn(p, proj, dict(st, clean_method="opencv"), log=w.log.emit, keep_boxes=True)
+                        return True
                     except Exception as e:
                         w.log.emit(f"[{p.name}] gagal: {e}")
                 except Exception as e:
                     w.log.emit(f"[{p.name}] gagal: {e}")
+                return False
+
+            def finished_one(i, p):
                 perf.release(p, keep_current=p is cur_page)
+                done[0] += 1
                 w.page_updated.emit(i)
-                if proj.file and n % 5 == 0:          # simpan otomatis: aman bila aplikasi tertutup paksa
+                w.progress.emit(done[0], total)
+                if proj.file and done[0] % 5 == 0:     # simpan otomatis: aman bila aplikasi tertutup paksa
                     try:
                         proj.save()
-                        w.log.emit(f"Disimpan otomatis ({n}/{len(todo)} halaman).")
+                        w.log.emit(f"Disimpan otomatis ({done[0]}/{total} halaman).")
                     except Exception:
                         pass
-                if low:
-                    time.sleep(0.15)                    # beri napas untuk tampilan & sistem
                 if perf.free_ram_gb() < 0.6:
                     w.log.emit("Memori komputer hampir habis — jeda sebentar…")
                     perf.release()
                     time.sleep(1.5)
-            w.progress.emit(len(todo), len(todo))
+
+            w.progress.emit(0, total)
+            if not pipe:
+                for i, p in todo:
+                    if w.stop or fatal:
+                        break
+                    kp = keep and bool(p.blocks)
+                    if safe(pipeline.stage_read, p, kp):
+                        safe(pipeline.stage_finish, p, kp)
+                    finished_one(i, p)
+                    if low:
+                        time.sleep(0.15)               # beri napas untuk tampilan & sistem
+            else:
+                # tahap 2 (terjemah + render) berjalan di thread sendiri; antrean maks. 1 halaman
+                # supaya memori tetap kecil
+                q = queue.Queue(maxsize=1)
+
+                def finisher():
+                    while True:
+                        item = q.get()
+                        if item is None:
+                            return
+                        i, p, kp, ok = item
+                        if ok and not w.stop and not fatal:
+                            safe(pipeline.stage_finish, p, kp)
+                        finished_one(i, p)
+
+                th = threading.Thread(target=finisher, daemon=True)
+                th.start()
+                for i, p in todo:
+                    if w.stop or fatal:
+                        break
+                    kp = keep and bool(p.blocks)
+                    ok = safe(pipeline.stage_read, p, kp)
+                    q.put((i, p, kp, ok))
+                q.put(None)
+                th.join()
+            if w.stop:
+                w.log.emit("Dihentikan.")
+            if fatal:
+                raise fatal[0]
+            w.progress.emit(total, total)
 
         self._start(job, f"Terjemahkan {len(todo)} halaman")
 
