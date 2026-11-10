@@ -3,6 +3,13 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 2.0.1
+- **Font otomatis untuk semua teks + memori font**: dialog, dialog miring, dialog tebal, narasi, dan narasi huruf kecil masing-masing dicarikan font yang paling mirip dengan teks aslinya, lalu **diingat di proyek** sehingga halaman berikutnya langsung memakai font yang sama (cepat & konsisten se-chapter). Font yang kamu pilih manual juga diingat. Menu ⚡ → "Lupakan font yang diingat proyek ini" untuk mencocokkan ulang.
+- **Lebih ringan untuk PC spesifikasi rendah** (Pengaturan → Proses → Performa: Otomatis / Hemat / Normal): memori dibersihkan setiap halaman, thread dibatasi supaya aplikasi tetap responsif, AI hapus teks memakai potongan lebih kecil, jeda otomatis saat RAM hampir habis, halaman diulang dengan cara ringan bila memori penuh, dan **simpan otomatis setiap 5 halaman** saat Terjemahkan Semua.
+- **Deteksi lebih lengkap**: narasi kecil di panel berarsir/gelap ("I feel chilly..."), teks di balon ledakan bergerigi ("FORSINA!?"), dan seruan pendek ("WH...") kini ikut terdeteksi. Kotak balon yang terpotong diperluas sampai seluruh teks asli.
+- **Hasil OCR lebih bersih**: kotak yang ternyata rambut / raster dibuang (dicek dengan kamus), sisa garis balon ("|", "[") dihapus, apostrof hilang dibetulkan (TLL → I'LL, DONT → DON'T).
+- **Tampilan hasil lebih rapi**: ukuran huruf diseragamkan antar balon, narasi huruf kecil tidak lagi dipaksa kapital, teks gelap di latar gelap otomatis diberi garis tepi putih, ekor huruf & tanda baca di ujung ikut terhapus.
+
 ## 2.0.0
 - **Kelola halaman**:
   - Tombol **+** di samping "HALAMAN" untuk menambah gambar baru ke proyek.
@@ -28,12 +35,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
   - **Seret titik** untuk mengubah bentuk, **Ctrl+klik / klik 2x di garis** = tambah titik, **klik 2x / Alt+klik titik** = hapus titik, **klik titik awal** = tutup bentuk, Backspace = hapus titik terakhir, Esc = buang pratinjau.
   - Garis otomatis **melengkung halus** melewati titik-titik (bisa dimatikan untuk garis patah lurus).
 - Setelah pas, tekan **"Jadikan garis"** di toolbar (atau Enter, atau **klik kanan**): pilih jadikan garis, **jadikan balon (isi putih + garis tepi)**, atau isi putih saja.
-
-## 1.23.0
-- **OCR lebih pintar untuk teks bergaya** (judul, SFX, teks miring seperti "Mission Clear!"):
-  - Teks **miring diluruskan** otomatis sebelum dibaca.
-  - **Huruf berongga** (garis tepi hitam, isi putih) diisi gelap dulu supaya terbaca seperti huruf biasa.
-  - Huruf kecil diperbesar, lalu dipilih hasil baca yang paling yakin.
-- **Koreksi salah baca otomatis (teks Inggris)**: huruf yang mirip bentuknya dibetulkan memakai kamus ±170 ribu kata, misalnya GLEARIr → CLEAR!, AMUSlNG → AMUSING, D0ING → DOING, HERI → HER!. Nama tokoh yang tidak ada di kamus tidak diubah.
-- Menu ⚡ → **Koreksi salah baca OCR (semua halaman)…**: memperbaiki teks proyek yang sudah ada, lalu bisa langsung **menerjemahkan ulang hanya balon yang berubah**.
-- Penerjemah LLM kini juga diminta membetulkan salah baca OCR yang jelas sebelum menerjemahkan.
