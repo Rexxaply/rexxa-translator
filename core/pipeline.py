@@ -247,8 +247,18 @@ def step_ocr(page: Page, project: Project, settings: dict, progress=None, only=N
                    if not getattr(b, "sfx", False) or sfx_text_ok(b.source, project.source_lang)]
     # teks bebas yang terbaca sebagai sampah (mis. SFX Jepang "ジ" saat sumbernya Inggris) dibuang
     if project.source_lang not in ("ja", "zh", "zh-tw", "ko"):
-        page.blocks = [b for b in page.blocks
-                       if b.kind != "free" or b not in targets or free_text_ok(b.source)]
+        from . import ocrfix
+
+        def ok(b):
+            if b not in targets or b.kind == "title":
+                return True
+            conf = getattr(b, "_ocr_conf", None)
+            if conf is not None and conf < 0.15:
+                return False                       # OCR sendiri tidak yakin sama sekali
+            if b.kind == "free" and not free_text_ok(b.source):
+                return False
+            return ocrfix.plausible(b.source, project.source_lang)
+        page.blocks = [b for b in page.blocks if ok(b)]
     page.status = "di-OCR"
 
 

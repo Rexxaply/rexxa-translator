@@ -226,6 +226,7 @@ def auto_style(img: np.ndarray, b: TextBlock):
         except Exception:
             pass
         return
+    _dark_bg_outline(img, b)
     if b.kind == "bubble":
         return
     region = block_region_mask(img.shape, b)
@@ -233,6 +234,41 @@ def auto_style(img: np.ndarray, b: TextBlock):
     if pol == "light":
         b.color, b.stroke_color = "#FFFFFF", "#000000"
         b.stroke_width = max(b.stroke_width, max(2, int(round(h * 0.12))) if h else 3)
+
+
+def _dark_bg_outline(img: np.ndarray, b: TextBlock):
+    """Teks gelap di atas latar gelap / ramai (biasanya diberi garis tepi putih tebal, mis. narasi
+    "I feel chilly..." di panel arsir) -> terjemahan juga diberi garis tepi putih supaya terbaca."""
+    if b.stroke_width or not (b.text_rect and len(b.text_rect) == 4) or not _is_darkish(b.color):
+        return
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    H, W = gray.shape
+    x, y, w, h = (int(v) for v in b.text_rect)
+    sh = float(b.src_h or 16)
+
+    def band(p_in, p_out):
+        a0, b0 = max(0, x - p_out), max(0, y - p_out)
+        a1, b1 = min(W, x + w + p_out), min(H, y + h + p_out)
+        m = np.ones((b1 - b0, a1 - a0), bool)
+        i0, j0 = max(0, x - p_in) - a0, max(0, y - p_in) - b0
+        i1, j1 = min(W, x + w + p_in) - a0, min(H, y + h + p_in) - b0
+        m[max(0, j0):max(0, j1), max(0, i0):max(0, i1)] = False
+        v = gray[b0:b1, a0:a1][m]
+        return float(np.median(v)) if v.size else 255.0
+
+    outer = band(int(sh * 1.4), int(sh * 3.0))     # latar di luar teks (+ cahaya putihnya)
+    if outer < 140:
+        b.stroke_color = "#FFFFFF"
+        b.stroke_width = max(3, int(round(sh * 0.2)))
+
+
+def _is_darkish(c: str) -> bool:
+    c = (c or "#000000").lstrip("#")
+    try:
+        r, g, bb = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+    except ValueError:
+        return True
+    return 0.299 * r + 0.587 * g + 0.114 * bb < 90
 
 
 def page_letters(img: np.ndarray):
@@ -314,14 +350,16 @@ def text_only_mask(img: np.ndarray, b: TextBlock, cands=None):
     bg_light = bg_med >= 160                    # teks gelap di latar terang (balon, termasuk balon transparan)
     ring_min = min(185.0, bg_med - 35)          # balon abu-abu / gradasi: bandingkan dengan latarnya sendiri
     bw_, bh_ = x1 - x0, y1 - y0
+    # teks bebas: kotaknya hanya perkiraan -> tanda baca di ujung ("...?") boleh sedikit di luar kotak
+    slack = lh * 1.5 if b.kind == "free" else 0.0
     for i in range(1, n):
         x, y, w, h, a = st[i]
         # coretan gelap yang SELURUHNYA di dalam blok teks = huruf / tanda baca
         # (boleh setinggi ±2,8 baris: huruf yang tersambung antar baris, mis. "g" dengan "k";
         #  lengkungan garis balon yang masuk ke dalam biasanya lebih tinggi lagi)
         cx, cy = x + w / 2 - ox, y + h / 2 - oy
-        if (x >= X0 and y >= Y0 and x + w <= X1 and y + h <= Y1 and h <= lh * 2.8
-                and 0 <= cx < bw_ and 0 <= cy < bh_):
+        if (x >= X0 and y >= Y0 and x + w <= X1 and y + h <= Y1 and h <= lh * 3.2
+                and -slack <= cx < bw_ + slack and -slack <= cy < bh_ + slack):
             keep[i] = True
     # huruf dikelilingi latar terang di semua sisi; garis balon / gambar punya sisi luar yang gelap
     if bg_light:

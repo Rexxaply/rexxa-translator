@@ -500,10 +500,15 @@ def detect_bubbles(img: np.ndarray, vertical: bool = True) -> list[TextBlock]:
         if (gray[y:y + h, x:x + w] < 120).mean() < 0.12:
             continue
         g["ring"] = _ring_light(gray, g["rect"], int(g["med_h"] * 0.8))
-        if g["ring"] < 0.5:     # teks putih di atas gambar gelap -> lewati (pakai mode hybrid)
+        # baris teks yang sangat rapi (tinggi huruf seragam, cukup banyak huruf) boleh berada di latar
+        # yang lebih ramai: narasi kecil di panel abu-abu / raster ("I feel chilly..."). Bila ternyata
+        # bukan teks, hasil OCR-nya dibuang di tahap OCR (tidak ada kata yang dikenali).
+        neat = g["n"] >= 8 and g["cv"] <= 0.25
+        if g["ring"] < (0.33 if neat else 0.5):     # teks putih di atas gambar gelap -> lewati
             continue
-        if g["n"] < 10 and g["ring"] < 0.65:   # sedikit "huruf" di latar ramai -> garis gambar
+        if g["n"] < 10 and g["ring"] < 0.65 and not neat:   # sedikit "huruf" di latar ramai -> garis gambar
             continue
+        g["neat"] = neat
         good.append(g)
 
     # balon yang menyatu: beberapa kelompok teks di SATU area putih tertutup -> belah per kelompok
@@ -531,14 +536,31 @@ def detect_bubbles(img: np.ndarray, vertical: bool = True) -> list[TextBlock]:
         else:
             b = _find_bubble(gray, g["rect"], closek, [l["rect"] for l in g["line_list"]])
         x, y, w, h = g["rect"]
-        if g["n"] < 3 and (ring < (0.9 if b is not None else 0.97)
+        if g["n"] < 3 and (ring < (0.8 if b is not None else 0.97)
                            or (gray[y:y + h, x:x + w] < 120).mean() < 0.3):
-            continue                  # 2 huruf ("OH.") hanya diterima bila latarnya bersih
+            continue                  # 2 huruf ("OH.", "WH...") hanya diterima bila latarnya bersih
         if b is not None:
             (bx, by, bw, bh), hull = b
+            tx, ty, tw, th = text_rect
+            if tx < bx or ty < by or tx + tw > bx + bw or ty + th > by + bh:
+                # area putih yang ditemukan hanya sebagian balon (terpotong kilau / garis): kotak
+                # diperluas supaya seluruh teks asli ikut terbaca & terhapus
+                nx0, ny0 = min(bx, tx), min(by, ty)
+                nx1, ny1 = max(bx + bw, tx + tw), max(by + bh, ty + th)
+                bx, by, bw, bh = nx0, ny0, nx1 - nx0, ny1 - ny0
+                pts = np.vstack([hull.reshape(-1, 2), [[tx, ty], [tx + tw, ty], [tx + tw, ty + th], [tx, ty + th]]])
+                hull = cv2.convexHull(pts.astype(np.int32)).reshape(-1, 2)
             blocks.append(TextBlock(x=int(bx), y=int(by), w=int(bw), h=int(bh), kind="bubble",
                                     vertical=bool(g["vertical"]), text_rect=text_rect,
                                     src_h=int(round(g["med_h"])), mask_poly=hull.astype(int).tolist()))
+        elif ring <= 0.75 and g.get("neat"):
+            # teks rapi di latar ramai / balon bergerigi ("FORSINA!?" di balon ledakan): kotak = teks + jarak
+            pad = int(g["med_h"] * 0.6)
+            x0, y0 = max(0, x - pad), max(0, y - pad)
+            x1, y1 = min(W, x + w + pad), min(H, y + h + pad)
+            blocks.append(TextBlock(x=x0, y=y0, w=x1 - x0, h=y1 - y0, kind="free",
+                                    vertical=bool(g["vertical"]), text_rect=text_rect,
+                                    src_h=int(round(g["med_h"]))))
         elif ring > 0.75:
             # balon terbuka / tanpa garis: lebarkan kotak ke area putih di sekitarnya
             x0, y0, x1, y1 = _grow_light(gray, x, y, x + w, y + h, step=max(2, int(g["med_h"] * 0.25)),

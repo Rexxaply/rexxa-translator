@@ -29,6 +29,15 @@ STRONG = {("g", "c"), ("0", "o"), ("1", "l"), ("1", "i"), ("l", "i"), ("i", "l")
 ENDS_I = set("hi taxi samurai sushi hawaii wasabi senpai sensei kai mai yui ai alibi bikini broccoli chili ski "
              "safari spaghetti salami tsunami origami kiwi mini semi sashimi kanji yuki mari teriyaki sukiyaki "
              "ramen udon gyoza onigiri kami oni yokai hentai kawaii itadakimasu uchi chi pi xi psi".split())
+# singkatan yang apostrofnya hilang saat OCR (huruf kapital komik)
+CONTRACT = {"tll": "i'll", "1ll": "i'll", "|ll": "i'll", "im": "i'm", "ive": "i've", "dont": "don't",
+            "cant": "can't", "wont": "won't", "thats": "that's", "youre": "you're", "theyre": "they're",
+            "isnt": "isn't", "didnt": "didn't", "doesnt": "doesn't", "wasnt": "wasn't", "arent": "aren't",
+            "couldnt": "couldn't", "wouldnt": "wouldn't", "shouldnt": "shouldn't", "havent": "haven't",
+            "hasnt": "hasn't", "whats": "what's", "wheres": "where's", "theres": "there's", "hes": "he's",
+            "shes": "she's", "youve": "you've", "youll": "you'll", "theyll": "they'll", "weve": "we've",
+            "lets": None, "aint": "ain't", "wouldve": "would've", "couldve": "could've",
+            "shouldve": "should've", "whos": "who's", "hows": "how's", "werent": "weren't"}
 MULTI = [("rn", "m"), ("m", "rn"), ("vv", "w"), ("w", "vv"), ("cl", "d"), ("ii", "u"), ("li", "h")]
 ALPHA = "abcdefghijklmnopqrstuvwxyz"
 TOKEN = re.compile(r"[A-Za-z0-9|!']+")
@@ -141,6 +150,9 @@ def _case_like(src: str, word: str) -> str:
 def _fix_core(core: str) -> str:
     """Perbaiki satu kata (tanpa tanda baca di ujung)."""
     w = core.lower()
+    c = CONTRACT.get(w)
+    if c and core.isupper():
+        return c.upper()
     odd = any(c in w for c in "0158|!")
     if len(w) < 2 or (len(w) < 3 and not odd):
         return core
@@ -184,6 +196,30 @@ def _fix_word(tok: str, last: bool = False) -> str:
         tail += "!"
         core = core[:-1]
     return _fix_core(core) + tail
+
+
+def plausible(text: str, lang: str = "en") -> bool:
+    """Apakah hasil OCR terlihat seperti teks sungguhan (bukan rambut / raster yang terbaca huruf)?"""
+    t = (text or "").strip()
+    letters = sum(c.isalpha() for c in t)
+    if letters < 2:
+        return False
+    if lang != "en" or not available():
+        return True
+    toks = re.findall(r"[A-Za-z']+", t)
+    long_ = [w.strip("'") for w in toks if len(w.strip("'")) >= 3]
+    if long_:
+        def good(w):
+            lw = w.lower()
+            return _is_common(lw) or lw in CONTRACT or (len(lw) >= 5 and _known(lw)) or \
+                _is_common(_fix_core(w).lower())
+        if len(long_) == 1 and len(toks) <= 2:
+            # satu kata (nama tokoh "FORSINA!?", seruan "Kyaaa!") -> terima bila terlihat seperti kata
+            w = long_[0]
+            return good(w) or any(c in t for c in "!?….~") or w[:1].isupper()
+        return sum(good(w) for w in long_) / len(long_) >= 0.6
+    # hanya kata 1-2 huruf: terima seruan pendek ("OH!", "WH...", "HM?") / huruf kapital
+    return any(c in t for c in "!?…") or "..." in t or any(len(w) == 2 and w.isupper() for w in toks)
 
 
 def fix(text: str, lang: str = "en") -> str:

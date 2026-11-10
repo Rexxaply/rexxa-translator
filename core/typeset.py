@@ -757,7 +757,30 @@ def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, m
 def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str = "id",
                 default_font_path: str = "", uppercase: bool = True, max_size: int = 64,
                 italic: bool = True, line_spacing: float = LINE_SPACING, default_size: int = 0,
-                default_bold: bool = False) -> np.ndarray:
+                default_bold: bool = False, harmonize: bool = True) -> np.ndarray:
+    """harmonize: ukuran huruf otomatis diseragamkan antar balon di halaman yang sama -- balon
+    yang teks aslinya seukuran tidak boleh jauh lebih besar dari balon lainnya (lebih rapi)."""
+    args = (img_bgr, blocks, target_lang, default_font_path, uppercase, max_size, italic, line_spacing,
+            default_size, default_bold)
+    for b in blocks:
+        b._cap = 0
+    auto = [b for b in blocks if (b.translation or "").strip() and b.kind in ("bubble", "free")
+            and not getattr(b, "sfx", False) and not (b.font_size > 0 or default_size) and b.src_h]
+    if harmonize and len(auto) >= 2:
+        _render_page(*args, dry=True)
+        for b in auto:
+            peers = [o.fit_size for o in auto if o.kind == b.kind and o.fit_size
+                     and 0.75 <= o.src_h / b.src_h <= 1.33]
+            if len(peers) >= 2:
+                ref = float(np.median(peers))
+                b._cap = int(max(ref * 1.06, min(b.fit_size, b.src_h * 1.05)))
+    return _render_page(*args, dry=False)
+
+
+def _render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str = "id",
+                 default_font_path: str = "", uppercase: bool = True, max_size: int = 64,
+                 italic: bool = True, line_spacing: float = LINE_SPACING, default_size: int = 0,
+                 default_bold: bool = False, dry: bool = False) -> np.ndarray | None:
     pil = Image.fromarray(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)).convert("RGBA")
     measure = ImageDraw.Draw(pil)
     base_font = default_font_path or default_font(target_lang)
@@ -768,6 +791,11 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
         if not text or b.kind == "title":
             continue
         case = b.case or ("upper" if uppercase else "none")
+        if not b.case and case == "upper" and latin:
+            # teks asli huruf kecil-besar biasa (narasi / gumaman "I feel chilly...") -> jangan dikapitalkan
+            src_letters = [c for c in (b.source or "") if c.isalpha()]
+            if len(src_letters) >= 6 and sum(c.islower() for c in src_letters) > 0.5 * len(src_letters):
+                case = "none"
         bold = b.bold or (default_bold and not b.preset)   # balon tanpa preset ikut tebal preset 1
         if latin and case == "upper":
             text = text.upper()
@@ -798,16 +826,40 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
         cap = max(max_size, int(min(b.w, b.h) * 0.45)) if not fixed else max_size
         if not fixed and b.src_h:
             # jangan jauh lebih besar dari teks aslinya (narasi di panel lebar jadi raksasa)
-            k = 1.9 if b.kind == "bubble" else (1.45 if getattr(b, "sfx", False) else 1.5)
+            k = 1.45 if b.kind == "bubble" else (1.45 if getattr(b, "sfx", False) else 1.15)
             cap = min(cap, max(12, int(b.src_h * k)))
             if getattr(b, "sfx", False):
                 cap = max(cap, min(int(b.src_h * 1.45), 400))   # SFX boleh melebihi batas ukuran maksimum
+        if getattr(b, "_cap", 0) and not fixed:
+            cap = min(cap, b._cap)
         size, lines, top, lh = _fit_shape(measure, text, font_path, shape, stroke, ls, lsp,
                                           (cap if getattr(b, "sfx", False) else min(cap, max(max_size, 8))),
                                           fixed=fixed, shear=shear,
                                           n_lines=max(0, int(getattr(b, "max_lines", 0) or 0)))
+        if not fixed and b.src_h and size < (0.72 if b.kind == "bubble" else 0.85) * b.src_h \
+                and b.kind in ("bubble", "free"):
+            # bentuk balon yang terdeteksi terlalu sempit (mis. hanya cahaya putih di sekitar teks):
+            # pakai seluruh kotak supaya huruf tidak jauh lebih kecil dari teks aslinya
+            rect = np.zeros_like(smask)
+            mh, mw = max(1, int(fh * 0.04)), max(1, int(fw * 0.04))
+            rect[mh:fh - mh, mw:fw - mw] = 255
+            shape2 = _Shape(rect)
+            if b.text_rect and len(b.text_rect) == 4:
+                tx, ty, tw, th = b.text_rect
+                shape2.anchor(tx + tw / 2 - fx, ty + th / 2 - fy)
+            if shear:
+                shape2.margin = 1.0
+            cap2 = min(cap, max(max_size, 8))
+            alt = _fit_shape(measure, text, font_path, shape2, stroke, ls, lsp,
+                             cap2, fixed=0, shear=shear,
+                             n_lines=max(0, int(getattr(b, "max_lines", 0) or 0)))
+            if alt[0] > size * 1.15:
+                size, lines, top, lh = alt
+                shape = shape2
         b.fit_size = int(size)
         b._fit_lines = len(lines)          # info untuk panel (tombol +/− baris)
+        if dry:
+            continue
         font = _font(font_path, size)
 
         # gambar di lapisan transparan seukuran balon (+ jarak), lalu miring/putar & geser

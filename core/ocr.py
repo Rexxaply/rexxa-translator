@@ -31,12 +31,15 @@ def _crop(img: np.ndarray, b: TextBlock, pad: int = 4) -> np.ndarray:
     h, w = img.shape[:2]
     if b.text_rect and len(b.text_rect) == 4:
         x, y, bw, bh = b.text_rect
+        # batas potong = kotak balon, tapi jangan sampai memotong teks aslinya sendiri
+        bx0, by0 = min(b.x, x), min(b.y, y)
+        bx1, by1 = max(b.x + b.w, x + bw), max(b.y + b.h, y + bh)
         # ruang tambahan untuk tanda baca kecil ("…", "!", "?") yang tidak ikut terdeteksi sebagai huruf,
         # tetapi tidak melewati kotak balonnya sendiri (supaya tidak ikut membaca balon tetangga)
         line_h = max(8, min(bw, bh) if bh < bw * 1.3 else min(bw, bh))
         px, py = max(pad, int(line_h * 1.5)), max(pad, int(line_h * 0.5))
-        x0, y0 = max(0, b.x, x - px), max(0, b.y, y - py)
-        x1, y1 = min(w, b.x + b.w, x + bw + px), min(h, b.y + b.h, y + bh + py)
+        x0, y0 = max(0, bx0, x - px), max(0, by0, y - py)
+        x1, y1 = min(w, bx1, x + bw + px), min(h, by1, y + bh + py)
         if x1 - x0 > 4 and y1 - y0 > 4:
             return img[y0:y1, x0:x1]
     x, y, bw, bh = b.x, b.y, b.w, b.h
@@ -240,6 +243,7 @@ def ocr_block(img: np.ndarray, b: TextBlock, engine: str, lang: str, gpu: bool =
                 if t and (c > best[1] + 0.03 or not best[0]):
                     best = (t, c)
         text = best[0]
+        b._ocr_conf = float(best[1])
     else:
         raise ValueError(f"Engine OCR tidak dikenal: {engine}")
     text = clean_text(text, lang)
@@ -255,7 +259,9 @@ def clean_text(text: str, lang: str) -> str:
         text = text.replace(" ", "")
         text = re.sub(r"[.．]{2,}|…+", "…", text)
     else:
-        text = re.sub(r"\s+", " ", text)
+        # sisa garis balon / panel yang ikut terbaca: "|", "\\", "[", "~" yang berdiri sendiri
+        text = re.sub(r"(?:(?<=\s)|^)[|\\/\[\]{}~_=—–<>]+(?=\s|$)", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
     return text
 
 
