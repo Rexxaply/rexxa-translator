@@ -37,6 +37,7 @@ DEFAULT_SETTINGS = {
     "uppercase": True,              # gaya scanlation: HURUF KAPITAL
     "italic": True,                 # dan sedikit miring
     "default_stroke": 0,
+    "box_mode": "box",              # kotak manual baru: box (kotak saja) | ocr (+ baca teks) | ocr_tr (+ terjemah)
     "output_format": "png",         # png | jpg | webp
     "output_dir": "",               # kosong = <folder gambar>/translated
     "last_source_lang": "ja",       # bahasa terakhir dipilih di toolbar

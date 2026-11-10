@@ -108,6 +108,11 @@ def small_label(text):
     return l
 
 
+BOX_MODES = [("box", "Tambah kotak saja"),
+             ("ocr", "Tambah kotak + OCR (baca teks)"),
+             ("ocr_tr", "Tambah kotak + OCR + terjemahkan")]
+
+
 def tool_btn(name, tip, slot=None, checkable=False, text=None):
     b = QToolButton()
     b.setIcon(icon(name))
@@ -241,7 +246,22 @@ class MainWindow(QMainWindow):
         self.state_timer.start()
         tb.addWidget(vline())
 
-        self.b_box = tool_btn("box", "Tambah kotak teks manual (B)", self.toggle_draw, checkable=True)
+        self.b_box = tool_btn("box", "Tambah kotak teks manual (B) · klik panah untuk memilih yang dilakukan "
+                                     "setelah kotak dibuat", self.toggle_draw, checkable=True)
+        from PySide6.QtGui import QActionGroup
+        m_box = QMenu(self)
+        m_box.addSection("Setelah kotak dibuat")
+        self.box_modes = QActionGroup(self)
+        self.box_modes.setExclusive(True)
+        for mode, label in BOX_MODES:
+            a = m_box.addAction(label)
+            a.setCheckable(True)
+            a.setData(mode)
+            a.setChecked(self.settings.get("box_mode", "box") == mode)
+            self.box_modes.addAction(a)
+        self.box_modes.triggered.connect(self._set_box_mode)
+        self.b_box.setMenu(m_box)
+        self.b_box.setPopupMode(QToolButton.MenuButtonPopup)
         tb.addWidget(self.b_box)
         # alat sunting gambar
         self.tool_btns = {}
@@ -1577,8 +1597,21 @@ class MainWindow(QMainWindow):
         self.sel = b
         self._show_current()
         self.tabs.setCurrentIndex(0)
-        self.log("Kotak baru ditambahkan — membaca teksnya…")
-        self._block_job("ocr")
+        mode = self.settings.get("box_mode", "box")
+        if mode == "box":
+            self.log("Kotak baru ditambahkan. Ketik teksnya, atau tekan 'OCR ulang' untuk membaca teksnya.")
+        elif mode == "ocr":
+            self.log("Kotak baru ditambahkan — membaca teksnya…")
+            self._block_job("ocr_only")
+        else:
+            self.log("Kotak baru ditambahkan — membaca & menerjemahkan teksnya…")
+            self._block_job("ocr")
+
+    def _set_box_mode(self, action):
+        mode = action.data() or "box"
+        self.settings["box_mode"] = mode
+        pipeline.save_settings(self.settings)
+        self.status_lbl.setText("Kotak manual: " + dict(BOX_MODES).get(mode, "").lower())
 
     # ================================================================== alat sunting gambar
     def set_tool(self, tool):
@@ -1979,23 +2012,23 @@ class MainWindow(QMainWindow):
 
         def job(w: Worker):
             from core import detector, ocr, translator
-            if kind == "ocr":
+            if kind in ("ocr", "ocr_only"):
                 img = detector.load_image(p.path)
                 b.source = ocr.ocr_block(img, b, st["ocr_engine"], proj.source_lang, st["gpu"])
                 if not b.preset and not b.color2 and (b.color or "#000000").upper() == "#000000":
                     from core import textstyle
                     textstyle.apply(img, b)          # warna ikut teks aslinya
-            if b.source.strip():
+            if b.source.strip() and kind != "ocr_only":
                 # "Terjemah ulang" = minta terjemahan baru (lewati cache); OCR ulang boleh pakai cache
                 b.translation = translator.translate([b.source], proj.source_lang, proj.target_lang,
                                                      st["translate_engine"], st, proj.glossary,
                                                      use_cache=(kind == "ocr"))[0]
-            w.log.emit(f"{b.source}  →  {b.translation}")
+            w.log.emit(f"OCR: {b.source}" if kind == "ocr_only" else f"{b.source}  →  {b.translation}")
             if rendered:
                 pipeline.step_render(p, proj, st, recalc_clean=recalc)
             w.page_updated.emit(i)
 
-        self._start(job, "OCR + terjemah balon" if kind == "ocr" else "Terjemah ulang balon")
+        self._start(job, {"ocr": "OCR + terjemah balon", "ocr_only": "OCR balon"}.get(kind, "Terjemah ulang balon"))
 
     # ================================================================== dialog & export
     def edit_settings(self):
@@ -2006,6 +2039,8 @@ class MainWindow(QMainWindow):
             else:
                 self.settings = d.result_settings()
             pipeline.save_settings(self.settings)
+            for a in self.box_modes.actions():
+                a.setChecked(a.data() == self.settings.get("box_mode", "box"))
             self._refresh_fonts()
             self.apply_shortcuts()
             self._update_preset_tips()
