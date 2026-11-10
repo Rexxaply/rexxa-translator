@@ -13,6 +13,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRectF, QSize, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QImageReader, QKeySequence, QPixmap
+from .numfield import NumField
 from PySide6.QtWidgets import (QAbstractItemView, QAbstractSpinBox, QDoubleSpinBox, QApplication, QCheckBox, QColorDialog, QComboBox,
                                QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
                                QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox,
@@ -472,22 +473,7 @@ class MainWindow(QMainWindow):
             return box
 
         def spin(lo, hi, step, dec, special=None, suffix=""):
-            w = QDoubleSpinBox() if dec else QSpinBox()
-            w.setRange(lo, hi)
-            w.setSingleStep(step)
-            if dec:
-                w.setDecimals(dec)
-            if special:
-                w.setSpecialValueText(special)
-            if suffix:
-                w.setSuffix(suffix)
-            w.setButtonSymbols(QAbstractSpinBox.NoButtons)
-            w.setAlignment(Qt.AlignCenter)
-            w.setObjectName("bare")
-            w.setMinimumWidth(44)
-            w.setFixedHeight(22)
-            w.setKeyboardTracking(False)
-            return w
+            return NumField(lo, hi, step, dec, special, suffix)
 
         def mini(text, tip, checkable=True, w=30):
             b = QToolButton(text=text)
@@ -1092,11 +1078,6 @@ class MainWindow(QMainWindow):
         if not b:
             return
         self.p_size.setSpecialValueText(f"Auto · {b.fit_size}" if b.fit_size else "Auto")
-        if b.font_size == 0:              # paksa tampilan ulang teks khusus
-            self._loading, was = True, self._loading
-            self.p_size.setValue(1)
-            self.p_size.setValue(0)
-            self._loading = was
 
     def _on_prop_change(self, *_):
         b = self.sel
@@ -1602,6 +1583,9 @@ QWidget#propsPanel QPlainTextEdit, QWidget#propsPanel QCheckBox { font-size: 8pt
 QWidget#propsPanel QComboBox { padding: 2px 6px; min-height: 22px; }
 QWidget#propsPanel QPushButton { padding: 4px 6px; }
 QLabel#fieldIcon { color: #8a8e9a; font-weight: 600; background: transparent; min-width: 16px; }
+QLineEdit#numField { background: transparent; border: none; padding: 0 2px; margin: 0; color: #e4e6ea;
+  font-size: 8.5pt; selection-background-color: #ff4d6d; }
+QLineEdit#numField:focus { background: #1b1c21; border-radius: 3px; }
 QSpinBox#bare, QDoubleSpinBox#bare { background: transparent; border: none; padding: 0 2px; margin: 0;
   color: #e4e6ea; min-height: 20px; selection-background-color: #ff4d6d; }
 QToolButton#mini { background: #23252b; border: 1px solid #30333b; border-radius: 6px; padding: 0; }

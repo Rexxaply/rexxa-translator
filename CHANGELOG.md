@@ -3,6 +3,9 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.9.4
+- Perbaikan: kotak **ukuran font, jarak baris, jarak huruf, rotasi, dan tebal stroke** di panel Tipografi kini benar-benar menampilkan angkanya (kolom angka baru). Bisa diketik lalu Enter, atau diubah dengan panah ↑/↓ dan roda mouse (Shift = langkah ×10).
+
 ## 1.9.3
 - Panel **Tipografi**: nilai ukuran font, jarak baris, jarak huruf, dan rotasi kini terlihat. Ukuran otomatis menampilkan angkanya (mis. "Auto · 24"); menaikkan ukuran dari Auto mulai dari angka itu. Jarak baris menampilkan nilai sebenarnya (1.20 = default).
 
@@ -20,8 +23,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - LaMa kini bekerja per area teks dan hanya mengganti piksel yang dihapus, jadi bagian lain halaman tetap utuh. Garis tepi putih di sekitar huruf narasi ikut dihapus.
 - Deteksi lebih lengkap: balon dengan huruf kecil-besar campuran ("A good luck kiss!"), balon pendek ("OH."), baris yang hurufnya menempel ("AS", "OUT"), dan huruf di pita abu-abu balon transparan. SFX Jepang tidak ikut diterjemahkan saat bahasa sumber Inggris.
 - Huruf berwarna (mis. emas) diterjemahkan dengan warna yang sama.
-
-## 1.8.0
-- **Hapus teks lebih rapi**: kini hanya **huruf** yang dideteksi & dihapus (bukan garis balon, rambut, atau gambar di sekitarnya), lalu bekasnya diisi warna latar (latar polos) atau **di-generate ulang oleh AI** LaMa (latar bergambar). Balon tidak lagi terpotong atau tertutup kotak putih.
-- Terjemahan teks bebas / balon terbuka ditempel di **area putih balon** (boleh lebih luas dari kotaknya), tidak lagi keluar dari balon.
-- Kata panjang dipenggal di **batas suku kata** (mis. KEBERUN-TUNGAN).
