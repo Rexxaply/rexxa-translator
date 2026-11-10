@@ -225,6 +225,8 @@ class PageCanvas(QGraphicsView):
     zoom_changed = Signal(float)
     heal_stroke = Signal(list, int)          # healing brush: titik-titik goresan, jari-jari kuas
     region_done = Signal(list, object)       # pen / bentuk: titik poligon, posisi layar (QPoint) untuk menu
+    line_stroke = Signal(list, int)          # alat garis: titik-titik garis, tebal (px gambar)
+    space_held = False                       # spasi ditahan = mode tangan (geser) sementara, semua kanvas
 
     def __init__(self, parent=None, editable=True, ghost=False):
         super().__init__(parent)
@@ -259,6 +261,8 @@ class PageCanvas(QGraphicsView):
         self._pen_rubber = None
         self._shape_start = None
         self._shape_item = None
+        self.line_color = "#000000"              # alat garis
+        self._line_start = None
 
     # ------------------------------------------------------------ konten
     def set_page(self, image_path: str | None, blocks, fit=True):
@@ -374,13 +378,27 @@ class PageCanvas(QGraphicsView):
         self.tool = tool if self.pix_item is not None or tool == "select" else tool
         if tool != "select":
             self.draw_mode = False
-        cur = {"heal": Qt.BlankCursor, "pen": Qt.CrossCursor, "shape": Qt.CrossCursor}.get(tool, Qt.ArrowCursor)
-        self.viewport().setCursor(cur)
+        self.viewport().setCursor(self._tool_cursor())
         for b in self.boxes:      # kotak teks tidak menghalangi saat menyunting gambar
             b.setAcceptedMouseButtons(Qt.NoButton if tool != "select" else Qt.AllButtons)
         if tool != "heal" and self._brush_item is not None:
             self.scene().removeItem(self._brush_item)
             self._brush_item = None
+
+    def _tool_cursor(self):
+        if PageCanvas.space_held:
+            return Qt.ClosedHandCursor if self._pan is not None else Qt.OpenHandCursor
+        if self.draw_mode:
+            return Qt.CrossCursor
+        return {"heal": Qt.BlankCursor, "pen": Qt.CrossCursor, "shape": Qt.CrossCursor,
+                "line": Qt.CrossCursor}.get(self.tool, Qt.ArrowCursor)
+
+    def set_space(self, on: bool):
+        """Spasi ditahan: tangan untuk menggeser gambar tanpa mengganti alat."""
+        PageCanvas.space_held = bool(on)
+        if self._brush_item is not None and self._brush_item.scene() is self.scene():
+            self._brush_item.setVisible(not on)
+        self.viewport().setCursor(self._tool_cursor())
 
     def cancel_tool(self):
         for name in ("_stroke_item", "_pen_item", "_pen_rubber", "_shape_item"):
@@ -388,7 +406,7 @@ class PageCanvas(QGraphicsView):
             if it is not None and it.scene() is self.scene():
                 self.scene().removeItem(it)
             setattr(self, name, None)
-        self._stroke, self._pen_pts, self._shape_start = None, [], None
+        self._stroke, self._pen_pts, self._shape_start, self._line_start = None, [], None, None
 
     def set_brush(self, r: int):
         self.brush = max(1, int(r))
@@ -449,6 +467,13 @@ class PageCanvas(QGraphicsView):
             return True
         if e.button() != Qt.LeftButton:
             return False
+        if self.tool == "line":
+            self._stroke = [(x, y)]
+            self._line_start = (x, y)
+            pen = QPen(QColor(self.line_color), max(1, self.brush), Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+            self._stroke_item = self.scene().addPath(self._stroke_path(), pen)
+            self._stroke_item.setZValue(30)
+            return True
         if self.tool == "heal":
             self._stroke = [(x, y)]
             pen = QPen(QColor(255, 77, 109, 120), 2 * self.brush, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
@@ -490,6 +515,16 @@ class PageCanvas(QGraphicsView):
                     self._stroke.append((sp.x(), sp.y()))
                     self._stroke_item.setPath(self._stroke_path())
             return True
+        if self.tool == "line":
+            if self._stroke is not None:
+                if e.modifiers() & Qt.ShiftModifier:      # Shift = garis lurus
+                    self._stroke = [self._line_start, (sp.x(), sp.y())]
+                else:
+                    lx, ly = self._stroke[-1]
+                    if abs(sp.x() - lx) + abs(sp.y() - ly) >= 1.5:
+                        self._stroke.append((sp.x(), sp.y()))
+                self._stroke_item.setPath(self._stroke_path())
+            return True
         if self.tool == "pen" and self._pen_pts:
             from PySide6.QtCore import QLineF
             lx, ly = self._pen_pts[-1]
@@ -508,11 +543,16 @@ class PageCanvas(QGraphicsView):
                 r.setHeight(side)
             self._shape_item.setRect(r)
             return True
-        return self.tool in ("pen", "shape")
+        return self.tool in ("pen", "shape", "line")
 
     def _tool_release(self, e) -> bool:
         if self.tool == "select" or self.pix_item is None:
             return False
+        if self.tool == "line" and self._stroke is not None:
+            pts = [[round(x, 1), round(y, 1)] for x, y in self._stroke]
+            self.cancel_tool()
+            self.line_stroke.emit(pts, int(self.brush))
+            return True
         if self.tool == "heal" and self._stroke is not None:
             pts = [[int(round(x)), int(round(y))] for x, y in self._stroke]
             self.cancel_tool()
@@ -534,7 +574,7 @@ class PageCanvas(QGraphicsView):
                        [int(r.right()), int(r.bottom())], [int(r.left()), int(r.bottom())]]
             self.region_done.emit(pts, e.globalPosition().toPoint())
             return True
-        return self.tool in ("pen", "heal", "shape")
+        return self.tool in ("pen", "heal", "shape", "line")
 
     def mouseDoubleClickEvent(self, e):
         if self.tool == "pen" and len(self._pen_pts) >= 2:
@@ -570,7 +610,7 @@ class PageCanvas(QGraphicsView):
 
     def set_draw_mode(self, on: bool):
         self.draw_mode = on and self.editable and not self.ghost
-        self.viewport().setCursor(Qt.CrossCursor if self.draw_mode else Qt.ArrowCursor)
+        self.viewport().setCursor(self._tool_cursor())
 
     def _item_at(self, pos):
         for it in self.items(pos):
@@ -582,6 +622,12 @@ class PageCanvas(QGraphicsView):
 
     def mousePressEvent(self, e):
         pos = e.position().toPoint()
+        if PageCanvas.space_held and e.button() == Qt.LeftButton:     # spasi + seret = geser gambar
+            self._pan = {"start": pos, "h": self.horizontalScrollBar().value(),
+                         "v": self.verticalScrollBar().value(), "moved": True, "space": True}
+            self.viewport().setCursor(Qt.ClosedHandCursor)
+            e.accept()
+            return
         if e.button() != Qt.MiddleButton and self._tool_press(e):
             return
         if self.draw_mode and e.button() == Qt.LeftButton and self.pix_item:
@@ -613,7 +659,8 @@ class PageCanvas(QGraphicsView):
             self.verticalScrollBar().setValue(self._pan["v"] - d.y())
             return
         super().mouseMoveEvent(e)
-        if self._item_at(pos) is None and not self.draw_mode and self.tool == "select":
+        if self._item_at(pos) is None and not self.draw_mode and self.tool == "select" \
+                and not PageCanvas.space_held:
             self.viewport().setCursor(Qt.ArrowCursor)
 
     def mouseReleaseEvent(self, e):
@@ -628,7 +675,11 @@ class PageCanvas(QGraphicsView):
             return
         if self._pan is not None:
             clicked_empty = not self._pan["moved"] and e.button() == Qt.LeftButton
+            was_space = self._pan.get("space")
             self._pan = None
+            if was_space:
+                self.viewport().setCursor(self._tool_cursor())
+                return
             if clicked_empty and self.selected is not None:   # klik area kosong = batal pilih
                 self.select_block(None)
                 self.block_selected.emit(None)

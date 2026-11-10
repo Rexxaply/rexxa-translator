@@ -198,6 +198,7 @@ class MainWindow(QMainWindow):
         self._build_shortcuts()
         self._set_busy(False)
         self._update_title()
+        QApplication.instance().installEventFilter(self)     # tahan Spasi = mode tangan
         self._show_current(fit=True)
         self.log(f"{APP_NAME} {__version__} siap. Seret folder/gambar manga ke jendela ini, atau klik ikon folder.")
         try:   # Windows: ikon file .mtproj + buka dengan klik ganda
@@ -248,6 +249,7 @@ class MainWindow(QMainWindow):
 
         self.b_box = tool_btn("box", "Tambah kotak teks manual (B) · klik panah untuk memilih yang dilakukan "
                                      "setelah kotak dibuat", self.toggle_draw, checkable=True)
+        self.b_box.setObjectName("splitBtn")
         from PySide6.QtGui import QActionGroup
         m_box = QMenu(self)
         m_box.addSection("Setelah kotak dibuat")
@@ -271,18 +273,31 @@ class MainWindow(QMainWindow):
                               ("shape", "shape", "Shape tool (A): seret kotak / oval (Shift = persegi). "
                                                  "Tekan A lagi untuk ganti kotak ↔ oval"),
                               ("heal", "heal", "Healing brush (J): sapukan di atas noda / sisa teks / objek, "
-                                               "AI (LaMa) membuat ulang latarnya. [ dan ] = ukuran kuas")):
+                                               "AI (LaMa) membuat ulang latarnya. [ dan ] = ukuran kuas"),
+                              ("line", "line", "Alat garis (L): gambar garis sendiri, mis. tepi balon yang hilang. "
+                                               "Seret = garis bebas, Shift + seret = garis lurus. "
+                                               "[ dan ] = tebal garis, klik kotak warna untuk ganti warna")):
             b = tool_btn(ico, tip, checkable=True)
             b.clicked.connect(lambda _=False, t=tid: self.set_tool(t))
             self.tool_btns[tid] = b
             tb.addWidget(b)
         self.tool_btns["select"].setChecked(True)
-        self.brush_field = NumField(2, 200, 1, 0, default=14)
-        self.brush_field.setToolTip("Ukuran kuas healing brush (px)  ·  [ dan ]")
+        self.brush_field = NumField(1, 200, 1, 0, default=14)
+        self.brush_field.setToolTip("Ukuran kuas healing brush / tebal garis (px)  ·  [ dan ]")
         self.brush_field.setFixedWidth(44)
-        self.brush_field.setEnabled(False)          # aktif saat healing brush dipilih
-        self.brush_field.valueChanged.connect(lambda v: [cv.set_brush(int(v)) for cv in (self.cv_src, self.cv_out)])
+        self.brush_field.setEnabled(False)          # aktif saat healing brush / alat garis dipilih
+        self._tool_sizes = {"heal": 14, "line": int(self.settings.get("line_width", 3) or 3)}
+        self.brush_field.valueChanged.connect(self._on_brush_size)
         tb.addWidget(self.brush_field)
+        self.line_color = self.settings.get("line_color", "#000000") or "#000000"
+        self.b_line_color = QToolButton()
+        self.b_line_color.setObjectName("lineSwatch")
+        self.b_line_color.setFixedSize(22, 22)
+        self.b_line_color.setToolTip("Warna garis (alat garis & garis tepi)")
+        self.b_line_color.clicked.connect(self._pick_line_color)
+        self.b_line_color.setEnabled(False)
+        self._paint_line_swatch()
+        tb.addWidget(self.b_line_color)
         tb.addWidget(vline())
 
         self.src = QComboBox()
@@ -418,6 +433,7 @@ class MainWindow(QMainWindow):
         for cv in (self.cv_src, self.cv_out):
             cv.heal_stroke.connect(self._on_heal)
             cv.region_done.connect(self._on_region)
+            cv.line_stroke.connect(self._on_line)
         # sinkron zoom & geser
         self.cv_src.zoom_changed.connect(lambda s: self._sync_zoom(self.cv_src, self.cv_out, s))
         self.cv_out.zoom_changed.connect(lambda s: self._sync_zoom(self.cv_out, self.cv_src, s))
@@ -660,6 +676,22 @@ class MainWindow(QMainWindow):
         r3.addWidget(field("AV", self.p_ls, "Jarak antar huruf (piksel)"), 1)
         s2.lay.addLayout(r3)
 
+        # jumlah baris (kelola baris teks terjemahan)
+        self.p_lines = spin(0, 20, 1, 0, "Auto", " baris", default=0)
+        self.p_lines_m = mini("−", "Kurangi 1 baris (teks lebih lebar)", checkable=False, w=24)
+        self.p_lines_p = mini("+", "Tambah 1 baris (teks lebih ramping)", checkable=False, w=24)
+        self.p_lines_m.clicked.connect(lambda: self._step_lines(-1))
+        self.p_lines_p.clicked.connect(lambda: self._step_lines(1))
+        r3b = QHBoxLayout()
+        r3b.setSpacing(4)
+        r3b.addWidget(field("☰", self.p_lines, "Jumlah baris teks. Auto = menyesuaikan balon. Angka = teks "
+                                               "dibagi tepat sebanyak itu dengan panjang baris serata mungkin. "
+                                               "Tip: tekan Enter di kolom terjemahan untuk memilih sendiri di "
+                                               "mana baris dipotong, lalu atur jumlah baris yang sama."), 3)
+        r3b.addWidget(self.p_lines_m, 1)
+        r3b.addWidget(self.p_lines_p, 1)
+        s2.lay.addLayout(r3b)
+
         # rotasi | geser posisi (ikon panah)
         self.p_rot = spin(-180, 180, 1, 0, None, "°", default=0)
         r4 = QHBoxLayout()
@@ -727,7 +759,7 @@ class MainWindow(QMainWindow):
         r6.addWidget(field("px", self.p_stroke, "Tebal stroke"), 2)
         s2.lay.addLayout(r6)
         self.p_font.currentIndexChanged.connect(self._on_prop_change)
-        for sp in (self.p_size, self.p_stroke, self.p_lsp, self.p_ls, self.p_rot):   # jangan pakai nama `w`!
+        for sp in (self.p_size, self.p_stroke, self.p_lsp, self.p_ls, self.p_rot, self.p_lines):   # jangan pakai nama `w`!
             sp.valueChanged.connect(self._on_prop_change)
         self.p_bold.toggled.connect(self._on_prop_change)
         self.p_ital.toggled.connect(self._on_italic)
@@ -821,6 +853,7 @@ class MainWindow(QMainWindow):
             "tool_pen": lambda: self.set_tool("pen"),
             "tool_shape": self._shape_key,
             "tool_heal": lambda: self.set_tool("heal"),
+            "tool_line": lambda: self.set_tool("line"),
             "brush_up": lambda: self._brush_step(1.25),
             "brush_down": lambda: self._brush_step(0.8),
             "delete": self.delete_selected,
@@ -1090,7 +1123,8 @@ class MainWindow(QMainWindow):
         n = len(self.project.pages)
         for w_ in (self.b_box, *self.tool_btns.values(), self.b_split):
             w_.setEnabled(has and not busy)
-        self.brush_field.setEnabled(has and getattr(self, "tool", "select") == "heal")
+        self.brush_field.setEnabled(has and getattr(self, "tool", "select") in ("heal", "line"))
+        self.b_line_color.setEnabled(has and getattr(self, "tool", "select") in ("line", "pen", "shape"))
         self.b_prev.setEnabled(has and self.cur > 0)
         self.b_next.setEnabled(has and 0 <= self.cur < n - 1)
         self.b_export.setEnabled(any(pg.output_path for pg in self.project.pages) and not busy)
@@ -1098,6 +1132,44 @@ class MainWindow(QMainWindow):
         self.b_redo.setEnabled(bool(h["redo"]) and not busy)
         self.b_undo.setToolTip(f"Undo (Ctrl+Z) · {len(h['undo'])} dari maks. {UNDO_LIMIT} langkah")
         self.b_redo.setToolTip(f"Redo (Ctrl+Y) · {len(h['redo'])} langkah")
+
+    # ------------------------------------------------------------------ Spasi = tangan (geser gambar)
+    def eventFilter(self, obj, ev):
+        from PySide6.QtCore import QEvent
+        t = ev.type()
+        if t in (QEvent.KeyPress, QEvent.KeyRelease) and ev.key() == Qt.Key_Space:
+            if not self._space_allowed():
+                return False
+            if not ev.isAutoRepeat():
+                on = t == QEvent.KeyPress
+                if on != PageCanvas.space_held:
+                    for cv in (self.cv_src, self.cv_out):
+                        cv.set_space(on)
+                    if on:
+                        self._space_msg = self.status_lbl.text()
+                        self.status_lbl.setText("✋ Mode tangan: seret untuk menggeser gambar (lepas Spasi = kembali)")
+                    else:
+                        self.status_lbl.setText(getattr(self, "_space_msg", ""))
+            return True              # jangan sampai Spasi menekan tombol yang sedang fokus
+        if t == QEvent.WindowDeactivate and PageCanvas.space_held and obj is self:
+            for cv in (self.cv_src, self.cv_out):
+                cv.set_space(False)
+        return super().eventFilter(obj, ev)
+
+    def _space_allowed(self) -> bool:
+        if not self.project.pages or QApplication.activeModalWidget() is not None:
+            return False
+        if QApplication.activeWindow() is not self:
+            return False
+        f = QApplication.focusWidget()
+        from PySide6.QtWidgets import QLineEdit, QTextEdit
+        if isinstance(f, NumField):
+            return True                  # kolom angka tidak butuh spasi
+        if isinstance(f, (QLineEdit, QPlainTextEdit, QTextEdit, QAbstractSpinBox)):
+            return False                 # sedang mengetik: spasi = spasi biasa
+        if isinstance(f, QComboBox) and f.isEditable():
+            return False
+        return True
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls():
@@ -1264,6 +1336,7 @@ class MainWindow(QMainWindow):
             self.p_lsp.setValue(float(b.line_spacing or self._default_lsp()))
             self.p_ls.setValue(float(b.letter_spacing or 0))
             self.p_rot.setValue(int(round(b.rotation or 0)))
+            self.p_lines.setValue(int(getattr(b, "max_lines", 0) or 0))
             for k, btn in self.p_case.items():
                 btn.setChecked(b.case == k)
             self._color_btn(self.p_stroke_color, b.stroke_color)
@@ -1279,6 +1352,7 @@ class MainWindow(QMainWindow):
             self.p_lsp.setValue(self._default_lsp())
             self.p_ls.setValue(0)
             self.p_rot.setValue(0)
+            self.p_lines.setValue(0)
             self.p_stroke.setValue(0)
             for btn in (self.p_color, self.p_color2, self.p_stroke_color):
                 btn.setStyleSheet("")
@@ -1429,6 +1503,7 @@ class MainWindow(QMainWindow):
         b.line_spacing = 0.0 if (not b.line_spacing and abs(lsp - self._default_lsp()) < 1e-6) else lsp
         b.letter_spacing = round(self.p_ls.value(), 1)
         b.rotation = float(self.p_rot.value())
+        b.max_lines = int(self.p_lines.value())
         b.kind = self.p_kind.currentData()
         b.clean = self.p_clean.isChecked()
         if (b.clean, b.kind) != old:
@@ -1437,6 +1512,20 @@ class MainWindow(QMainWindow):
                 for box in cv.boxes:
                     box.refresh_style()
         self._schedule_render()
+
+    def _step_lines(self, d):
+        b = self.sel
+        if not b:
+            return
+        cur = int(getattr(b, "max_lines", 0) or 0)
+        if not cur:      # dari Auto: mulai dari jumlah baris yang sedang tampil
+            cur = max(1, self._shown_lines(b) or 1)
+        self.p_lines.setValue(max(1, min(20, cur + d)), emit=True)
+
+    @staticmethod
+    def _shown_lines(b) -> int:
+        """Jumlah baris yang tampil pada render terakhir."""
+        return int(getattr(b, "_fit_lines", 0) or 0)
 
     def _set_case(self, k):
         b = self.sel
@@ -1623,16 +1712,21 @@ class MainWindow(QMainWindow):
         if tool != "select" and self.b_box.isChecked():
             self.b_box.setChecked(False)
             self.cv_src.set_draw_mode(False)
+        if tool in self._tool_sizes:
+            self.brush_field.setValue(self._tool_sizes[tool])
         for cv in (self.cv_src, self.cv_out):
             cv.set_tool(tool)
+            cv.line_color = self.line_color
             cv.set_brush(int(self.brush_field.value()))
-        self.brush_field.setEnabled(tool == "heal")
+        self.brush_field.setEnabled(tool in ("heal", "line"))
+        self.b_line_color.setEnabled(tool in ("line", "pen", "shape"))
         hints = {"select": "Pilih / geser kotak teks.",
                  "pen": "Pen: klik titik-titik di sekeliling area. Klik titik awal / klik kanan / Enter = selesai, "
                         "Backspace = hapus titik terakhir, Esc = batal.",
                  "shape": f"Shape ({'oval' if self.cv_src.shape_kind == 'ellipse' else 'kotak'}): seret di gambar. "
                           "Shift = persegi/lingkaran. Tekan A lagi untuk ganti bentuk.",
-                 "heal": "Healing brush: sapukan di atas noda / sisa teks / objek. [ ] = ukuran kuas."}
+                 "heal": "Healing brush: sapukan di atas noda / sisa teks / objek. [ ] = ukuran kuas.",
+                 "line": "Garis: seret untuk menggambar (Shift = lurus). [ ] = tebal. Tahan Spasi = geser gambar."}
         self.status_lbl.setText(hints.get(tool, ""))
 
     def _shape_key(self):
@@ -1657,6 +1751,39 @@ class MainWindow(QMainWindow):
         self.log(label)
         self._schedule_render(now=True)
 
+    def _on_brush_size(self, v):
+        t = getattr(self, "tool", "select")
+        if t in self._tool_sizes:
+            self._tool_sizes[t] = int(v)
+            if t == "line":
+                self.settings["line_width"] = int(v)
+        for cv in (self.cv_src, self.cv_out):
+            cv.set_brush(int(v))
+
+    def _paint_line_swatch(self):
+        self.b_line_color.setStyleSheet(f"QToolButton#lineSwatch {{ background: {self.line_color}; "
+                                        "border: 2px solid #4a4d57; border-radius: 5px; }"
+                                        "QToolButton#lineSwatch:disabled { background: #2a2c33; border-color: #2a2c33; }")
+
+    def _pick_line_color(self):
+        c = QColorDialog.getColor(QColor(self.line_color), self, "Warna garis")
+        if c.isValid():
+            self.line_color = c.name()
+            self.settings["line_color"] = self.line_color
+            pipeline.save_settings(self.settings)
+            for cv in (self.cv_src, self.cv_out):
+                cv.line_color = self.line_color
+            self._paint_line_swatch()
+
+    def _line_w(self) -> int:
+        return int(self._tool_sizes.get("line", 3))
+
+    def _on_line(self, pts, w):
+        if len(pts) and self.page():
+            pipeline.save_settings(self.settings)
+            self._add_edit({"op": "stroke", "pts": pts, "w": int(w), "color": self.line_color},
+                           "Garis digambar")
+
     def _on_heal(self, pts, r):
         if len(pts) and self.page():
             self._add_edit({"op": "heal", "pts": pts, "r": int(r)}, "Healing brush: area dibuat ulang AI")
@@ -1672,6 +1799,9 @@ class MainWindow(QMainWindow):
         a_col = m.addAction("Isi warna…")
         a_pick = m.addAction("Isi warna latar di sekitarnya")
         a_rest = m.addAction("Kembalikan gambar asli di area ini")
+        m.addSeparator()
+        a_bubble = m.addAction(icon("line"), "Gambar balon: isi putih + garis tepi")
+        a_outline = m.addAction(icon("line"), "Gambar garis tepi saja")
         m.addSeparator()
         a_box = m.addAction(icon("box"), "Buat kotak teks di area ini")
         a_shape = m.addAction("Jadikan bentuk balon yang dipilih") if self.sel else None
@@ -1690,6 +1820,10 @@ class MainWindow(QMainWindow):
                 self._add_edit({"op": "fill", "poly": pts, "color": c.name()}, f"Area diisi {c.name()}")
         elif act is a_pick:
             self._add_edit({"op": "fill", "poly": pts, "color": self._ring_color(pts)}, "Area diisi warna latar")
+        elif act in (a_bubble, a_outline):
+            e = {"op": "outline", "poly": pts, "w": self._line_w(), "color": self.line_color,
+                 "fill": "#FFFFFF" if act is a_bubble else ""}
+            self._add_edit(e, "Balon digambar ulang" if act is a_bubble else "Garis tepi digambar")
         elif act is a_rest:
             self._add_edit({"op": "restore", "poly": pts}, "Gambar asli dikembalikan di area")
         elif act is a_box:
@@ -2161,6 +2295,10 @@ QToolButton#primary { background: #ff4d6d; color: white; font-weight: 600; paddi
 QToolButton#primary:hover { background: #ff6680; }
 QToolButton#primary:disabled { background: #5a3640; color: #b9a3a9; }
 QToolButton#primary::menu-button { border-left: 1px solid #ff8197; width: 18px; }
+QToolButton#splitBtn { padding-right: 17px; }
+QToolButton#splitBtn::menu-button { width: 14px; border: none; border-left: 1px solid #2e3038;
+  border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+QToolButton#splitBtn::menu-button:hover { background: #33363f; }
 QFrame#sep { color: #2e3038; max-width: 1px; margin: 4px 6px; }
 QLabel#pageLbl { font-weight: 600; }
 QLabel#dim { color: #80838f; }
@@ -2270,8 +2408,13 @@ def run():
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setStyle("Fusion")
-    app.setStyleSheet(STYLE)
     from core.paths import code_dir
+    chev = code_dir() / "assets" / "chevron_down.svg"
+    extra = ""
+    if chev.exists():
+        extra = ("QToolButton#splitBtn::menu-arrow { image: url(%s); width: 9px; height: 9px; }"
+                 % chev.as_posix())
+    app.setStyleSheet(STYLE + extra)
     ic = code_dir() / "assets" / "icon.png"
     if ic.exists():
         from PySide6.QtGui import QIcon

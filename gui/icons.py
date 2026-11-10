@@ -55,6 +55,10 @@ ICONS = {
     "gradient": '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 20L20 4M4 14l10-10M10 20l10-10"/>',
     "cursor": '<path d="M5 3l14 8-6 1.5L10 19z"/>',
     "pen": '<path d="M12 3l7 7-4 4-3 7-3-3-3 1 1-3-3-3 7-3z"/><circle cx="12" cy="12" r="1.5"/>',
+    "line": '<path d="M4 19c3-1 4-6 7-8s5 1 9-6"/><circle cx="4" cy="19" r="1.6"/><circle cx="20" cy="5" r="1.6"/>',
+    "hand": '<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11 10.5V4a1.5 1.5 0 0 1 3 0v6.5"/>'
+            '<path d="M14 10.5V5.5a1.5 1.5 0 0 1 3 0V12"/><path d="M17 9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1'
+            'a7 7 0 0 1-5.5-2.7L4 15a1.5 1.5 0 0 1 2.3-1.9L8 15"/>',
     "shape": '<rect x="3" y="3" width="11" height="11" rx="1"/><circle cx="15.5" cy="15.5" r="5.5"/>',
     "heal": '<rect x="2.5" y="8.5" width="19" height="7" rx="3.5" transform="rotate(-45 12 12)"/>'
             '<path d="M10.5 10.5l3 3M13.5 10.5l-3 3"/>',

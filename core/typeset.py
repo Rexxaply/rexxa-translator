@@ -515,8 +515,62 @@ class _Shape:
             self.ay = float(ay)
 
 
+def balance_lines(draw, text: str, font, n: int, stroke: int = 0, ls: float = 0.0) -> list[str]:
+    """Bagi teks menjadi TEPAT n baris (bila jumlah katanya cukup) dengan lebar serata mungkin.
+    Bila teks berisi Enter dan jumlah barisnya sudah n, baris dari pengguna dipakai apa adanya."""
+    paras = [p.strip() for p in text.split("\n") if p.strip()]
+    if len(paras) == n:
+        return paras
+    words = " ".join(paras).split()
+    if not words:
+        return [text]
+    if len(words) <= n:
+        return words
+    W = len(words)
+    width = {}
+
+    def wd(i, j):              # lebar baris berisi kata i..j-1
+        k = (i, j)
+        if k not in width:
+            width[k] = _text_w(draw, " ".join(words[i:j]), font, stroke, ls)
+        return width[k]
+
+    INF = float("inf")
+
+    def solve(cost_fn, limit=INF):
+        # best[k][j] = (biaya terkecil, potongan) untuk k baris pertama memuat j kata pertama
+        best = [[(INF, None)] * (W + 1) for _ in range(n + 1)]
+        best[0][0] = (0, None)
+        for k in range(1, n + 1):
+            for j in range(k, W - (n - k) + 1):
+                for i in range(k - 1, j):
+                    prev = best[k - 1][i][0]
+                    w_ = wd(i, j)
+                    if prev == INF or w_ > limit:
+                        continue
+                    cost = cost_fn(prev, w_)
+                    if cost < best[k][j][0] - 1e-6:
+                        best[k][j] = (cost, i)
+        if best[n][W][0] == INF:
+            return None, INF
+        lines, j = [], W
+        for k in range(n, 0, -1):
+            i = best[k][j][1]
+            lines.append(" ".join(words[i:j]))
+            j = i
+        return lines[::-1], best[n][W][0]
+
+    # 1) baris terlebar sekecil mungkin; 2) di antara susunan yang hampir sama lebarnya,
+    #    pilih yang barisnya paling rata (jumlah kuadrat lebar terkecil)
+    lines, widest = solve(lambda prev, w_: max(prev, w_))
+    if lines is None:
+        return [" ".join(words)]
+    even, _ = solve(lambda prev, w_: prev + w_ * w_, limit=widest * 1.06)
+    return even or lines
+
+
 def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, max_size, min_size=8,
-               fixed: int = 0, shear: float = 0.0):
+               fixed: int = 0, shear: float = 0.0, n_lines: int = 0):
     """Ukuran font terbesar yang muat di bentuk balon. Mengembalikan (size, lines, top, lh).
     shear: kemiringan italic palsu -- baris atas bergeser ke kanan, baris bawah ke kiri,
     jadi ruang kiri/kanan tiap baris diperiksa terpisah."""
@@ -551,6 +605,10 @@ def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, m
 
     def try_size(size, allow_break):
         f = _font(font_path, size)
+        if n_lines:
+            lines = balance_lines(draw, text, f, n_lines, stroke, ls)
+            pl = place(lines, f, size)
+            return (lines, pl) if pl else None
         best = None
         for frac in (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.42):
             lines = wrap_text(draw, text, f, int(shape.max_w * frac), stroke, allow_break, ls)
@@ -564,7 +622,8 @@ def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, m
 
     if fixed:
         f = _font(font_path, fixed)
-        lines = wrap_text(draw, text, f, int(shape.max_w * 0.9), stroke, True, ls) or [text]
+        lines = (balance_lines(draw, text, f, n_lines, stroke, ls) if n_lines else
+                 wrap_text(draw, text, f, int(shape.max_w * 0.9), stroke, True, ls)) or [text]
         lh = fixed * line_spacing
         cy = shape.ay if shape.ay is not None else shape.cy
         return fixed, lines, cy - (lh * (len(lines) - 1) + fixed) / 2, lh
@@ -585,6 +644,28 @@ def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, m
         return a if a and (not b or a[0] >= b[0] * ratio) else b
 
     mode = ["any"]
+    if n_lines:
+        free = search(True)
+        if shape.ay is not None:
+            mode[0] = "anchor"
+            free = better(search(True), free, 0.85)
+        if free:
+            size, (lines, (top, lh)) = free
+            return size, lines, top, lh
+        # baris pilihan pengguna tidak muat di bentuk balon: cukup muat di kotaknya
+        size = max_size
+        while size > min_size:
+            f = _font(font_path, size)
+            lines = balance_lines(draw, text, f, n_lines, stroke, ls)
+            lh = size * line_spacing
+            if (max(_text_w(draw, l, f, stroke, ls) for l in lines) <= shape.max_w
+                    and lh * (len(lines) - 1) + size * 1.05 <= shape.ymax - shape.ymin):
+                break
+            size -= 1
+        f = _font(font_path, size)
+        lines = balance_lines(draw, text, f, n_lines, stroke, ls)
+        lh = size * line_spacing
+        return size, lines, shape.cy - (lh * (len(lines) - 1) + size) / 2, lh
     results = {}
     for allow_break in (False, True):
         mode[0] = "any"
@@ -656,8 +737,10 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
                 cap = max(cap, min(int(b.src_h * 1.45), 400))   # SFX boleh melebihi batas ukuran maksimum
         size, lines, top, lh = _fit_shape(measure, text, font_path, shape, stroke, ls, lsp,
                                           (cap if getattr(b, "sfx", False) else min(cap, max(max_size, 8))),
-                                          fixed=fixed, shear=shear)
+                                          fixed=fixed, shear=shear,
+                                          n_lines=max(0, int(getattr(b, "max_lines", 0) or 0)))
         b.fit_size = int(size)
+        b._fit_lines = len(lines)          # info untuk panel (tombol +/− baris)
         font = _font(font_path, size)
 
         # gambar di lapisan transparan seukuran balon (+ jarak), lalu miring/putar & geser

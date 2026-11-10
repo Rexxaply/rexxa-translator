@@ -37,6 +37,7 @@ class TextBlock:
     line_spacing: float = 0.0  # 0 = default (Pengaturan → Teks)
     letter_spacing: float = 0.0  # piksel tambahan antar huruf
     rotation: float = 0.0     # derajat
+    max_lines: int = 0        # jumlah baris teks: 0 = otomatis, N = dipaksa tepat N baris (seimbang)
     dx: int = 0               # geser posisi teks (piksel)
     dy: int = 0
     preset: int = 0           # preset teks terakhir yang dipakai (0 = belum)
