@@ -13,14 +13,14 @@ from PySide6.QtWidgets import QLineEdit
 class NumField(QLineEdit):
     valueChanged = Signal(float)
 
-    def __init__(self, lo, hi, step=1, decimals=0, special="", suffix="", parent=None):
+    def __init__(self, lo, hi, step=1, decimals=0, special="", suffix="", parent=None, default=None):
         super().__init__(parent)
         self._lo, self._hi, self._step, self._dec = float(lo), float(hi), float(step), int(decimals)
         self._special, self._suffix = special or "", suffix or ""
-        self._val = float(lo)
+        self._val = float(min(hi, max(lo, 0.0 if default is None else default))) if not special else float(lo)
         self.setAlignment(Qt.AlignCenter)
         self.setObjectName("numField")
-        self.setMinimumWidth(40)
+        self.setMinimumWidth(26)
         self.setFixedHeight(22)
         self.editingFinished.connect(self._commit_text)
         self._show()

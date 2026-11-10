@@ -428,6 +428,7 @@ class MainWindow(QMainWindow):
         self.props_hint = QLabel("Klik sebuah balon di gambar ASLI\nuntuk mengedit teks & gayanya.")
         self.props_hint.setObjectName("dim")
         self.props_hint.setAlignment(Qt.AlignCenter)
+        self.props_hint.setWordWrap(True)
         v.addWidget(self.props_hint)
 
         # --- Terjemahan
@@ -454,147 +455,186 @@ class MainWindow(QMainWindow):
         self.e_tr.textChanged.connect(self._on_tr_text)
 
         # --- Tipografi (tata letak seperti editor lettering: baris-baris ringkas)
+        # Semua baris boleh MENYEMPIT mengikuti lebar sidebar (tidak ada lebar tetap yang besar),
+        # jadi panel tidak terpotong saat sidebar digeser.
         s2 = Section("Tipografi")
-        self.p_font = QComboBox()
-        self.p_font.addItem("Font default", "")
-        for f in typeset.list_fonts():
-            self.p_font.addItem(typeset.font_name(f), f)
-        frow = QHBoxLayout()
-        frow.setSpacing(4)
-        frow.addWidget(self.p_font, 1)
-        self.p_match = QToolButton(text="✦")
-        self.p_match.setObjectName("mini")
-        self.p_match.setFixedSize(26, 24)
-        self.p_match.setToolTip("Cocokkan font: cari font (aplikasi / perangkat) yang paling mirip dengan teks asli")
-        self.p_match.clicked.connect(self._match_font)
-        frow.addWidget(self.p_match)
-        s2.lay.addLayout(frow)
+        EXP = QSizePolicy.Expanding
+
+        def shrink(wd, minw=18, maxw=None, h=24):
+            wd.setMinimumWidth(minw)
+            if maxw:
+                wd.setMaximumWidth(maxw)
+            wd.setFixedHeight(h)
+            wd.setSizePolicy(EXP if not maxw or maxw > minw else QSizePolicy.Fixed, QSizePolicy.Fixed)
+            return wd
+
+        def row(*items, spacing=4):
+            r = QHBoxLayout()
+            r.setSpacing(spacing)
+            r.setContentsMargins(0, 0, 0, 0)
+            for it in items:
+                if it is None:
+                    r.addStretch()
+                elif isinstance(it, tuple):
+                    r.addWidget(it[0], it[1])
+                else:
+                    r.addWidget(it)
+            return r
 
         def field(icon_text, widget, tip):
             box = QWidget()
             box.setObjectName("field")
             h = QHBoxLayout(box)
-            h.setContentsMargins(8, 1, 4, 1)
-            h.setSpacing(4)
+            h.setContentsMargins(6, 1, 4, 1)
+            h.setSpacing(3)
             ic = QLabel(icon_text)
             ic.setObjectName("fieldIcon")
             h.addWidget(ic)
             h.addWidget(widget, 1)
             box.setToolTip(tip)
+            box.setMinimumWidth(56)
+            box.setSizePolicy(EXP, QSizePolicy.Fixed)
             return box
 
-        def spin(lo, hi, step, dec, special=None, suffix=""):
-            return NumField(lo, hi, step, dec, special, suffix)
+        def spin(lo, hi, step, dec, special=None, suffix="", default=None):
+            return NumField(lo, hi, step, dec, special, suffix, default=default)
 
-        def mini(text, tip, checkable=True, w=30):
-            b = QToolButton(text=text)
+        def mini(text, tip, checkable=True, w=30, ico=None):
+            b = QToolButton(text="" if ico else text)
+            if ico:
+                b.setIcon(icon(ico))
+                b.setIconSize(QSize(14, 14))
             b.setObjectName("mini")
             b.setCheckable(checkable)
-            b.setFixedSize(w, 24)
             b.setToolTip(tip)
-            return b
+            return shrink(b, minw=min(w, 20), maxw=w + 8)
 
-        g = QGridLayout()
-        g.setHorizontalSpacing(6)
-        g.setVerticalSpacing(6)
-        # baris 1: ukuran | preset 1–5
+        self.p_font = QComboBox()
+        self.p_font.addItem("Font default", "")
+        for f in typeset.list_fonts():
+            self.p_font.addItem(typeset.font_name(f), f)
+        self.p_font.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.p_font.setMinimumContentsLength(6)
+        self.p_font.setSizePolicy(EXP, QSizePolicy.Fixed)
+        self.p_match = mini("", "Cocokkan font: cari font (aplikasi / perangkat / Google Fonts) yang paling "
+                                "mirip dengan teks asli", checkable=False, w=26, ico="wand")
+        self.p_match.clicked.connect(self._match_font)
+        s2.lay.addLayout(row((self.p_font, 1), self.p_match))
+
+        # ukuran | preset 1–5
         self.p_size = spin(0, 300, 1, 0, "Auto")
-        g.addWidget(field("A", self.p_size, "Ukuran font (Auto = menyesuaikan balon)"), 0, 0)
+        self.p_presets = []
         prow = QHBoxLayout()
         prow.setSpacing(2)
-        self.p_presets = []
         for n in range(1, 6):
-            b = mini(str(n), "", w=22)
+            b = mini(str(n), "", w=24)
             b.setObjectName("presetBtn")
             b.clicked.connect(lambda _=False, n=n: self.apply_preset(n))
             self.p_presets.append(b)
-            prow.addWidget(b)
-        g.addLayout(prow, 0, 1)
+            prow.addWidget(b, 1)
+        r1 = QHBoxLayout()
+        r1.setSpacing(6)
+        r1.addWidget(field("A", self.p_size, "Ukuran font (Auto = menyesuaikan balon)"), 5)
+        r1.addLayout(prow, 6)
+        s2.lay.addLayout(r1)
         self._update_preset_tips()
-        # baris 2: B I AA Aa aa | rata
-        srow = QHBoxLayout()
-        srow.setSpacing(2)
-        self.p_bold = mini("B", "Tebal", w=24)
+
+        # B I AA Aa aa | rata
+        self.p_bold = mini("B", "Tebal", w=26)
         fb = self.p_bold.font(); fb.setBold(True); self.p_bold.setFont(fb)
-        self.p_ital = mini("I", "Miring", w=24)
+        self.p_ital = mini("I", "Miring", w=26)
         fi = self.p_ital.font(); fi.setItalic(True); self.p_ital.setFont(fi)
         self.p_case = {}
         for key, txt, tip in (("upper", "AA", "HURUF KAPITAL"), ("none", "Aa", "Huruf biasa (sesuai terjemahan)"),
                               ("lower", "aa", "huruf kecil")):
-            b = mini(txt, tip + " · klik lagi = ikut default", w=24)
+            b = mini(txt, tip + " · klik lagi = ikut default", w=26)
             b.clicked.connect(lambda _=False, k=key: self._set_case(k))
             self.p_case[key] = b
-        for b in (self.p_bold, self.p_ital, *self.p_case.values()):
-            srow.addWidget(b)
-        srow.addStretch()
         self.p_al = {}
         for k, ic in (("left", "al_left"), ("center", "al_center"), ("right", "al_right")):
-            b = tool_btn(ic, {"left": "Rata kiri", "center": "Rata tengah", "right": "Rata kanan"}[k], checkable=True)
-            b.setFixedSize(24, 24)
+            b = mini("", {"left": "Rata kiri", "center": "Rata tengah", "right": "Rata kanan"}[k], w=24, ico=ic)
             b.clicked.connect(lambda _=False, k=k: self._set_align(k))
             self.p_al[k] = b
-            srow.addWidget(b)
-        g.addLayout(srow, 1, 0, 1, 2)
-        # baris 3: jarak baris | jarak huruf
-        self.p_lsp = spin(0.5, 3.0, 0.05, 2)
-        self.p_ls = spin(-10.0, 40.0, 0.5, 1)
-        g.addWidget(field("≡", self.p_lsp, "Jarak antar baris (1.20 = default dari Pengaturan → Teks)"), 2, 0)
-        g.addWidget(field("AV", self.p_ls, "Jarak antar huruf (piksel)"), 2, 1)
-        # baris 4: rotasi | posisi
-        self.p_rot = spin(-180, 180, 1, 0, None, "°")
-        g.addWidget(field("↻", self.p_rot, "Putar teks (derajat)"), 3, 0)
-        nrow = QHBoxLayout()
-        nrow.setSpacing(2)
-        nrow.addWidget(small_label("Posisi"))
-        nrow.addStretch()
-        for txt, dx, dy, tip in (("◀", -1, 0, "Geser kiri"), ("▶", 1, 0, "Geser kanan"), ("▲", 0, -1, "Geser atas"),
-                                 ("▼", 0, 1, "Geser bawah"), ("⟲", 0, 0, "Kembalikan posisi")):
-            b = mini(txt, tip + (" (Shift = 10 px)" if dx or dy else ""), checkable=False, w=19)
+        r2 = QHBoxLayout()
+        r2.setSpacing(2)
+        for b in (self.p_bold, self.p_ital, *self.p_case.values()):
+            r2.addWidget(b, 1)
+        r2.addSpacing(6)
+        for b in self.p_al.values():
+            r2.addWidget(b, 1)
+        s2.lay.addLayout(r2)
+
+        # jarak baris | jarak huruf
+        self.p_lsp = spin(0.5, 3.0, 0.05, 2, default=float(self.settings.get("line_spacing", 1.2) or 1.2))
+        self.p_ls = spin(-10.0, 40.0, 0.5, 1, default=0.0)
+        r3 = QHBoxLayout()
+        r3.setSpacing(6)
+        r3.addWidget(field("≡", self.p_lsp, "Jarak antar baris (1.20 = default dari Pengaturan → Teks)"), 1)
+        r3.addWidget(field("AV", self.p_ls, "Jarak antar huruf (piksel)"), 1)
+        s2.lay.addLayout(r3)
+
+        # rotasi | geser posisi (ikon panah)
+        self.p_rot = spin(-180, 180, 1, 0, None, "°", default=0)
+        r4 = QHBoxLayout()
+        r4.setSpacing(6)
+        r4.addWidget(field("↻", self.p_rot, "Putar teks (derajat)"), 1)
+        pad = QHBoxLayout()
+        pad.setSpacing(2)
+        for ico, dx, dy, tip in (("mv_left", -1, 0, "Geser kiri"), ("mv_up", 0, -1, "Geser atas"),
+                                 ("mv_down", 0, 1, "Geser bawah"), ("mv_right", 1, 0, "Geser kanan"),
+                                 ("mv_reset", 0, 0, "Kembalikan ke posisi semula")):
+            b = mini("", tip + (" (Shift = 10 px)" if dx or dy else ""), checkable=False, w=24, ico=ico)
             b.setAutoRepeat(bool(dx or dy))
+            b.setAutoRepeatDelay(350)
+            b.setAutoRepeatInterval(60)
             b.clicked.connect(lambda _=False, dx=dx, dy=dy: self._nudge(dx, dy))
-            nrow.addWidget(b)
-        g.addLayout(nrow, 4, 0, 1, 2)
-        # baris 5: warna teks | stroke
-        self.p_color = QPushButton()
-        self.p_color.setObjectName("swatch")
-        self.p_color.setToolTip("Warna teks")
-        self.p_color.clicked.connect(lambda: self._pick_color("color"))
-        # warna kedua = gradasi atas -> bawah (khas manhwa); kosong = warna polos
-        self.p_color2 = QPushButton()
-        self.p_color2.setObjectName("swatch")
-        self.p_color2.setToolTip("Gradasi: warna bagian bawah teks (klik untuk memilih)")
-        self.p_color2.clicked.connect(lambda: self._pick_color("color2"))
-        self.p_color2.setFixedSize(22, 22)
-        self.p_grad_off = mini("×", "Hapus gradasi (warna polos)", checkable=False, w=18)
+            pad.addWidget(b, 1)
+        posbox = QWidget()
+        posbox.setToolTip("Geser posisi teks")
+        posbox.setLayout(pad)
+        pad.setContentsMargins(0, 0, 0, 0)
+        posbox.setSizePolicy(EXP, QSizePolicy.Fixed)
+        r4.addWidget(posbox, 1)
+        s2.lay.addLayout(r4)
+
+        # warna teks (+ gradasi) | ambil dari teks asli
+        def swatch(tip, slot):
+            b = QPushButton()
+            b.setObjectName("swatch")
+            b.setToolTip(tip)
+            b.clicked.connect(slot)
+            return shrink(b, minw=20, maxw=44, h=22)
+        self.p_color = swatch("Warna teks", lambda: self._pick_color("color"))
+        self.p_color2 = swatch("Gradasi: warna bagian bawah teks (klik untuk memilih)", lambda: self._pick_color("color2"))
+        self.p_grad_off = mini("", "Hapus gradasi (warna polos)", checkable=False, w=22, ico="close")
         self.p_grad_off.clicked.connect(self._clear_gradient)
-        self.p_pick = mini("◉", "Ambil warna dari teks asli (isi, garis tepi, gradasi)", checkable=False, w=22)
+        self.p_pick = mini("", "Ambil warna dari teks asli (isi, garis tepi, gradasi)", checkable=False, w=22,
+                           ico="eyedrop")
         self.p_pick.clicked.connect(self._pick_from_source)
-        self.p_stroke_color = QPushButton()
-        self.p_stroke_color.setObjectName("swatch")
-        self.p_stroke_color.setToolTip("Warna stroke (garis tepi huruf)")
-        self.p_stroke_color.clicked.connect(lambda: self._pick_color("stroke_color"))
+        lt = small_label("Teks")
+        lt.setMinimumWidth(38)
+        r5 = QHBoxLayout()
+        r5.setSpacing(4)
+        r5.addWidget(lt)
+        r5.addWidget(self.p_color, 1)
+        r5.addWidget(self.p_color2, 1)
+        r5.addWidget(self.p_grad_off)
+        r5.addStretch(0)
+        r5.addWidget(self.p_pick)
+        s2.lay.addLayout(r5)
+
+        # garis tepi (stroke)
+        self.p_stroke_color = swatch("Warna stroke (garis tepi huruf)", lambda: self._pick_color("stroke_color"))
         self.p_stroke = spin(0, 15, 1, 0, "-")
         self.p_stroke.setToolTip("Tebal stroke (- = tanpa stroke)")
-        self.p_color.setFixedSize(30, 22)
-        self.p_stroke_color.setFixedSize(30, 22)
-        trow = QHBoxLayout()
-        trow.setSpacing(4)
-        trow.addWidget(small_label("Teks"))
-        trow.addWidget(self.p_color)
-        trow.addWidget(self.p_color2)
-        trow.addWidget(self.p_grad_off)
-        trow.addWidget(self.p_pick)
-        trow.addStretch()
-        g.addLayout(trow, 5, 0)
-        krow = QHBoxLayout()
-        krow.setSpacing(4)
-        krow.addWidget(small_label("Stroke"))
-        krow.addWidget(self.p_stroke_color)
-        krow.addWidget(field("", self.p_stroke, "Tebal stroke"), 1)
-        g.addLayout(krow, 5, 1)
-        g.setColumnStretch(0, 1)
-        g.setColumnStretch(1, 1)
-        s2.lay.addLayout(g)
+        ls_ = small_label("Stroke")
+        ls_.setMinimumWidth(38)
+        r6 = QHBoxLayout()
+        r6.setSpacing(4)
+        r6.addWidget(ls_)
+        r6.addWidget(self.p_stroke_color, 1)
+        r6.addWidget(field("px", self.p_stroke, "Tebal stroke"), 2)
+        s2.lay.addLayout(r6)
         self.p_font.currentIndexChanged.connect(self._on_prop_change)
         for sp in (self.p_size, self.p_stroke, self.p_lsp, self.p_ls, self.p_rot):   # jangan pakai nama `w`!
             sp.valueChanged.connect(self._on_prop_change)
@@ -607,6 +647,8 @@ class MainWindow(QMainWindow):
         self.p_kind.addItem("Balon kata", "bubble")
         self.p_kind.addItem("Teks bebas / SFX / narasi", "free")
         self.p_kind.addItem("Logo judul seri", "title")
+        self.p_kind.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.p_kind.setMinimumContentsLength(6)
         self.p_clean = QCheckBox("Hapus teks asli di area ini")
         self.b_del = QPushButton(icon("trash", "#ff8a9b"), " Hapus balon ini")
         self.b_del.setObjectName("danger")
@@ -1043,6 +1085,15 @@ class MainWindow(QMainWindow):
             self.sections[0].btn.setText("  TERJEMAHAN")
             self.e_src.clear()
             self.e_tr.clear()
+            # tampilkan nilai netral (bukan batas minimum seperti -180° / -10)
+            self.p_size.setSpecialValueText("Auto")
+            self.p_size.setValue(0)
+            self.p_lsp.setValue(self._default_lsp())
+            self.p_ls.setValue(0)
+            self.p_rot.setValue(0)
+            self.p_stroke.setValue(0)
+            for btn in (self.p_color, self.p_color2, self.p_stroke_color):
+                btn.setStyleSheet("")
         self._loading = False
 
     @staticmethod
