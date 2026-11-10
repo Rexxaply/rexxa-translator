@@ -3,6 +3,15 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 2.0.2
+- **Terjemahkan Semua lebih cepat, tetap ramah 4 CPU**:
+  - Dua tahap berjalan bersamaan: halaman berikutnya dideteksi & di-OCR sementara halaman ini diterjemahkan & dirender (waktu tunggu jaringan tidak lagi membuat CPU menganggur).
+  - OCR hanya membaca ulang (versi diluruskan / huruf berongga) bila hasil pertama benar-benar ragu.
+  - Google Translate mengirim beberapa teks sekaligus (maks. 4), bukan satu per satu.
+  - Gambar halaman disimpan sebentar di memori, tidak dibuka ulang dari disk berkali-kali.
+  - 1 inti CPU selalu dibiarkan bebas untuk tampilan aplikasi; antrean maks. 1 halaman supaya memori tetap kecil.
+- Mode Hemat kini otomatis hanya untuk RAM < 6 GB atau CPU 2 inti (bisa dipaksa di Pengaturan → Proses → Performa).
+
 ## 2.0.1
 - **Font otomatis untuk semua teks + memori font**: dialog, dialog miring, dialog tebal, narasi, dan narasi huruf kecil masing-masing dicarikan font yang paling mirip dengan teks aslinya, lalu **diingat di proyek** sehingga halaman berikutnya langsung memakai font yang sama (cepat & konsisten se-chapter). Font yang kamu pilih manual juga diingat. Menu ⚡ → "Lupakan font yang diingat proyek ini" untuk mencocokkan ulang.
 - **Lebih ringan untuk PC spesifikasi rendah** (Pengaturan → Proses → Performa: Otomatis / Hemat / Normal): memori dibersihkan setiap halaman, thread dibatasi supaya aplikasi tetap responsif, AI hapus teks memakai potongan lebih kecil, jeda otomatis saat RAM hampir habis, halaman diulang dengan cara ringan bila memori penuh, dan **simpan otomatis setiap 5 halaman** saat Terjemahkan Semua.
@@ -27,11 +36,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 
 ## 1.25.0
 - **Proyek terakhir di layar awal**: 5 proyek .mtproj terbaru (yang pernah dibuka / disimpan) tampil di bawah tombol "Buka", lengkap dengan nama, folder, dan waktu terakhir diubah. Klik untuk langsung membuka; tombol × menghapusnya dari daftar (file proyeknya tidak dihapus). Proyek yang filenya sudah tidak ada otomatis disembunyikan.
-
-## 1.24.0
-- **Alat garis (L) kini pakai pratinjau yang bisa diedit**, seperti Pen Tool:
-  - Klik = tambah titik, seret = gambar bebas (otomatis disederhanakan jadi beberapa titik), Shift = ruas lurus.
-  - Hasilnya **garis putus-putus (pratinjau)** dulu, belum menempel di gambar.
-  - **Seret titik** untuk mengubah bentuk, **Ctrl+klik / klik 2x di garis** = tambah titik, **klik 2x / Alt+klik titik** = hapus titik, **klik titik awal** = tutup bentuk, Backspace = hapus titik terakhir, Esc = buang pratinjau.
-  - Garis otomatis **melengkung halus** melewati titik-titik (bisa dimatikan untuk garis patah lurus).
-- Setelah pas, tekan **"Jadikan garis"** di toolbar (atau Enter, atau **klik kanan**): pilih jadikan garis, **jadikan balon (isi putih + garis tepi)**, atau isi putih saja.
