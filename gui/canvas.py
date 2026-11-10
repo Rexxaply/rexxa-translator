@@ -223,6 +223,8 @@ class PageCanvas(QGraphicsView):
     block_double_clicked = Signal(object)
     box_drawn = Signal(QRectF)
     zoom_changed = Signal(float)
+    heal_stroke = Signal(list, int)          # healing brush: titik-titik goresan, jari-jari kuas
+    region_done = Signal(list, object)       # pen / bentuk: titik poligon, posisi layar (QPoint) untuk menu
 
     def __init__(self, parent=None, editable=True, ghost=False):
         super().__init__(parent)
@@ -245,10 +247,24 @@ class PageCanvas(QGraphicsView):
         self._draw_start = None
         self._draw_rect = None
         self._pan = None
+        # alat sunting: "select" | "heal" | "pen" | "shape"
+        self.tool = "select"
+        self.shape_kind = "rect"                 # rect | ellipse
+        self.brush = 14                          # jari-jari healing brush (px gambar)
+        self._stroke = None                      # titik goresan heal
+        self._stroke_item = None
+        self._brush_item = None
+        self._pen_pts = []
+        self._pen_item = None
+        self._pen_rubber = None
+        self._shape_start = None
+        self._shape_item = None
 
     # ------------------------------------------------------------ konten
     def set_page(self, image_path: str | None, blocks, fit=True):
         self.scene().clear()
+        self._stroke_item = self._pen_item = self._pen_rubber = self._shape_item = self._brush_item = None
+        self._stroke, self._pen_pts = None, []
         self.boxes = []
         self.pix_item = None
         if not image_path:
@@ -272,6 +288,8 @@ class PageCanvas(QGraphicsView):
             item.selected = blk is self.selected
             item.refresh_style()
             item.setVisible(self.show_boxes)
+            if self.tool != "select":
+                item.setAcceptedMouseButtons(Qt.NoButton)
             self.scene().addItem(item)
             self.boxes.append(item)
 
@@ -350,6 +368,206 @@ class PageCanvas(QGraphicsView):
             self.zoom_changed.emit(self.zoom())
 
     # ------------------------------------------------------------ mouse: gambar kotak / geser tampilan
+    # ------------------------------------------------------------ alat sunting
+    def set_tool(self, tool: str):
+        self.cancel_tool()
+        self.tool = tool if self.pix_item is not None or tool == "select" else tool
+        if tool != "select":
+            self.draw_mode = False
+        cur = {"heal": Qt.BlankCursor, "pen": Qt.CrossCursor, "shape": Qt.CrossCursor}.get(tool, Qt.ArrowCursor)
+        self.viewport().setCursor(cur)
+        for b in self.boxes:      # kotak teks tidak menghalangi saat menyunting gambar
+            b.setAcceptedMouseButtons(Qt.NoButton if tool != "select" else Qt.AllButtons)
+        if tool != "heal" and self._brush_item is not None:
+            self.scene().removeItem(self._brush_item)
+            self._brush_item = None
+
+    def cancel_tool(self):
+        for name in ("_stroke_item", "_pen_item", "_pen_rubber", "_shape_item"):
+            it = getattr(self, name)
+            if it is not None and it.scene() is self.scene():
+                self.scene().removeItem(it)
+            setattr(self, name, None)
+        self._stroke, self._pen_pts, self._shape_start = None, [], None
+
+    def set_brush(self, r: int):
+        self.brush = max(1, int(r))
+        self._update_brush_cursor(None)
+
+    def _pen(self, color, width=2, style=Qt.SolidLine, cosmetic=True):
+        p = QPen(QColor(color), width, style)
+        p.setCosmetic(cosmetic)
+        return p
+
+    def _update_brush_cursor(self, scene_pos):
+        if self.tool != "heal":
+            return
+        if self._brush_item is None or self._brush_item.scene() is not self.scene():
+            self._brush_item = self.scene().addEllipse(QRectF(0, 0, 1, 1), self._pen("#ffffff", 1.5))
+            self._brush_item.setZValue(40)
+        if scene_pos is not None:
+            r = self.brush
+            self._brush_item.setRect(QRectF(scene_pos.x() - r, scene_pos.y() - r, 2 * r, 2 * r))
+
+    def _stroke_path(self):
+        from PySide6.QtGui import QPainterPath
+        path = QPainterPath()
+        pts = self._stroke or []
+        if pts:
+            path.moveTo(*pts[0])
+            for p in pts[1:]:
+                path.lineTo(*p)
+        return path
+
+    def _pen_path(self, closing=False):
+        from PySide6.QtGui import QPainterPath
+        path = QPainterPath()
+        if self._pen_pts:
+            path.moveTo(*self._pen_pts[0])
+            for p in self._pen_pts[1:]:
+                path.lineTo(*p)
+            if closing:
+                path.closeSubpath()
+        return path
+
+    def _finish_pen(self, screen_pos=None):
+        pts = [list(map(int, p)) for p in self._pen_pts]
+        self.cancel_tool()
+        if len(pts) >= 3:
+            self.region_done.emit(pts, screen_pos)
+
+    def _tool_press(self, e) -> bool:
+        if self.tool == "select" or self.pix_item is None:
+            return False
+        sp = self.mapToScene(e.position().toPoint())
+        x, y = sp.x(), sp.y()
+        if e.button() == Qt.RightButton:
+            if self.tool == "pen" and self._pen_pts:
+                self._finish_pen(e.globalPosition().toPoint())
+            else:
+                self.cancel_tool()
+            return True
+        if e.button() != Qt.LeftButton:
+            return False
+        if self.tool == "heal":
+            self._stroke = [(x, y)]
+            pen = QPen(QColor(255, 77, 109, 120), 2 * self.brush, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+            self._stroke_item = self.scene().addPath(self._stroke_path(), pen)
+            self._stroke_item.setZValue(30)
+            return True
+        if self.tool == "pen":
+            if len(self._pen_pts) >= 3:
+                fx, fy = self._pen_pts[0]
+                tol = 8 / max(self.zoom(), 1e-6)
+                if abs(fx - x) < tol and abs(fy - y) < tol:     # klik titik pertama = tutup
+                    self._finish_pen(e.globalPosition().toPoint())
+                    return True
+            self._pen_pts.append((x, y))
+            if self._pen_item is None:
+                self._pen_item = self.scene().addPath(self._pen_path(), self._pen("#06d6a0", 2))
+                self._pen_item.setZValue(30)
+            else:
+                self._pen_item.setPath(self._pen_path())
+            return True
+        if self.tool == "shape":
+            self._shape_start = sp
+            pen = self._pen("#06d6a0", 2, Qt.DashLine)
+            add = self.scene().addEllipse if self.shape_kind == "ellipse" else self.scene().addRect
+            self._shape_item = add(QRectF(sp, sp), pen, QBrush(QColor(6, 214, 160, 40)))
+            self._shape_item.setZValue(30)
+            return True
+        return False
+
+    def _tool_move(self, e) -> bool:
+        if self.tool == "select" or self.pix_item is None:
+            return False
+        sp = self.mapToScene(e.position().toPoint())
+        if self.tool == "heal":
+            self._update_brush_cursor(sp)
+            if self._stroke is not None:
+                lx, ly = self._stroke[-1]
+                if abs(sp.x() - lx) + abs(sp.y() - ly) >= max(1.0, self.brush * 0.25):
+                    self._stroke.append((sp.x(), sp.y()))
+                    self._stroke_item.setPath(self._stroke_path())
+            return True
+        if self.tool == "pen" and self._pen_pts:
+            from PySide6.QtCore import QLineF
+            lx, ly = self._pen_pts[-1]
+            if self._pen_rubber is None:
+                self._pen_rubber = self.scene().addLine(QLineF(lx, ly, sp.x(), sp.y()),
+                                                        self._pen("#06d6a0", 1, Qt.DashLine))
+                self._pen_rubber.setZValue(30)
+            else:
+                self._pen_rubber.setLine(QLineF(lx, ly, sp.x(), sp.y()))
+            return True
+        if self.tool == "shape" and self._shape_item is not None:
+            r = QRectF(self._shape_start, sp).normalized()
+            if e.modifiers() & Qt.ShiftModifier:        # Shift = persegi / lingkaran
+                side = max(r.width(), r.height())
+                r.setWidth(side)
+                r.setHeight(side)
+            self._shape_item.setRect(r)
+            return True
+        return self.tool in ("pen", "shape")
+
+    def _tool_release(self, e) -> bool:
+        if self.tool == "select" or self.pix_item is None:
+            return False
+        if self.tool == "heal" and self._stroke is not None:
+            pts = [[int(round(x)), int(round(y))] for x, y in self._stroke]
+            self.cancel_tool()
+            self.heal_stroke.emit(pts, int(self.brush))
+            return True
+        if self.tool == "shape" and self._shape_item is not None:
+            r = self._shape_item.rect().intersected(self.scene().sceneRect())
+            kind = self.shape_kind
+            self.cancel_tool()
+            if r.width() < 4 or r.height() < 4:
+                return True
+            if kind == "ellipse":
+                import math
+                cx, cy, rx, ry = r.center().x(), r.center().y(), r.width() / 2, r.height() / 2
+                pts = [[int(cx + rx * math.cos(t * math.pi / 36)), int(cy + ry * math.sin(t * math.pi / 36))]
+                       for t in range(72)]
+            else:
+                pts = [[int(r.left()), int(r.top())], [int(r.right()), int(r.top())],
+                       [int(r.right()), int(r.bottom())], [int(r.left()), int(r.bottom())]]
+            self.region_done.emit(pts, e.globalPosition().toPoint())
+            return True
+        return self.tool in ("pen", "heal", "shape")
+
+    def mouseDoubleClickEvent(self, e):
+        if self.tool == "pen" and len(self._pen_pts) >= 2:
+            sp = self.mapToScene(e.position().toPoint())
+            if len(self._pen_pts) < 3:
+                self._pen_pts.append((sp.x(), sp.y()))
+            self._finish_pen(e.globalPosition().toPoint())
+            return
+        super().mouseDoubleClickEvent(e)
+
+    def keyPressEvent(self, e):
+        if self.tool == "pen":
+            if e.key() in (Qt.Key_Return, Qt.Key_Enter) and len(self._pen_pts) >= 3:
+                self._finish_pen(None)
+                return
+            if e.key() == Qt.Key_Escape:
+                self.cancel_tool()
+                return
+            if e.key() == Qt.Key_Backspace and self._pen_pts:
+                self._pen_pts.pop()
+                if self._pen_item is not None:
+                    self._pen_item.setPath(self._pen_path())
+                return
+        if e.key() == Qt.Key_Escape and self.tool != "select":
+            self.cancel_tool()
+            return
+        super().keyPressEvent(e)
+
+    def leaveEvent(self, e):
+        if self._brush_item is not None and self._brush_item.scene() is self.scene():
+            self._brush_item.setRect(QRectF(0, 0, 0, 0))
+        super().leaveEvent(e)
+
     def set_draw_mode(self, on: bool):
         self.draw_mode = on and self.editable and not self.ghost
         self.viewport().setCursor(Qt.CrossCursor if self.draw_mode else Qt.ArrowCursor)
@@ -364,6 +582,8 @@ class PageCanvas(QGraphicsView):
 
     def mousePressEvent(self, e):
         pos = e.position().toPoint()
+        if e.button() != Qt.MiddleButton and self._tool_press(e):
+            return
         if self.draw_mode and e.button() == Qt.LeftButton and self.pix_item:
             self._draw_start = self.mapToScene(pos)
             pen = QPen(QColor("#06d6a0"), 2, Qt.DashLine)
@@ -380,6 +600,8 @@ class PageCanvas(QGraphicsView):
 
     def mouseMoveEvent(self, e):
         pos = e.position().toPoint()
+        if self._pan is None and self._tool_move(e):
+            return
         if self._draw_rect is not None:
             self._draw_rect.setRect(QRectF(self._draw_start, self.mapToScene(pos)).normalized())
             return
@@ -391,10 +613,12 @@ class PageCanvas(QGraphicsView):
             self.verticalScrollBar().setValue(self._pan["v"] - d.y())
             return
         super().mouseMoveEvent(e)
-        if self._item_at(pos) is None and not self.draw_mode:
+        if self._item_at(pos) is None and not self.draw_mode and self.tool == "select":
             self.viewport().setCursor(Qt.ArrowCursor)
 
     def mouseReleaseEvent(self, e):
+        if self._pan is None and e.button() != Qt.MiddleButton and self._tool_release(e):
+            return
         if self._draw_rect is not None:
             r = self._draw_rect.rect().intersected(self.scene().sceneRect())
             self.scene().removeItem(self._draw_rect)

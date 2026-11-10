@@ -18,6 +18,12 @@ SHORTCUTS = [
     ("redo", "Edit", "Redo", "Ctrl+Y", False),
     ("redo_alt", "Edit", "Redo (alternatif)", "Ctrl+Shift+Z", False),
     ("box", "Edit", "Tambah kotak teks manual", "B", True),
+    ("tool_select", "Alat", "Alat pilih / geser kotak", "V", True),
+    ("tool_pen", "Alat", "Pen tool (klik titik-titik, klik titik awal / Enter = selesai)", "P", True),
+    ("tool_shape", "Alat", "Shape tool (kotak / oval; tekan lagi = ganti bentuk)", "A", True),
+    ("tool_heal", "Alat", "Healing brush (sapukan untuk menghapus, AI membuat ulang latar)", "J", True),
+    ("brush_up", "Alat", "Perbesar kuas", "]", True),
+    ("brush_down", "Alat", "Perkecil kuas", "[", True),
     ("delete", "Edit", "Hapus balon terpilih", "Delete", True),
 
     ("preset1", "Preset teks", "Terapkan Preset 1", "1", True),

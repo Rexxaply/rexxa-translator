@@ -66,6 +66,7 @@ class Page:
     status: str = "baru"              # baru | dideteksi | di-OCR | diterjemah | selesai
     cleaned_path: str = ""            # cache hasil bersih
     output_path: str = ""             # hasil akhir
+    edits: list = field(default_factory=list)   # suntingan manual (healing, hapus area, isi warna)
 
     @property
     def name(self):
@@ -77,6 +78,7 @@ class Page:
             "status": self.status,
             "cleaned_path": self.cleaned_path,
             "output_path": self.output_path,
+            "edits": self.edits,
             "blocks": [b.to_dict() for b in self.blocks],
         }
 
@@ -87,6 +89,7 @@ class Page:
             status=d.get("status", "baru"),
             cleaned_path=d.get("cleaned_path", ""),
             output_path=d.get("output_path", ""),
+            edits=d.get("edits", []) or [],
             blocks=[TextBlock.from_dict(b) for b in d.get("blocks", [])],
         )
 

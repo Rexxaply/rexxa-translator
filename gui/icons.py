@@ -48,6 +48,11 @@ ICONS = {
     "eyedrop": '<path d="M14 4l6 6M17 7l-9.5 9.5L5 19l-1 1M7.5 16.5L6 18"/><path d="M12.5 6.5l5 5"/>',
     "wand": '<path d="M4 20L15 9"/><path d="M15 4v3M13.5 5.5h3M19 9v2M18 10h2M11 3v1.5M10.25 3.75h1.5"/>',
     "gradient": '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 20L20 4M4 14l10-10M10 20l10-10"/>',
+    "cursor": '<path d="M5 3l14 8-6 1.5L10 19z"/>',
+    "pen": '<path d="M12 3l7 7-4 4-3 7-3-3-3 1 1-3-3-3 7-3z"/><circle cx="12" cy="12" r="1.5"/>',
+    "shape": '<rect x="3" y="3" width="11" height="11" rx="1"/><circle cx="15.5" cy="15.5" r="5.5"/>',
+    "heal": '<rect x="2.5" y="8.5" width="19" height="7" rx="3.5" transform="rotate(-45 12 12)"/>'
+            '<path d="M10.5 10.5l3 3M13.5 10.5l-3 3"/>',
     "close": '<path d="M7 7l10 10M17 7L7 17"/>',
     "al_left": '<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>',
     "al_center": '<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>',

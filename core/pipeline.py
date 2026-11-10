@@ -352,6 +352,14 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
         base = detector.load_image(page.cleaned_path)
         if getattr(page, "_clean_sigs", None) is None:     # proyek baru dibuka: hasil bersih tersimpan = sah
             page._clean_sigs = {b.id: _clean_sig(b) for b in page.blocks}
+    if page.edits:      # suntingan manual (healing brush, hapus area, isi warna) di atas hasil bersih
+        from . import edits as ED
+        try:
+            mt = Path(page.cleaned_path).stat().st_mtime if page.cleaned_path else 0
+        except OSError:
+            mt = 0
+        base = ED.apply_all(page, base, detector.load_image(page.path), settings["clean_method"],
+                            base_key=f"{page.cleaned_path}:{mt}")
     sync_default_style(settings)
     final = typeset.render_page(base, page.blocks, project.target_lang, settings.get("font", ""),
                                 settings.get("uppercase", True), int(settings.get("max_font_size", 48)),

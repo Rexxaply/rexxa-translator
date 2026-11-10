@@ -222,14 +222,31 @@ class MainWindow(QMainWindow):
 
         self.b_box = tool_btn("box", "Tambah kotak teks manual (B)", self.toggle_draw, checkable=True)
         tb.addWidget(self.b_box)
+        # alat sunting gambar
+        self.tool_btns = {}
+        for tid, ico, tip in (("select", "cursor", "Pilih / geser kotak (V)"),
+                              ("pen", "pen", "Pen tool (P): klik titik-titik mengelilingi area, klik titik awal / "
+                                             "klik kanan / Enter = selesai. Lalu pilih: hapus dengan AI, isi warna, dll."),
+                              ("shape", "shape", "Shape tool (A): seret kotak / oval (Shift = persegi). "
+                                                 "Tekan A lagi untuk ganti kotak ↔ oval"),
+                              ("heal", "heal", "Healing brush (J): sapukan di atas noda / sisa teks / objek, "
+                                               "AI (LaMa) membuat ulang latarnya. [ dan ] = ukuran kuas")):
+            b = tool_btn(ico, tip, checkable=True)
+            b.clicked.connect(lambda _=False, t=tid: self.set_tool(t))
+            self.tool_btns[tid] = b
+            tb.addWidget(b)
+        self.tool_btns["select"].setChecked(True)
+        self.brush_field = NumField(2, 200, 1, 0, default=14)
+        self.brush_field.setToolTip("Ukuran kuas healing brush (px)  ·  [ dan ]")
+        self.brush_field.setFixedWidth(44)
+        self.brush_field.valueChanged.connect(lambda v: [cv.set_brush(int(v)) for cv in (self.cv_src, self.cv_out)])
+        tb.addWidget(self.brush_field)
         tb.addWidget(vline())
 
         self.src = QComboBox()
         self.src.setToolTip("Bahasa asli")
         for l in SRC_LANGS:
             self.src.addItem(f"{SHORT.get(l, l)}  {LANG_NAMES.get(l, l)}", l)
-        pipeline.mark_clean_valid(self.project)
-        self._warm_up_ai()
         self.src.setCurrentIndex(max(0, self.src.findData(self.project.source_lang)))
         self.src.currentIndexChanged.connect(self._on_lang)
         self.tgt = QComboBox()
@@ -349,6 +366,9 @@ class MainWindow(QMainWindow):
             cv.block_geometry_changed.connect(self._on_geom_changed)
             cv.block_double_clicked.connect(self._focus_translation)
         self.cv_src.box_drawn.connect(self._add_box)
+        for cv in (self.cv_src, self.cv_out):
+            cv.heal_stroke.connect(self._on_heal)
+            cv.region_done.connect(self._on_region)
         # sinkron zoom & geser
         self.cv_src.zoom_changed.connect(lambda s: self._sync_zoom(self.cv_src, self.cv_out, s))
         self.cv_out.zoom_changed.connect(lambda s: self._sync_zoom(self.cv_out, self.cv_src, s))
@@ -734,6 +754,12 @@ class MainWindow(QMainWindow):
             "redo": self.redo,
             "redo_alt": self.redo,
             "box": lambda: (self.b_box.toggle(), self.toggle_draw()),
+            "tool_select": lambda: self.set_tool("select"),
+            "tool_pen": lambda: self.set_tool("pen"),
+            "tool_shape": self._shape_key,
+            "tool_heal": lambda: self.set_tool("heal"),
+            "brush_up": lambda: self._brush_step(1.25),
+            "brush_down": lambda: self._brush_step(0.8),
             "delete": self.delete_selected,
             "next_page": lambda: self._step_page(1),
             "prev_page": lambda: self._step_page(-1),
@@ -900,6 +926,8 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, APP_NAME, f"Gagal membuka proyek:\n{e}")
             return
+        pipeline.mark_clean_valid(self.project)    # hasil bersih tersimpan langsung dipakai
+        self._warm_up_ai()
         self.src.setCurrentIndex(max(0, self.src.findData(self.project.source_lang)))
         self.tgt.setCurrentIndex(max(0, self.tgt.findData(self.project.target_lang)))
         self.cur = -1
@@ -1434,8 +1462,116 @@ class MainWindow(QMainWindow):
         self.log("Kotak baru ditambahkan — membaca teksnya…")
         self._block_job("ocr")
 
+    # ================================================================== alat sunting gambar
+    def set_tool(self, tool):
+        self.tool = tool
+        for t, b in self.tool_btns.items():
+            b.setChecked(t == tool)
+        if tool != "select" and self.b_box.isChecked():
+            self.b_box.setChecked(False)
+            self.cv_src.set_draw_mode(False)
+        for cv in (self.cv_src, self.cv_out):
+            cv.set_tool(tool)
+            cv.set_brush(int(self.brush_field.value()))
+        hints = {"select": "Pilih / geser kotak teks.",
+                 "pen": "Pen: klik titik-titik di sekeliling area. Klik titik awal / klik kanan / Enter = selesai, "
+                        "Backspace = hapus titik terakhir, Esc = batal.",
+                 "shape": f"Shape ({'oval' if self.cv_src.shape_kind == 'ellipse' else 'kotak'}): seret di gambar. "
+                          "Shift = persegi/lingkaran. Tekan A lagi untuk ganti bentuk.",
+                 "heal": "Healing brush: sapukan di atas noda / sisa teks / objek. [ ] = ukuran kuas."}
+        self.status_lbl.setText(hints.get(tool, ""))
+
+    def _shape_key(self):
+        if getattr(self, "tool", "select") == "shape":
+            kind = "ellipse" if self.cv_src.shape_kind == "rect" else "rect"
+            for cv in (self.cv_src, self.cv_out):
+                cv.shape_kind = kind
+        self.set_tool("shape")
+
+    def _brush_step(self, f):
+        v = int(round(self.brush_field.value() * f))
+        if v == self.brush_field.value():
+            v += 1 if f > 1 else -1
+        self.brush_field.setValue(v, emit=True)
+
+    def _add_edit(self, e: dict, label: str):
+        p = self.page()
+        if not p:
+            return
+        self._snap()
+        p.edits = list(p.edits or []) + [e]
+        self.log(label)
+        self._schedule_render(now=True)
+
+    def _on_heal(self, pts, r):
+        if len(pts) and self.page():
+            self._add_edit({"op": "heal", "pts": pts, "r": int(r)}, "Healing brush: area dibuat ulang AI")
+
+    def _on_region(self, pts, screen_pos):
+        p = self.page()
+        if not p or len(pts) < 3:
+            return
+        from PySide6.QtGui import QCursor
+        m = QMenu(self)
+        a_ai = m.addAction(icon("heal"), "Hapus area dengan AI (LaMa)  — buat ulang latar")
+        a_white = m.addAction("Isi putih")
+        a_col = m.addAction("Isi warna…")
+        a_pick = m.addAction("Isi warna latar di sekitarnya")
+        a_rest = m.addAction("Kembalikan gambar asli di area ini")
+        m.addSeparator()
+        a_box = m.addAction(icon("box"), "Buat kotak teks di area ini")
+        a_shape = m.addAction("Jadikan bentuk balon yang dipilih") if self.sel else None
+        m.addSeparator()
+        m.addAction("Batal")
+        act = m.exec(screen_pos or QCursor.pos())
+        if act is None:
+            return
+        if act is a_ai:
+            self._add_edit({"op": "erase", "poly": pts}, "Area dihapus, latar dibuat ulang AI")
+        elif act is a_white:
+            self._add_edit({"op": "fill", "poly": pts, "color": "#FFFFFF"}, "Area diisi putih")
+        elif act is a_col:
+            c = QColorDialog.getColor(QColor("#FFFFFF"), self)
+            if c.isValid():
+                self._add_edit({"op": "fill", "poly": pts, "color": c.name()}, f"Area diisi {c.name()}")
+        elif act is a_pick:
+            self._add_edit({"op": "fill", "poly": pts, "color": self._ring_color(pts)}, "Area diisi warna latar")
+        elif act is a_rest:
+            self._add_edit({"op": "restore", "poly": pts}, "Gambar asli dikembalikan di area")
+        elif act is a_box:
+            xs, ys = [q[0] for q in pts], [q[1] for q in pts]
+            self._add_box(QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)))
+        elif a_shape is not None and act is a_shape and self.sel:
+            self._snap()
+            b = self.sel
+            xs, ys = [q[0] for q in pts], [q[1] for q in pts]
+            b.x, b.y, b.w, b.h = min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)
+            b.kind = "bubble"
+            b.mask_poly = [list(q) for q in pts]
+            self.need_clean.add(p.path)
+            self._show_current()
+            self._schedule_render(now=True)
+
+    def _ring_color(self, pts) -> str:
+        import numpy as np
+        import cv2
+        from core import detector
+        p = self.page()
+        img = detector.load_image(p.cleaned_path if p.cleaned_path and Path(p.cleaned_path).exists() else p.path)
+        m = np.zeros(img.shape[:2], np.uint8)
+        cv2.fillPoly(m, [np.array(pts, np.int32)], 255)
+        ring = cv2.dilate(m, np.ones((9, 9), np.uint8)) & ~m
+        vals = img[ring > 0]
+        if not len(vals):
+            return "#FFFFFF"
+        b, g, r = np.median(vals, axis=0).astype(int)
+        return f"#{r:02X}{g:02X}{b:02X}"
+
     def toggle_draw(self):
         on = self.b_box.isChecked()
+        if on and getattr(self, "tool", "select") != "select":
+            self.set_tool("select")
+            self.b_box.setChecked(True)
         self.cv_src.set_draw_mode(on)
         if on:
             self.status_lbl.setText("Seret di gambar ASLI untuk membuat kotak teks baru.")
@@ -1458,7 +1594,10 @@ class MainWindow(QMainWindow):
 
     def _state(self, page=None):
         page = page or self.page()
-        return [b.to_dict() for b in page.blocks] if page else None
+        if not page:
+            return None
+        import copy
+        return {"blocks": [b.to_dict() for b in page.blocks], "edits": copy.deepcopy(page.edits or [])}
 
     def _push_undo(self, state, page=None):
         page = page or self.page()
@@ -1488,7 +1627,11 @@ class MainWindow(QMainWindow):
     def _restore(self, state):
         p = self.page()
         sel_id = self.sel.id if self.sel else None
-        p.blocks = [TextBlock.from_dict(d) for d in state]
+        if isinstance(state, dict):
+            p.blocks = [TextBlock.from_dict(d) for d in state.get("blocks", [])]
+            p.edits = list(state.get("edits", []))
+        else:
+            p.blocks = [TextBlock.from_dict(d) for d in state]
         self.sel = next((b for b in p.blocks if b.id == sel_id), None)
         self.need_clean.add(p.path)
         self._snap_key = None
@@ -1520,8 +1663,11 @@ class MainWindow(QMainWindow):
         self.status_lbl.setText("Redo")
 
     # ================================================================== render otomatis
-    def _schedule_render(self):
+    def _schedule_render(self, now: bool = False):
         p = self.page()
+        if now and p:                 # suntingan gambar: tampilkan hasilnya segera
+            self._auto_render()
+            return
         # hanya kalau halaman ini sudah pernah dirender (ada gambar bersih)
         if p and p.cleaned_path and Path(p.cleaned_path).exists():
             self.render_timer.start()

@@ -3,6 +3,15 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.17.0
+- **Alat sunting gambar** di toolbar (bisa dipakai di gambar Asli maupun Hasil):
+  - **Pen tool (P)**: klik titik-titik mengelilingi area; klik titik awal / klik kanan / Enter = selesai, Backspace = hapus titik terakhir, Esc = batal.
+  - **Shape tool (A)**: seret kotak atau oval (tekan A lagi untuk ganti bentuk, Shift = persegi/lingkaran).
+  - Setelah area dibuat, pilih: **Hapus dengan AI (LaMa)** (latar dibuat ulang), isi putih, isi warna, isi warna latar sekitar, kembalikan gambar asli, buat kotak teks, atau jadikan bentuk balon terpilih.
+  - **Healing brush (J)**: sapukan di atas noda / sisa teks / objek, AI LaMa membuat ulang latarnya. Ukuran kuas di toolbar atau tombol **[ ]**.
+  - **V** = kembali ke alat pilih. Semua suntingan tersimpan di proyek dan bisa di-undo (Ctrl+Z).
+- Perbaikan: hasil bersih proyek tersimpan kini benar-benar langsung dipakai saat proyek dibuka (perbaikan 1.16.1 belum aktif).
+
 ## 1.16.1
 - **Memperbarui hasil tetap cepat setelah membuka proyek tersimpan**: hasil bersih yang tersimpan langsung dipakai, dan saat balon digeser / diubah / ditambah / dihapus / di-undo, hanya area balon itu yang dibersihkan ulang (bukan seluruh halaman).
 - Model AI hapus teks (LaMa) dimuat di latar belakang begitu proyek / gambar dibuka, jadi proses pertama tidak lagi menunggu model dimuat.
@@ -24,7 +33,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 
 ## 1.14.3
 - **Memperbarui hasil jauh lebih cepat**, terutama untuk strip webtoon panjang: hapus teks ±7x lebih cepat (hanya mengolah area di sekitar tiap balon, bukan seluruh halaman), menyusun teks ±2,5x lebih cepat (ukuran kata disimpan di cache), dan file sementara disimpan dengan kompresi ringan.
-
-## 1.14.2
-- Perbaikan warna: tepi huruf yang sedikit lebih gelap (efek JPEG / penajaman gambar) tidak lagi dikira **garis tepi hitam tebal**. Garis tepi hanya dipakai bila benar-benar kontras dengan isi huruf (mis. putih/hitam, kuning/merah tua).
-- Tanda baca yang tidak dimiliki font (mis. tanda pisah panjang "—", "…", tanda kutip miring) tidak lagi tampil sebagai kotak kosong; otomatis diganti versi biasanya ("-", "...", '"').
