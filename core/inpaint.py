@@ -364,6 +364,25 @@ def text_only_mask(img: np.ndarray, b: TextBlock, cands=None):
         if (x >= X0 and y >= Y0 and x + w <= X1 and y + h <= Y1 and h <= lh * 3.2
                 and -slack <= cx < bw_ + slack and -slack <= cy < bh_ + slack):
             keep[i] = True
+    # bintik raster / butiran kecil di sekitar huruf BUKAN huruf. Coretan kecil (titik "...", titik
+    # huruf i, tanda seru) ikut hanya bila menempel ke huruf besar ATAU dikelilingi putih bersih.
+    big_ids = [i for i in np.nonzero(keep)[0] if max(st[i][2], st[i][3]) >= lh * 0.45]
+    if big_ids:
+        bigm = np.isin(lbl, big_ids).astype(np.uint8)
+        dist = cv2.distanceTransform(1 - bigm, cv2.DIST_L2, 3)
+        for i in np.nonzero(keep)[0]:
+            x, y, w, h, a = st[i]
+            if max(w, h) >= lh * 0.45:
+                continue
+            if float(dist[y:y + h, x:x + w][lbl[y:y + h, x:x + w] == i].min()) <= lh * 0.35:
+                continue
+            p = 3
+            sx0, sy0 = max(0, x - p), max(0, y - p)
+            sx1, sy1 = min(pc.shape[1], x + w + p), min(pc.shape[0], y + h + p)
+            win = pc[sy0:sy1, sx0:sx1]
+            ring = lbl[sy0:sy1, sx0:sx1] != i
+            if not ring.any() or float(np.median(win[ring])) < 232:
+                keep[i] = False
     # huruf dikelilingi latar terang di semua sisi; garis balon / gambar punya sisi luar yang gelap
     if bg_light:
         k3 = np.ones((3, 3), np.uint8)
@@ -634,7 +653,18 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", b
             if rest.any():
                 ai_mask[ry0:ry1, rx0:rx1] |= rest.astype(np.uint8) * 255
         else:
-            ai_mask[ry0:ry1, rx0:rx1] |= stm | _halo(sub, stm, _lh)   # latar bergambar: generate ulang (AI)
+            halo = _halo(sub, stm, _lh)
+            hs, ts = int((halo > 0).sum()), int((stm > 0).sum())
+            if not getattr(b, "sfx", False) and ts and hs > 0.8 * ts:
+                # teks gelap di atas "pulau" putih (kotak cahaya di atas raster, mis. "Just between
+                # us..."): putihnya bagian dari desain -> isi bekas huruf dengan putih itu, bukan AI
+                pick = sub[(halo > 0) & (stm == 0)]
+                if len(pick):
+                    col = np.median(pick, axis=0).astype(np.uint8)
+                    fillm = cv2.dilate(stm, np.ones((3, 3), np.uint8)) > 0
+                    out[ry0:ry1, rx0:rx1][fillm] = col
+                    continue
+            ai_mask[ry0:ry1, rx0:rx1] |= stm | halo   # latar bergambar: generate ulang (AI)
 
     wants_lama = use_lama and method in ("lama", "auto")
     if ai_mask.any():
