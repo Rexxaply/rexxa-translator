@@ -248,6 +248,7 @@ class MainWindow(QMainWindow):
         self.brush_field = NumField(2, 200, 1, 0, default=14)
         self.brush_field.setToolTip("Ukuran kuas healing brush (px)  ·  [ dan ]")
         self.brush_field.setFixedWidth(44)
+        self.brush_field.setEnabled(False)          # aktif saat healing brush dipilih
         self.brush_field.valueChanged.connect(lambda v: [cv.set_brush(int(v)) for cv in (self.cv_src, self.cv_out)])
         tb.addWidget(self.brush_field)
         tb.addWidget(vline())
@@ -296,13 +297,15 @@ class MainWindow(QMainWindow):
         tb.addWidget(self.b_stop)
 
         tb.addWidget(spacer())
-        tb.addWidget(tool_btn("prev", "Halaman sebelumnya (PgUp)", lambda: self._step_page(-1)))
+        self.b_prev = tool_btn("prev", "Halaman sebelumnya (PgUp)", lambda: self._step_page(-1))
+        tb.addWidget(self.b_prev)
         self.page_lbl = QLabel("0/0")
         self.page_lbl.setObjectName("pageLbl")
         self.page_lbl.setAlignment(Qt.AlignCenter)
         self.page_lbl.setMinimumWidth(56)
         tb.addWidget(self.page_lbl)
-        tb.addWidget(tool_btn("next", "Halaman berikutnya (PgDn)", lambda: self._step_page(1)))
+        self.b_next = tool_btn("next", "Halaman berikutnya (PgDn)", lambda: self._step_page(1))
+        tb.addWidget(self.b_next)
         tb.addWidget(spacer())
 
         self.b_split = tool_btn("split", "Tampilan berdampingan Asli | Hasil", checkable=True)
@@ -323,6 +326,7 @@ class MainWindow(QMainWindow):
         b.setMenu(m_exp)
         b.setPopupMode(QToolButton.InstantPopup)
         tb.addWidget(b)
+        self.b_export = b
 
         m_set = QMenu(self)
         m_set.addAction(icon("settings"), "Pengaturan…  (Ctrl+,)", self.edit_settings)
@@ -1010,6 +1014,14 @@ class MainWindow(QMainWindow):
         p = self.page()
         h = self._hist(p) if p else {"undo": [], "redo": []}
         busy = bool(self.thread)
+        # tombol yang butuh halaman: mati (redup) bila belum ada gambar yang dibuka
+        n = len(self.project.pages)
+        for w_ in (self.b_box, *self.tool_btns.values(), self.b_split):
+            w_.setEnabled(has and not busy)
+        self.brush_field.setEnabled(has and getattr(self, "tool", "select") == "heal")
+        self.b_prev.setEnabled(has and self.cur > 0)
+        self.b_next.setEnabled(has and 0 <= self.cur < n - 1)
+        self.b_export.setEnabled(any(pg.output_path for pg in self.project.pages) and not busy)
         self.b_undo.setEnabled(bool(h["undo"]) and not busy)
         self.b_redo.setEnabled(bool(h["redo"]) and not busy)
         self.b_undo.setToolTip(f"Undo (Ctrl+Z) · {len(h['undo'])} dari maks. {UNDO_LIMIT} langkah")
@@ -1529,6 +1541,7 @@ class MainWindow(QMainWindow):
         for cv in (self.cv_src, self.cv_out):
             cv.set_tool(tool)
             cv.set_brush(int(self.brush_field.value()))
+        self.brush_field.setEnabled(tool == "heal")
         hints = {"select": "Pilih / geser kotak teks.",
                  "pen": "Pen: klik titik-titik di sekeliling area. Klik titik awal / klik kanan / Enter = selesai, "
                         "Backspace = hapus titik terakhir, Esc = batal.",
@@ -2000,6 +2013,8 @@ QToolButton { background: transparent; border: 1px solid transparent; border-rad
 QToolButton:hover { background: #2a2c34; border-color: #33363f; }
 QToolButton:checked { background: #33363f; border-color: #ff4d6d; }
 QToolButton::menu-indicator { image: none; }
+QToolButton:disabled { background: transparent; border-color: transparent; color: #3e4049; }
+QLineEdit#numField:disabled { color: #3e4049; }
 QToolButton#primary { background: #ff4d6d; color: white; font-weight: 600; padding: 6px 12px; border: none; }
 QToolButton#primary:hover { background: #ff6680; }
 QToolButton#primary:disabled { background: #5a3640; color: #b9a3a9; }

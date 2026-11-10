@@ -71,16 +71,35 @@ def svg(name: str, color: str = "#d6d8de") -> str:
     return _S.format(c=color, body=ICONS[name])
 
 
-@lru_cache(maxsize=None)
-def icon(name: str, color: str = "#d6d8de", size: int = 40):
-    """QIcon dari SVG (butuh QtSvg — sudah termasuk di PySide6)."""
+DISABLED = "#3e4049"      # warna ikon saat tombol nonaktif (redup, hampir menyatu dengan latar)
+
+
+def _render(name: str, color: str, size: int, dim: bool = False):
     from PySide6.QtCore import QByteArray, Qt
-    from PySide6.QtGui import QIcon, QPainter, QPixmap
+    from PySide6.QtGui import QPainter, QPixmap
     from PySide6.QtSvg import QSvgRenderer
-    r = QSvgRenderer(QByteArray(svg(name, color).encode()))
+    src = svg(name, color)
+    if dim:   # semua warna (termasuk titik merah) jadi redup
+        import re
+        src = re.sub(r'(stroke|fill)="#[0-9A-Fa-f]{3,8}"', lambda m: f'{m.group(1)}="{DISABLED}"', src)
+    r = QSvgRenderer(QByteArray(src.encode()))
     pm = QPixmap(size, size)
     pm.fill(Qt.transparent)
     p = QPainter(pm)
     r.render(p)
     p.end()
-    return QIcon(pm)
+    return pm
+
+
+@lru_cache(maxsize=None)
+def icon(name: str, color: str = "#d6d8de", size: int = 40):
+    """QIcon dari SVG (butuh QtSvg — sudah termasuk di PySide6). Punya gambar khusus untuk keadaan
+    nonaktif (redup), jadi tombol yang tidak bisa ditekan benar-benar terlihat mati."""
+    from PySide6.QtGui import QIcon
+    ic = QIcon()
+    ic.addPixmap(_render(name, color, size), QIcon.Normal, QIcon.Off)
+    ic.addPixmap(_render(name, color, size), QIcon.Normal, QIcon.On)
+    dim = _render(name, color, size, dim=True)
+    ic.addPixmap(dim, QIcon.Disabled, QIcon.Off)
+    ic.addPixmap(dim, QIcon.Disabled, QIcon.On)
+    return ic

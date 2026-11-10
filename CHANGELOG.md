@@ -3,6 +3,9 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.18.1
+- Tombol yang tidak bisa ditekan kini benar-benar **redup** (ikonnya ikut gelap), bukan hanya tidak bisa diklik: Simpan, Undo, Redo, alat sunting, halaman sebelumnya/berikutnya, Export, dan ukuran kuas (aktif hanya saat Healing brush dipilih). Sebelum ada gambar yang dibuka, alat-alat yang butuh halaman juga redup.
+
 ## 1.18.0
 - Tombol **Simpan** kini hanya aktif bila ada perubahan yang belum disimpan (ikon baru, dengan titik merah saat ada perubahan; judul jendela diberi tanda •).
 - Menutup aplikasi dengan perubahan yang belum disimpan memunculkan pertanyaan **Simpan / Jangan simpan / Batal**. Nama default proyek baru: **unfiledfiles.mtproj**. Hal yang sama juga ditanyakan sebelum aplikasi dibuka ulang untuk update.
@@ -29,9 +32,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
   - **Kehalusan**: dari batas tegas sampai peralihan halus penuh.
   - **Ulangi tiap baris** atau satu gradasi untuk seluruh teks; tukar warna; reset; hapus gradasi.
   - Perubahan langsung terlihat di hasil, bisa di-undo.
-
-## 1.15.0
-- **Export PDF semua halaman** (menu Export → Export PDF):
-  - **Otomatis**: aplikasi mengenali sendiri manga (halaman pendek) atau manhwa/manhua (strip panjang).
-  - **Manga**: 1 gambar = 1 halaman PDF, ukuran sesuai gambar.
-  - **Manhwa / Manhua**: semua halaman disambung jadi satu strip panjang (lebar disamakan), lalu dibagi ke halaman PDF setinggi mungkin; potongan dicari di celah polos antar panel supaya panel tidak terbelah.
