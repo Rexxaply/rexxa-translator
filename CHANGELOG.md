@@ -3,6 +3,11 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.14.0
+- **Google Fonts sebagai cadangan pencocokan font**: bila font di aplikasi & perangkat kurang mirip dengan teks asli (SFX, logo judul, tombol ✦), aplikasi mencoba font dari Google Fonts (komik, kuas, tebal, display), memilih yang paling mirip, lalu memasangnya otomatis. Font yang sudah diunduh disimpan & dipakai ulang. Tanpa API key; bila offline, cukup dilewati.
+- Pengaturan → Font: tombol **Google Fonts…** untuk mencari & memasang font gratis (kategori komik/kuas, tebal, display, tulisan tangan, atau cari nama).
+- Pengaturan → Proses: opsi menyalakan/mematikan pencarian Google Fonts.
+
 ## 1.13.0
 - **Deteksi warna teks lebih pintar**: warna isi huruf, **garis tepi** (warna + tebal), dan **gradasi** atas→bawah dibaca langsung dari teks asli, lalu dipakai untuk terjemahan. Bekerja untuk huruf merah/emas bergradasi (manhwa), huruf putih bergaris tepi hitam, huruf berwarna bergaris tepi putih, dll. Huruf hitam yang buram tetap dianggap hitam.
 - Warna dibaca juga saat **OCR** (termasuk kotak yang dibuat manual dan tombol "OCR ulang").
@@ -24,8 +29,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - **Cocokkan font otomatis** untuk SFX: dipilih font yang bentuk hurufnya paling mirip (tebal goresan, kekasaran, miring, lebar). Dicari di font aplikasi dulu, lalu font perangkat (Windows\\Fonts); bila tidak ada yang sama, dipilih yang paling mirip. Tombol ✦ di sebelah pilihan font = cocokkan font untuk balon mana pun.
 - SFX Jepang yang tidak terbaca sebagai kata (saat sumber Inggris) dibiarkan apa adanya.
 - Pengaturan → Proses: nyalakan/matikan pencocokan font & pemakaian font perangkat.
-
-## 1.10.0
-- **Webtoon / strip panjang (manhwa & manhua)**: gambar yang jauh lebih tinggi dari lebarnya (.webp/.jpg/.png) kini terdeteksi dengan benar. Ukuran huruf diukur dari lebar strip, bukan tingginya (sebelumnya teks di strip panjang sama sekali tidak terdeteksi).
-- Gambar beresolusi rendah (lebar < 700 px) otomatis diperbesar 2x saat deteksi, jadi teks kecil tetap tertangkap.
-- Strip panjang ditampilkan **pas lebar** dan mulai dari atas; tampilan Asli & Hasil tetap bergulir bersamaan.

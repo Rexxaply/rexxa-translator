@@ -1096,7 +1096,9 @@ class MainWindow(QMainWindow):
         try:
             img = detector.load_image(p.path)
             res = fontmatch.best_font(img, rect, b.src_h or int(b.h * 0.3), top=3,
-                                      include_system=bool(self.settings.get("font_match_system", True)))
+                                      include_system=bool(self.settings.get("font_match_system", True)),
+                                      online=bool(self.settings.get("font_match_online", True)),
+                                      log=self.log)
         except Exception as e:
             res = []
             self.log(f"Cocokkan font gagal: {e}")

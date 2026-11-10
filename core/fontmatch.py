@@ -216,6 +216,14 @@ def candidates(include_system: bool = True) -> list[tuple[str, float]]:
             if p not in seen and _usable(p):
                 seen.add(p)
                 out.append((p, 0.15))
+    try:   # font Google Fonts yang sudah pernah diunduh
+        from .gfonts import downloaded
+        for p in downloaded():
+            if p not in seen:
+                seen.add(p)
+                out.append((p, 0.1))
+    except Exception:
+        pass
     return out
 
 
@@ -228,25 +236,59 @@ def _weight_bias(path: str) -> float:
     return 0.0
 
 
+GOOD_ENOUGH = 3.0      # skor di bawah ini = font lokal sudah cukup mirip, Google Fonts tidak dicari
+
+
 def best_font(img: np.ndarray, rect, src_h: int, include_system: bool = True, top: int = 1,
-              heavy: bool = False):
-    """heavy=True: utamakan font tebal (logo judul selalu memakai huruf tebal)."""
-    """Font paling mirip untuk teks di rect. Mengembalikan path (atau list (path, skor) bila top>1)."""
+              heavy: bool = False, online: bool = False, log=None):
+    """Font paling mirip untuk teks di rect. Mengembalikan path (atau list (path, skor) bila top>1).
+    heavy=True : utamakan font tebal (logo judul).
+    online=True: bila font lokal kurang mirip, cari cadangan di Google Fonts (diunduh & disimpan)."""
     src = source_features(img, rect, src_h)
     if src is None:
         return None if top == 1 else []
     if not _cache:
         _load_disk_cache()
     n0 = len(_cache)
-    scored = []
-    for path, pen in candidates(include_system):
+
+    def score(path, pen):
         f = font_features(path)
-        if f:
-            scored.append((distance(src, f) + pen + _style_bias(path, src)
-                           + (_weight_bias(path) if heavy else 0.0), path))
+        if not f:
+            return None
+        return (distance(src, f) + pen + _style_bias(path, src)
+                + (_weight_bias(path) if heavy else 0.0), path)
+
+    scored = [r for r in (score(p, pen) for p, pen in candidates(include_system)) if r]
+    scored.sort()
+    if online and (not scored or scored[0][0] > GOOD_ENOUGH):
+        try:
+            from . import gfonts
+            have = {p for _s, p in scored}
+            for fam, wt, weights in gfonts.candidates(src):
+                p = gfonts.download(fam, wt, weights)
+                if p and p not in have:
+                    have.add(p)
+                    r = score(p, 0.1)
+                    if r:
+                        scored.append(r)
+                        if log:
+                            log(f"Google Fonts: {fam} ({r[0]:.1f})")
+            scored.sort()
+        except Exception as e:
+            if log:
+                log(f"Google Fonts tidak dapat dihubungi: {e}")
     if len(_cache) != n0:
         _save_disk_cache()
-    scored.sort()
     if top == 1:
-        return scored[0][1] if scored else None
+        if not scored:
+            return None
+        best = scored[0][1]
+        try:   # font Google yang terpilih langsung dipasang -> muncul di daftar font aplikasi
+            from .gfonts import cache_dir
+            if Path(best).parent == cache_dir():
+                from .typeset import install_font
+                best = install_font(best)
+        except Exception:
+            pass
+        return best
     return [(p, s) for s, p in scored[:top]]

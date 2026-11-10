@@ -27,10 +27,11 @@ DEFAULT_SETTINGS = {
     "max_font_size": 64,
     "text_presets": None,           # 5 preset teks; None = DEFAULT_PRESETS
     "default_font_size": 0,         # 0 = Auto-Fit (menyesuaikan balon)
-    "line_spacing": 1.2,
-    "sfx_font_match": True,
-    "auto_title": True,             # ganti logo judul otomatis bila judul seri diisi         # teks spesial: cocokkan font otomatis
-    "font_match_system": True,      # boleh memakai font perangkat (Windows/Fonts)            # jarak baris default (1.0 = rapat; manga umumnya 1.15–1.25)
+    "line_spacing": 1.2,            # jarak baris default (1.0 = rapat; manga umumnya 1.15–1.25)
+    "sfx_font_match": True,         # teks spesial: cocokkan font otomatis
+    "auto_title": True,             # ganti logo judul otomatis bila judul seri diisi
+    "font_match_system": True,      # boleh memakai font perangkat (Windows/Fonts)
+    "font_match_online": True,      # cadangan: cari di Google Fonts bila font lokal kurang mirip
     "export_naming": "original",    # original | doc | num  (lihat EXPORT_NAMING)
     "shortcuts": {},                # pintasan keyboard yang diubah pengguna {id: "Ctrl+X"}
     "uppercase": True,              # gaya scanlation: HURUF KAPITAL
@@ -192,7 +193,8 @@ def add_title_block(img, page: Page, project: Project, settings: dict, strict: b
     try:
         from . import fontmatch
         f = fontmatch.best_font(img, rect, int(h * 0.15), heavy=True,
-                                include_system=bool(settings.get("font_match_system", True)))
+                                include_system=bool(settings.get("font_match_system", True)),
+                                online=bool(settings.get("font_match_online", True)))
         if f:
             b.font = f
     except Exception:
@@ -209,7 +211,8 @@ def match_sfx_fonts(img, blocks, settings):
         if getattr(b, "sfx", False) and b.text_rect and not b.font:
             try:
                 f = fontmatch.best_font(img, b.text_rect, b.src_h,
-                                        include_system=bool(settings.get("font_match_system", True)))
+                                        include_system=bool(settings.get("font_match_system", True)),
+                                        online=bool(settings.get("font_match_online", True)))
             except Exception:
                 f = None
             if f:

@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
                                QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout, QHeaderView, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QSpinBox,
                                QTableWidget, QTableWidgetItem, QTabWidget, QTextEdit, QVBoxLayout, QWidget)
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QDesktopServices, QFont, QFontDatabase
 
 from core import paths, pipeline, translator, typeset, version
@@ -33,6 +33,100 @@ def _combo(items, value):
 
 
 SAMPLE = "KIRA-KIRA KAYAK GINI DEH!"
+
+
+class GoogleFontsDialog(QDialog):
+    """Cari font di Google Fonts lalu pasang (diunduh ke folder font pribadi)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        from core import gfonts
+        self.gf = gfonts
+        self.installed = []
+        self.setWindowTitle("Google Fonts")
+        self.resize(460, 520)
+        v = QVBoxLayout(self)
+        self.q = QLineEdit()
+        self.q.setPlaceholderText("Cari nama font (mis. Bangers, Anton) atau kategori: display, handwriting…")
+        v.addWidget(self.q)
+        self.cats = QHBoxLayout()
+        for label, key in (("Komik / kuas", "_brush"), ("Tebal", "_bold"), ("Display", "display"),
+                           ("Tulisan tangan", "handwriting"), ("Semua", "")):
+            b = QPushButton(label)
+            b.clicked.connect(lambda _=False, k=key: self._fill(k))
+            self.cats.addWidget(b)
+        v.addLayout(self.cats)
+        self.lst = QListWidget()
+        self.lst.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        v.addWidget(self.lst, 1)
+        self.info = QLabel("Memuat katalog…")
+        self.info.setStyleSheet("color:#8a8e9a;")
+        v.addWidget(self.info)
+        row = QHBoxLayout()
+        self.b_inst = QPushButton("Pasang yang dipilih")
+        self.b_inst.setStyleSheet("QPushButton { background:#ff4d6d; color:white; font-weight:600; border:none; }")
+        self.b_inst.clicked.connect(self._install)
+        close = QPushButton("Tutup")
+        close.clicked.connect(self.accept)
+        row.addStretch()
+        row.addWidget(self.b_inst)
+        row.addWidget(close)
+        v.addLayout(row)
+        self.q.textChanged.connect(lambda t: self._fill(t))
+        QTimer.singleShot(50, lambda: self._fill("_brush"))
+
+    def _fill(self, q):
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            if q == "_brush":
+                items = [{"family": n, "category": "Komik / kuas"} for n in self.gf.BRUSH + self.gf.COMIC]
+            elif q == "_bold":
+                items = [{"family": n, "category": "Tebal"} for n in self.gf.SANS_BOLD]
+            else:
+                items = self.gf.search(q, 120)
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.lst.clear()
+        seen = set()
+        for c in items:
+            if c["family"] in seen:
+                continue
+            seen.add(c["family"])
+            it = QListWidgetItem(f"{c['family']}    ·  {c.get('category', '')}")
+            it.setData(Qt.UserRole, c["family"])
+            self.lst.addItem(it)
+        self.info.setText(f"{self.lst.count()} font. Pilih satu atau beberapa, lalu Pasang.")
+
+    def _install(self):
+        fams = [it.data(Qt.UserRole) for it in self.lst.selectedItems()]
+        if not fams:
+            return
+        cat = {c["family"]: c for c in self.gf.catalog()}
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        ok, bad = [], []
+        try:
+            for fam in fams:
+                self.info.setText(f"Mengunduh {fam}…")
+                QApplication.processEvents()
+                weights = (cat.get(fam) or {}).get("weights") or [400, 700]
+                paths_ = []
+                for w in sorted({_n for _n in (400, 700, 900) if _n in weights} or {weights[0]}):
+                    pth = self.gf.download(fam, w, weights)
+                    if pth:
+                        paths_.append(pth)
+                if not paths_:
+                    bad.append(fam)
+                    continue
+                for pth in paths_:
+                    try:
+                        self.installed.append(typeset.install_font(pth))
+                    except Exception:
+                        pass
+                ok.append(fam)
+        finally:
+            QApplication.restoreOverrideCursor()
+        msg = (f"Terpasang: {', '.join(ok)}." if ok else "") + (f"  Gagal (cek internet): {', '.join(bad)}." if bad else "")
+        self.info.setText(msg.strip())
 
 
 class FontPanel(QWidget):
@@ -69,9 +163,12 @@ class FontPanel(QWidget):
         self.b_def.clicked.connect(self._make_default)
         self.b_del = QPushButton("Hapus")
         self.b_del.clicked.connect(self._remove)
+        b_gf = QPushButton("Google Fonts…")
+        b_gf.setToolTip("Cari & pasang font gratis dari Google Fonts (perlu internet)")
+        b_gf.clicked.connect(self._google_fonts)
         b_dir = QPushButton("Buka folder")
         b_dir.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(typeset.fonts_dir()))))
-        for b in (b_add, self.b_def, self.b_del):
+        for b in (b_add, b_gf, self.b_def, self.b_del):
             row.addWidget(b)
         row.addStretch()
         row.addWidget(b_dir)
@@ -82,6 +179,11 @@ class FontPanel(QWidget):
 
         self.list.itemSelectionChanged.connect(self._update_buttons)
         self._reload()
+
+    def _google_fonts(self):
+        d = GoogleFontsDialog(self)
+        if d.exec() and d.installed:
+            self._reload(select=d.installed)
 
     # ------------------------------------------------------------ data
     def default_font(self) -> str:
@@ -225,6 +327,8 @@ class SettingsDialog(QDialog):
         self.sfxmatch.setChecked(bool(self.s.get("sfx_font_match", True))); f.addRow("", self.sfxmatch)
         self.sysfont = QCheckBox("Boleh memakai font perangkat (Windows\\Fonts) bila lebih mirip")
         self.sysfont.setChecked(bool(self.s.get("font_match_system", True))); f.addRow("", self.sysfont)
+        self.gfont = QCheckBox("Cadangan: cari di Google Fonts bila font di perangkat kurang mirip (perlu internet)")
+        self.gfont.setChecked(bool(self.s.get("font_match_online", True))); f.addRow("", self.gfont)
         tabs.addTab(w, "Proses")
 
         # --- Terjemahan
@@ -330,7 +434,8 @@ class SettingsDialog(QDialog):
                  llm_temperature=self.temp.value(), llm_extra_prompt=self.extra.toPlainText().strip(),
                  max_font_size=self.maxsize.value(), default_stroke=self.stroke.value(),
                  output_format=self.fmt.currentText(), output_dir=self.outdir.text().strip(),
-                 sfx_font_match=self.sfxmatch.isChecked(), font_match_system=self.sysfont.isChecked())
+                 sfx_font_match=self.sfxmatch.isChecked(), font_match_system=self.sysfont.isChecked(),
+                 font_match_online=self.gfont.isChecked())
         s.update(self.text.values())
         s.update(self.sc.values())
         pipeline.sync_default_style(s)
