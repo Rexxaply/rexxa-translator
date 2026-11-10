@@ -503,16 +503,22 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto") -
             # ulang latarnya -- jangan menempel kotak putih yang menutupi balon / gambar
             ai_mask |= _safe_contrast_mask(img, region)
             continue
-        color = _flat_background(img, tm) if method in ("auto", "fill") else None
+        # kerjakan hanya di sekitar blok (halaman webtoon bisa >10.000 px tingginya)
+        H_, W_ = img.shape[:2]
+        e = int(max(40, _lh * 3))
+        rx0, ry0 = max(0, int(b.x) - e), max(0, int(b.y) - e)
+        rx1, ry1 = min(W_, int(b.x + b.w) + e), min(H_, int(b.y + b.h) + e)
+        sub, stm = img[ry0:ry1, rx0:rx1], tm[ry0:ry1, rx0:rx1]
+        color = _flat_background(sub, stm) if method in ("auto", "fill") else None
         if color is not None:
             # sisa tepi samar (antialias / JPEG) di sekitar huruf ikut diratakan
             r2 = max(3, int(round(_lh * 0.3)))
-            band = cv2.dilate(tm, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r2 + 1,) * 2)) & ~tm
-            diff = np.abs(img.astype(np.int16) - np.asarray(color, np.int16)).max(axis=2)
+            band = cv2.dilate(stm, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r2 + 1,) * 2)) & ~stm
+            diff = np.abs(sub.astype(np.int16) - np.asarray(color, np.int16)).max(axis=2)
             halo = (band > 0) & (diff > 5) & (diff < 90)
-            out[(tm > 0) | halo] = color                             # latar polos: isi warna latar
+            out[ry0:ry1, rx0:rx1][(stm > 0) | halo] = color         # latar polos: isi warna latar
         else:
-            ai_mask |= tm | _halo(img, tm, _lh)                      # latar bergambar: generate ulang (AI)
+            ai_mask[ry0:ry1, rx0:rx1] |= stm | _halo(sub, stm, _lh)   # latar bergambar: generate ulang (AI)
 
     if ai_mask.any():
         wants_lama = use_lama and method in ("lama", "auto")

@@ -3,6 +3,9 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.14.3
+- **Memperbarui hasil jauh lebih cepat**, terutama untuk strip webtoon panjang: hapus teks ±7x lebih cepat (hanya mengolah area di sekitar tiap balon, bukan seluruh halaman), menyusun teks ±2,5x lebih cepat (ukuran kata disimpan di cache), dan file sementara disimpan dengan kompresi ringan.
+
 ## 1.14.2
 - Perbaikan warna: tepi huruf yang sedikit lebih gelap (efek JPEG / penajaman gambar) tidak lagi dikira **garis tepi hitam tebal**. Garis tepi hanya dipakai bila benar-benar kontras dengan isi huruf (mis. putih/hitam, kuning/merah tua).
 - Tanda baca yang tidak dimiliki font (mis. tanda pisah panjang "—", "…", tanda kutip miring) tidak lagi tampil sebagai kotak kosong; otomatis diganti versi biasanya ("-", "...", '"').
@@ -22,8 +25,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - Warna dibaca juga saat **OCR** (termasuk kotak yang dibuat manual dan tombol "OCR ulang").
 - Tombol baru **◉** di panel Tipografi: ambil warna dari teks asli untuk balon yang dipilih.
 - Pembersihan latar putih lebih bersih: sisa tepi samar huruf berwarna tidak lagi tertinggal.
-
-## 1.12.1
-- Logo judul di **latar terang** (mis. judul Korea bergradasi emas-biru): huruf diberi garis tepi gelap agar terbaca, tekstur warna asli tetap dipakai.
-- Pencocokan font tidak lagi memilih font simbol / tanpa huruf latin (huruf jadi kotak-kotak); logo judul mengutamakan font tebal.
-- Huruf logo bergradasi tidak lagi dianggap "kuas kasar" (efek gores hanya untuk logo yang memang kasar).

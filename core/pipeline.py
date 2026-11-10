@@ -286,7 +286,7 @@ def step_clean(page: Page, settings: dict):
     out = output_dir(page, settings) / ".cache"
     out.mkdir(exist_ok=True)
     p = out / (Path(page.path).stem + "_clean.png")
-    detector.save_image(str(p), cleaned)
+    detector.save_image(str(p), cleaned, fast=True)
     page.cleaned_path = str(p)
     return cleaned
 

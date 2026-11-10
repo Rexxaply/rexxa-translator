@@ -24,9 +24,12 @@ def load_image(path: str) -> np.ndarray:
     return img
 
 
-def save_image(path: str, img: np.ndarray):
+def save_image(path: str, img: np.ndarray, fast: bool = False):
+    """fast=True: kompresi PNG ringan (file sementara / cache) -> jauh lebih cepat disimpan."""
     ext = "." + path.rsplit(".", 1)[-1].lower()
-    ok, buf = cv2.imencode(ext if ext in (".png", ".jpg", ".jpeg", ".webp", ".bmp") else ".png", img)
+    ext = ext if ext in (".png", ".jpg", ".jpeg", ".webp", ".bmp") else ".png"
+    params = [cv2.IMWRITE_PNG_COMPRESSION, 1 if fast else 3] if ext == ".png" else []
+    ok, buf = cv2.imencode(ext, img, params)
     if not ok:
         raise IOError(f"Gagal menyimpan {path}")
     buf.tofile(path)

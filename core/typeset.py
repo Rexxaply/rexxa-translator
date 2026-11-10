@@ -190,11 +190,23 @@ def _font(path: str, size: int):
         return ImageFont.load_default(size)
 
 
+_W_CACHE: dict = {}
+
+
 def _text_w(draw, text, font, stroke=0, ls=0.0):
+    """Lebar teks (piksel). Disimpan di cache: pencarian ukuran font mengukur kata yang sama
+    ribuan kali."""
     if not text:
         return 0
-    l, t, r, b = draw.textbbox((0, 0), text, font=font, stroke_width=stroke)
-    return r - l + ls * max(0, len(text) - 1)
+    key = (getattr(font, "path", None) or id(font), getattr(font, "size", 0), text, stroke)
+    w = _W_CACHE.get(key)
+    if w is None:
+        l, t, r, b = draw.textbbox((0, 0), text, font=font, stroke_width=stroke)
+        w = r - l
+        if len(_W_CACHE) > 200_000:
+            _W_CACHE.clear()
+        _W_CACHE[key] = w
+    return w + ls * max(0, len(text) - 1)
 
 
 def wrap_text(draw, text: str, font, max_w: int, stroke: int = 0, allow_break: bool = True, ls: float = 0.0):
