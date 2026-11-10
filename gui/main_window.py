@@ -422,14 +422,34 @@ class MainWindow(QMainWindow):
         ll.setSpacing(0)
         self.pages_hdr = QLabel("HALAMAN (0)")
         self.pages_hdr.setObjectName("panelHeader")
+        self.b_add_page = QToolButton()
+        self.b_add_page.setObjectName("hdrBtn")
+        self.b_add_page.setIcon(icon("plus"))
+        self.b_add_page.setIconSize(QSize(14, 14))
+        self.b_add_page.setToolTip("Tambah gambar / halaman baru")
+        self.b_add_page.clicked.connect(lambda: self.add_pages())
+        hdr = QWidget()
+        hdr.setObjectName("pagesHdr")
+        hh = QHBoxLayout(hdr)
+        hh.setContentsMargins(0, 0, 6, 0)
+        hh.setSpacing(0)
+        hh.addWidget(self.pages_hdr, 1)
+        hh.addWidget(self.b_add_page)
         self.pages = QListWidget()
         self.pages.setIconSize(QSize(34, 48))
         self.pages.setSpacing(2)
         self.pages.currentRowChanged.connect(self.open_page)
+        # tahan & seret halaman untuk mengubah urutan; klik kanan = tambah / hapus
+        self.pages.setDragDropMode(QAbstractItemView.InternalMove)
+        self.pages.setDefaultDropAction(Qt.MoveAction)
+        self.pages.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.pages.model().rowsMoved.connect(self._on_pages_moved)
+        self.pages.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.pages.customContextMenuRequested.connect(self._pages_menu)
         self.pages_empty = QLabel("Seret folder chapter\nke sini, atau klik\nikon folder di atas.")
         self.pages_empty.setObjectName("dim")
         self.pages_empty.setAlignment(Qt.AlignCenter)
-        ll.addWidget(self.pages_hdr)
+        ll.addWidget(hdr)
         ll.addWidget(self.pages, 1)
         ll.addWidget(self.pages_empty, 1)
 
@@ -535,7 +555,7 @@ class MainWindow(QMainWindow):
         self.welcome.open_recent.connect(self._open_recent)
         self.welcome.remove_recent.connect(self._remove_recent)
         self.welcome.clear_recent.connect(self._clear_recent)
-        self.welcome.set_recent(self.settings.get("recent_projects") or [])
+        self._show_recent()
         self.center_stack = QStackedWidget()
         self.center_stack.addWidget(self.welcome)
         self.center_stack.addWidget(split)
@@ -876,7 +896,7 @@ class MainWindow(QMainWindow):
             "tool_line": lambda: self.set_tool("line"),
             "brush_up": lambda: self._brush_step(1.25),
             "brush_down": lambda: self._brush_step(0.8),
-            "delete": self.delete_selected,
+            "delete": lambda: self.delete_pages() if self.pages.hasFocus() else self.delete_selected(),
             "next_page": lambda: self._step_page(1),
             "prev_page": lambda: self._step_page(-1),
             "fit": self._fit_both,
@@ -956,6 +976,121 @@ class MainWindow(QMainWindow):
                 QTimer.singleShot(0, self._fit_both)
         if 0 <= self.cur < n:
             self.pages.setCurrentRow(self.cur)
+
+    # ------------------------------------------------------------------ kelola halaman
+    def add_pages(self, after: int | None = None):
+        """Tambah gambar baru ke proyek (di akhir, atau setelah halaman `after`)."""
+        if self.thread:
+            return
+        start = str(Path(self.project.pages[0].path).parent) if self.project.pages else ""
+        fs, _ = QFileDialog.getOpenFileNames(self, "Tambah gambar", start,
+                                             "Gambar (*.png *.jpg *.jpeg *.webp *.bmp)")
+        if not fs:
+            return
+        from core.models import Page, natural_key
+        have = {p.path for p in self.project.pages}
+        new = [Page(path=str(f)) for f in sorted(fs, key=natural_key) if str(f) not in have]
+        if not new:
+            QMessageBox.information(self, APP_NAME, "Gambar itu sudah ada di proyek.")
+            return
+        pos = len(self.project.pages) if after is None else max(0, min(len(self.project.pages), after + 1))
+        self.project.pages[pos:pos] = new
+        keep = self.page()
+        self._refresh_page_list()
+        row = pos if keep is None else self.project.pages.index(keep)
+        self.cur = -1
+        self.pages.setCurrentRow(pos if after is not None or keep is None else row)
+        self.log(f"{len(new)} gambar ditambahkan (sekarang {len(self.project.pages)} halaman).")
+
+    def _on_pages_moved(self, _parent, start, end, _dest, row):
+        """Urutan di daftar diubah dengan seret & lepas -> ikuti di proyek."""
+        pages = self.project.pages
+        cur_page = self.page()
+        n = end - start + 1
+        moving = pages[start:end + 1]
+        rest = pages[:start] + pages[end + 1:]
+        to = row - n if row > start else row
+        to = max(0, min(len(rest), to))
+        self.project.pages = rest[:to] + moving + rest[to:]
+        QTimer.singleShot(0, lambda: self._after_reorder(cur_page))
+
+    def _after_reorder(self, cur_page):
+        self.cur = self.project.pages.index(cur_page) if cur_page in self.project.pages else 0
+        self._refresh_page_list()
+        self.pages.blockSignals(True)
+        self.pages.setCurrentRow(self.cur)
+        self.pages.blockSignals(False)
+        self._update_title()
+        self.log("Urutan halaman diubah.")
+
+    def _pages_menu(self, pos):
+        it = self.pages.itemAt(pos)
+        rows = sorted({self.pages.row(i) for i in self.pages.selectedItems()})
+        if it is not None and self.pages.row(it) not in rows:
+            rows = [self.pages.row(it)]
+        m = QMenu(self)
+        if rows:
+            r0 = rows[0]
+            m.addAction(icon("image"), "Buka halaman ini", lambda: self.pages.setCurrentRow(r0)).setEnabled(
+                len(rows) == 1)
+        m.addAction(icon("plus"), "Tambah gambar di akhir…", lambda: self.add_pages())
+        if rows:
+            m.addAction(icon("plus"), "Sisipkan gambar setelah halaman ini…",
+                        lambda: self.add_pages(after=rows[-1]))
+            m.addSeparator()
+            if len(rows) == 1:
+                m.addAction(icon("prev"), "Pindah ke atas", lambda: self._move_page(rows[0], -1)).setEnabled(rows[0] > 0)
+                m.addAction(icon("next"), "Pindah ke bawah", lambda: self._move_page(rows[0], 1)).setEnabled(
+                    rows[0] < len(self.project.pages) - 1)
+                m.addSeparator()
+            label = "Hapus halaman ini" if len(rows) == 1 else f"Hapus {len(rows)} halaman terpilih"
+            m.addAction(icon("close"), label + "  (Delete)", lambda: self.delete_pages(rows))
+        m.exec(self.pages.viewport().mapToGlobal(pos))
+
+    def _move_page(self, i, d):
+        j = i + d
+        pages = self.project.pages
+        if not (0 <= i < len(pages) and 0 <= j < len(pages)):
+            return
+        cur_page = self.page()
+        pages[i], pages[j] = pages[j], pages[i]
+        self._after_reorder(cur_page)
+
+    def delete_pages(self, rows=None):
+        """Hapus halaman dari proyek (file gambarnya tidak dihapus dari komputer)."""
+        if self.thread:
+            return
+        if rows is None:
+            rows = sorted({self.pages.row(i) for i in self.pages.selectedItems()}) or \
+                ([self.cur] if self.cur >= 0 else [])
+        rows = [r for r in rows if 0 <= r < len(self.project.pages)]
+        if not rows:
+            return
+        names = ", ".join(self.project.pages[r].name for r in rows[:3]) + ("…" if len(rows) > 3 else "")
+        from .alert import ask
+        if not ask(self, APP_NAME, f"Hapus {len(rows)} halaman dari proyek?\n{names}\n\nFile gambarnya tidak "
+                   "dihapus dari komputer. Balon & terjemahan di halaman itu ikut hilang dari proyek.",
+                   yes="Hapus", no="Batal", kind="warn", danger=True):
+            return
+        cur_page = self.page()
+        gone = {id(self.project.pages[r]) for r in rows}
+        self.project.pages = [p for p in self.project.pages if id(p) not in gone]
+        if cur_page is not None and id(cur_page) not in gone:
+            self.cur = self.project.pages.index(cur_page)
+        else:
+            self.cur = min(rows[0], len(self.project.pages) - 1)
+        self.sel = None
+        self._refresh_page_list()
+        if self.project.pages:
+            c = self.cur
+            self.cur = -1
+            self.pages.setCurrentRow(max(0, c))
+        else:
+            self.cur = -1
+            for cv in (self.cv_src, self.cv_out):
+                cv.set_page(None, [])
+        self._update_title()
+        self.log(f"{len(rows)} halaman dihapus dari proyek.")
 
     def _update_page_item(self, i):
         if 0 <= i < self.pages.count():
@@ -1131,7 +1266,10 @@ class MainWindow(QMainWindow):
         items = [p for p in (self.settings.get("recent_projects") or []) if Path(p).exists()][:10]
         cur = os.path.normcase(os.path.abspath(self.project.file)) if self.project.file else ""
         for n, f in enumerate(items, 1):
-            a = rec.addAction(f"{n}.  {Path(f).stem}", lambda f=f: self._open_recent(f))
+            from .welcome import ago
+            ts = (self.settings.get("recent_opened") or {}).get(f)
+            when = f"   ·   {ago(ts)}" if ts else ""
+            a = rec.addAction(f"{n}.  {Path(f).stem}{when}", lambda f=f: self._open_recent(f))
             a.setToolTip(f)
             a.setStatusTip(f)
             if os.path.normcase(os.path.abspath(f)) == cur:
@@ -1174,32 +1312,43 @@ class MainWindow(QMainWindow):
             self._load_props(None)
         except Exception:
             pass
-        self.welcome.set_recent(self.settings.get("recent_projects") or [])
+        self._show_recent()
         self._refresh_state()
         self._update_title()
         self.log("Kembali ke layar awal.")
 
     def _clear_recent(self):
         self.settings["recent_projects"] = []
+        self.settings["recent_opened"] = {}
         pipeline.save_settings(self.settings)
-        self.welcome.set_recent([])
+        self._show_recent()
 
     # ------------------------------------------------------------------ proyek terakhir (layar awal)
+    def _show_recent(self):
+        self.welcome.set_recent(self.settings.get("recent_projects") or [],
+                                self.settings.get("recent_opened") or {})
+
     def _add_recent(self, f):
+        """Catat proyek yang baru dibuka / disimpan: naik ke urutan teratas (maks. 10 diingat)."""
         if not f:
             return
-        import os
-        key = os.path.normcase(os.path.abspath(f))
+        import time
+        f = os.path.abspath(f)
+        key = os.path.normcase(f)
         lst = [p for p in (self.settings.get("recent_projects") or [])
                if os.path.normcase(os.path.abspath(p)) != key]
-        self.settings["recent_projects"] = [os.path.abspath(f)] + lst[:9]
+        self.settings["recent_projects"] = [f] + lst[:9]
+        opened = {k: v for k, v in (self.settings.get("recent_opened") or {}).items()
+                  if k in self.settings["recent_projects"]}
+        opened[f] = time.time()
+        self.settings["recent_opened"] = opened
         pipeline.save_settings(self.settings)
-        self.welcome.set_recent(self.settings["recent_projects"])
+        self._show_recent()
 
     def _remove_recent(self, f):
         self.settings["recent_projects"] = [p for p in (self.settings.get("recent_projects") or []) if p != f]
         pipeline.save_settings(self.settings)
-        self.welcome.set_recent(self.settings["recent_projects"])
+        self._show_recent()
 
     def _open_recent(self, f):
         if not Path(f).exists():
@@ -2559,6 +2708,9 @@ QComboBox::drop-down { border: none; width: 18px; }
 QComboBox QAbstractItemView { background: #23252b; selection-background-color: #ff4d6d; }
 QPlainTextEdit:focus, QLineEdit:focus { border-color: #ff4d6d; }
 QWidget#panel { background: #1a1b20; }
+QWidget#pagesHdr { background: #1a1b20; border-bottom: 1px solid #26282f; }
+QWidget#pagesHdr QLabel#panelHeader { border-bottom: none; }
+QToolButton#hdrBtn { padding: 3px; border-radius: 5px; }
 QLabel#panelHeader { background: #1a1b20; color: #9da1ad; font-weight: 600; font-size: 7.5pt;
   padding: 9px 10px; border-bottom: 1px solid #26282f; }
 QListWidget { background: #1a1b20; border: none; outline: 0; }

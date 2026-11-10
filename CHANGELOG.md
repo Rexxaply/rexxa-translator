@@ -3,6 +3,16 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 2.0.0
+- **Kelola halaman**:
+  - Tombol **+** di samping "HALAMAN" untuk menambah gambar baru ke proyek.
+  - **Tahan & seret** halaman di daftar untuk mengubah urutannya sesuka hati.
+  - **Klik kanan** halaman: tambah gambar di akhir, sisipkan gambar setelah halaman ini, pindah ke atas/bawah, dan **hapus halaman** (bisa beberapa sekaligus dengan Ctrl/Shift + klik, atau tombol Delete). File gambarnya tidak ikut terhapus dari komputer.
+- **Riwayat proyek di layar awal** kini berupa daftar menurun: yang **terakhir dibuka di paling atas**, yang lama turun ke bawah (3 teratas tampil, 10 tersimpan di menu ikon folder).
+- Setiap proyek menampilkan **kapan terakhir dibuka**: "2 menit yang lalu", "4 jam 39 menit yang lalu", "2 hari yang lalu", dan seterusnya. Diperbarui otomatis; waktunya juga tampil di menu "Proyek terakhir".
+- **Tata letak teks lebih rapi**: kata dibagi ulang supaya setiap baris mengisi ruang balon secara seimbang (baris tengah lebih panjang di balon oval), tanpa baris yatim, dan memotong kata dengan tanda hubung buatan hanya bila benar-benar terpaksa. Kata ber-tanda-hubung asli (mis. "DASAR-DASARMU") boleh dipisah di tanda hubungnya.
+- Teks bebas yang terbaca sebagai sampah oleh OCR (mis. SFX Jepang di komik Inggris) tidak ikut diterjemahkan dan ditempel.
+
 ## 1.26.0
 - **Kembali ke layar awal**: menu ikon folder → "Kembali ke layar awal" menutup proyek yang sedang dibuka (ditanya simpan dulu bila ada perubahan) dan menampilkan layar awal lagi.
 - **Riwayat proyek di menu ikon folder**: submenu **"Proyek terakhir"** berisi 10 proyek terbaru; klik untuk membuka (ditanya simpan dulu bila proyek sekarang belum disimpan). Ada juga "Hapus riwayat".
@@ -27,10 +37,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - **Koreksi salah baca otomatis (teks Inggris)**: huruf yang mirip bentuknya dibetulkan memakai kamus ±170 ribu kata, misalnya GLEARIr → CLEAR!, AMUSlNG → AMUSING, D0ING → DOING, HERI → HER!. Nama tokoh yang tidak ada di kamus tidak diubah.
 - Menu ⚡ → **Koreksi salah baca OCR (semua halaman)…**: memperbaiki teks proyek yang sudah ada, lalu bisa langsung **menerjemahkan ulang hanya balon yang berubah**.
 - Penerjemah LLM kini juga diminta membetulkan salah baca OCR yang jelas sebelum menerjemahkan.
-
-## 1.22.0
-- **Alat garis (L)**: gambar garis sendiri, misalnya tepi balon yang hilang, tanpa healing brush. Seret = garis bebas (otomatis dihaluskan), **Shift + seret = garis lurus**. Tebal garis diatur di kolom ukuran (atau `[` `]`), warna di kotak warna sebelahnya. Bisa di-undo.
-- **Gambar balon ulang**: buat bentuk dengan Shape tool (A, oval/kotak) atau Pen tool (P), lalu pilih **"Gambar balon: isi putih + garis tepi"** atau **"Gambar garis tepi saja"**.
-- **Atur jumlah baris teks**: kolom baru **☰ baris** di panel Tipografi (+ tombol − / +). Auto = seperti biasa; angka = teks dibagi tepat sebanyak itu dengan panjang baris serata mungkin, ukuran huruf menyesuaikan. Tekan Enter di kolom terjemahan untuk memilih sendiri titik potong baris.
-- **Tahan Spasi = mode tangan**: saat memakai alat apa pun (pen, shape, healing, garis, kotak), tahan Spasi lalu seret untuk menggeser gambar, lepas untuk kembali ke alat tadi.
-- Tombol **Tambah kotak** dirapikan: panah pilihannya punya area sendiri, tidak menumpuk dengan ikon.

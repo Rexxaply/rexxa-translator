@@ -31,25 +31,37 @@ QFrame#recentCard { background: #1b1c22; border: 1px solid #272930; border-radiu
 QFrame#recentCard:hover { background: #22242b; border-color: #ff4d6d; }
 QLabel#rName { color: #e9eaee; font-weight: 700; font-size: 9.5pt; background: transparent; }
 QLabel#rMeta { color: #7d818d; font-size: 8pt; background: transparent; }
+QLabel#rWhen { color: #ff8a9b; font-size: 8pt; font-weight: 600; background: transparent; }
 QLabel#rThumb { background: #111214; border-radius: 6px; }
 QScrollArea#recentScroll, QWidget#recentInner { background: transparent; border: none; }
 """
 
 
-def _ago(ts: float) -> str:
-    d = max(0, time.time() - ts)
+def ago(ts: float, now: float | None = None) -> str:
+    """'baru saja', '2 menit yang lalu', '4 jam 39 menit yang lalu', '2 hari yang lalu', ..."""
+    d = int(max(0, (now or time.time()) - ts))
+    m, h, day = d // 60, d // 3600, d // 86400
     if d < 60:
         return "baru saja"
-    if d < 3600:
-        return f"{int(d // 60)} menit lalu"
-    if d < 86400:
-        return f"{int(d // 3600)} jam lalu"
-    if d < 86400 * 30:
-        return f"{int(d // 86400)} hari lalu"
-    return time.strftime("%d %b %Y", time.localtime(ts))
+    if m < 60:
+        return f"{m} menit yang lalu"
+    if h < 24:
+        mm = m % 60
+        return f"{h} jam {mm} menit yang lalu" if mm else f"{h} jam yang lalu"
+    if day < 7:
+        hh = h % 24
+        return f"{day} hari {hh} jam yang lalu" if hh and day < 2 else f"{day} hari yang lalu"
+    if day < 30:
+        return f"{day // 7} minggu yang lalu"
+    if day < 365:
+        return f"{day // 30} bulan yang lalu"
+    return f"{day // 365} tahun yang lalu"
 
 
-def project_info(path: str) -> dict | None:
+_ago = ago
+
+
+def project_info(path: str, opened: float | None = None) -> dict | None:
     """Ringkasan file proyek untuk riwayat: jumlah halaman, selesai, gambar sampul, waktu ubah."""
     f = Path(path)
     if not f.exists():
@@ -67,7 +79,7 @@ def project_info(path: str) -> dict | None:
                 thumb = p[k]
                 break
     return {"path": str(f), "name": f.stem, "pages": len(pages), "done": done, "thumb": thumb,
-            "mtime": f.stat().st_mtime, "folder": str(f.parent),
+            "mtime": f.stat().st_mtime, "folder": str(f.parent), "opened": opened or f.stat().st_mtime,
             "langs": f"{(d.get('source_lang') or '').upper()} → {(d.get('target_lang') or '').upper()}"}
 
 
@@ -121,7 +133,7 @@ class RecentCard(QFrame):
         n.setMinimumWidth(60)
         v.addWidget(n)
         prog = f"{info['done']}/{info['pages']} halaman selesai" if info["pages"] else "belum ada halaman"
-        for txt in (prog, f"{info['langs']}  ·  diubah {_ago(info['mtime'])}", info["folder"]):
+        for txt in (f"{prog}  ·  {info['langs']}", info["folder"]):
             m = QLabel(txt)
             m.setObjectName("rMeta")
             m.setMinimumWidth(60)
@@ -129,6 +141,16 @@ class RecentCard(QFrame):
             v.addWidget(m)
         v.addStretch()
         h.addLayout(v, 1)
+        self.opened = info.get("opened") or info["mtime"]
+        self.when = QLabel()
+        self.when.setObjectName("rWhen")
+        self.when.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.when.setToolTip("Terakhir dibuka: " + time.strftime("%d %b %Y, %H:%M", time.localtime(self.opened)))
+        h.addWidget(self.when)
+        self.tick()
+
+    def tick(self):
+        self.when.setText("dibuka\n" + ago(self.opened))
 
     def mouseReleaseEvent(self, e):
         if e.button() == Qt.LeftButton and self.rect().contains(e.position().toPoint()):
@@ -231,7 +253,7 @@ class WelcomeView(QWidget):
         rb.addWidget(self.scroll, 1)
         wrap = QHBoxLayout()
         wrap.addStretch(1)
-        self.recent_box.setMaximumWidth(860)
+        self.recent_box.setMaximumWidth(640)
         self.recent_box.setMinimumWidth(320)
         self.recent_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         wrap.addWidget(self.recent_box, 8)
@@ -240,24 +262,33 @@ class WelcomeView(QWidget):
         self.recent_box.hide()
         v.addStretch(2)
         self._recent = []
+        from PySide6.QtCore import QTimer
+        self._timer = QTimer(self, interval=30_000)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start()
 
-    def set_recent(self, paths: list[str]):
-        """Isi daftar proyek terakhir (file yang sudah tidak ada dilewati)."""
+    def set_recent(self, paths: list[str], opened: dict | None = None):
+        """Isi daftar proyek terakhir, terbaru (terakhir dibuka) di atas. opened = {path: waktu}."""
+        if opened is not None:
+            self._opened = dict(opened)
+        opened = getattr(self, "_opened", {})
         while self.grid.count():
             it = self.grid.takeAt(0)
             if it.widget():
                 it.widget().deleteLater()
         infos = []
         for p in paths:
-            i = project_info(p)
+            i = project_info(p, opened.get(p))
             if i:
                 infos.append(i)
             if len(infos) >= self.MAX_SHOWN:
                 break
         self._recent = infos
-        cols = self._cols_for(self.width(), len(infos))
+        cols = 1                              # daftar menurun: terbaru di atas
+        self._cards = []
         for n, info in enumerate(infos):
             c = RecentCard(info)
+            self._cards.append(c)
             c.clicked.connect(self.open_recent.emit)
             c.remove.connect(self.remove_recent.emit)
             self.grid.addWidget(c, n // cols, n % cols)
@@ -266,15 +297,15 @@ class WelcomeView(QWidget):
         self.scroll.setMinimumHeight(min(rows, 3) * 114)
         self._cols = cols
 
-    @staticmethod
-    def _cols_for(width, n):
-        return max(1, min(n, 3 if width >= 1000 else 1))
-
-    def resizeEvent(self, e):
-        super().resizeEvent(e)
-        cols = self._cols_for(self.width(), len(self._recent))
-        if self._recent and cols != getattr(self, "_cols", cols):
-            self.set_recent([i["path"] for i in self._recent])
+    def _tick(self):
+        """Perbarui tulisan 'x menit yang lalu' (dipanggil berkala)."""
+        if not self.isVisible():
+            return
+        for c in getattr(self, "_cards", []):
+            try:
+                c.tick()
+            except RuntimeError:
+                pass
 
     # ---- bingkai putus-putus (menyala saat file diseret ke atasnya)
     def paintEvent(self, e):

@@ -39,7 +39,8 @@ DEFAULT_SETTINGS = {
     "default_stroke": 0,
     "line_width": 3,                # alat garis: tebal (px)
     "line_color": "#000000",        # alat garis: warna
-    "recent_projects": [],          # proyek terakhir (layar awal), terbaru dulu
+    "recent_projects": [],
+    "recent_opened": {},            # {path proyek: waktu terakhir dibuka}          # proyek terakhir (layar awal), terbaru dulu
     "box_mode": "box",              # kotak manual baru: box (kotak saja) | ocr (+ baca teks) | ocr_tr (+ terjemah)
     "output_format": "png",         # png | jpg | webp
     "output_dir": "",               # kosong = <folder gambar>/translated
@@ -244,7 +245,20 @@ def step_ocr(page: Page, project: Project, settings: dict, progress=None, only=N
     # SFX yang tidak terbaca sebagai kata (mis. SFX Jepang saat sumbernya Inggris) dibiarkan apa adanya
     page.blocks = [b for b in page.blocks
                    if not getattr(b, "sfx", False) or sfx_text_ok(b.source, project.source_lang)]
+    # teks bebas yang terbaca sebagai sampah (mis. SFX Jepang "ジ" saat sumbernya Inggris) dibuang
+    if project.source_lang not in ("ja", "zh", "zh-tw", "ko"):
+        page.blocks = [b for b in page.blocks
+                       if b.kind != "free" or b not in targets or free_text_ok(b.source)]
     page.status = "di-OCR"
+
+
+def free_text_ok(text: str) -> bool:
+    """Teks bebas (narasi kecil / gumaman) hasil OCR huruf Latin yang masuk akal."""
+    t = "".join(c for c in (text or "") if not c.isspace())
+    if not t:
+        return False
+    letters = sum(c.isalpha() and c.isascii() for c in t)
+    return letters >= 2 and letters >= 0.55 * len(t)
 
 
 def sfx_text_ok(text: str, lang: str) -> bool:

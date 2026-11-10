@@ -515,24 +515,49 @@ class _Shape:
             self.ay = float(ay)
 
 
-def balance_lines(draw, text: str, font, n: int, stroke: int = 0, ls: float = 0.0) -> list[str]:
+def _join_all(words, glue, n):
+    """Sedikit kata (<= n): satu kata per baris, potongan tanda hubung tetap satu baris."""
+    out = []
+    for w, g in zip(words, glue):
+        if g and out:
+            out[-1] += w
+        else:
+            out.append(w)
+    return out
+
+
+def balance_lines(draw, text: str, font, n: int, stroke: int = 0, ls: float = 0.0, caps=None) -> list[str]:
     """Bagi teks menjadi TEPAT n baris (bila jumlah katanya cukup) dengan lebar serata mungkin.
-    Bila teks berisi Enter dan jumlah barisnya sudah n, baris dari pengguna dipakai apa adanya."""
+    Bila teks berisi Enter dan jumlah barisnya sudah n, baris dari pengguna dipakai apa adanya.
+    caps: lebar maksimum tiap baris (mis. dari bentuk balon oval) -> baris diisi sebanding dengan
+    ruangnya, jadi teks membentuk 'belah ketupat' yang rapi di balon bulat."""
     paras = [p.strip() for p in text.split("\n") if p.strip()]
     if len(paras) == n:
         return paras
-    words = " ".join(paras).split()
+    import re as _re
+    words, glue = [], []        # kata ber-tanda-hubung boleh dipisah di tanda hubungnya ("DASAR-|DASARMU")
+    for w in " ".join(paras).split():
+        parts = [p for p in _re.split(r"(?<=[^\W\d_]-)(?=[^\W\d_]{2,})", w) if p]
+        for k, p in enumerate(parts):
+            words.append(p)
+            glue.append(k > 0)
     if not words:
         return [text]
     if len(words) <= n:
-        return words
+        return _join_all(words, glue, n)
     W = len(words)
     width = {}
+
+    def join(i, j):
+        out = words[i]
+        for k in range(i + 1, j):
+            out += ("" if glue[k] else " ") + words[k]
+        return out
 
     def wd(i, j):              # lebar baris berisi kata i..j-1
         k = (i, j)
         if k not in width:
-            width[k] = _text_w(draw, " ".join(words[i:j]), font, stroke, ls)
+            width[k] = _text_w(draw, join(i, j), font, stroke, ls)
         return width[k]
 
     INF = float("inf")
@@ -545,7 +570,7 @@ def balance_lines(draw, text: str, font, n: int, stroke: int = 0, ls: float = 0.
             for j in range(k, W - (n - k) + 1):
                 for i in range(k - 1, j):
                     prev = best[k - 1][i][0]
-                    w_ = wd(i, j)
+                    w_ = wd(i, j) / (caps[k - 1] if caps else 1.0)
                     if prev == INF or w_ > limit:
                         continue
                     cost = cost_fn(prev, w_)
@@ -556,7 +581,7 @@ def balance_lines(draw, text: str, font, n: int, stroke: int = 0, ls: float = 0.
         lines, j = [], W
         for k in range(n, 0, -1):
             i = best[k][j][1]
-            lines.append(" ".join(words[i:j]))
+            lines.append(join(i, j))
             j = i
         return lines[::-1], best[n][W][0]
 
@@ -564,7 +589,7 @@ def balance_lines(draw, text: str, font, n: int, stroke: int = 0, ls: float = 0.
     #    pilih yang barisnya paling rata (jumlah kuadrat lebar terkecil)
     lines, widest = solve(lambda prev, w_: max(prev, w_))
     if lines is None:
-        return [" ".join(words)]
+        return [join(0, W)]
     even, _ = solve(lambda prev, w_: prev + w_ * w_, limit=widest * 1.06)
     return even or lines
 
@@ -684,6 +709,48 @@ def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, m
         lh = min_size * line_spacing
         return min_size, lines, shape.cy - (lh * (len(lines) - 1) + min_size) / 2, lh
     size, (lines, (top, lh)) = pick
+    # rapikan: bagi ulang kata supaya tiap baris mengisi ruangnya secara seimbang (mengikuti bentuk
+    # balon: baris tengah lebih panjang dari atas/bawah), tanpa baris yatim / potongan kata
+    if len(lines) >= 2 and "\n" not in text and " " in text and not any(ord(c) > 0x2E80 for c in text):
+        mode[0] = "anchor" if shape.ay is not None else "any"
+        # potongan kata buatan (bukan tanda hubung asli seperti "DASAR-DASARMU")
+        broken = any(l.endswith("-") and (l + lines[i + 1].split(" ")[0]) not in text.upper()
+                     and (l + lines[i + 1].split(" ")[0]) not in text
+                     for i, l in enumerate(lines[:-1]))
+        # kata terpotong ("KEMAM-/PUANMU") boleh ditukar huruf sedikit lebih kecil (maks. -22%)
+        low = int(size * 0.78) if broken else size
+        done = False
+        for sz in range(size, max(min_size, low) - 1, -1):
+            f = _font(font_path, sz)
+            lh_ = sz * line_spacing
+            best_pick = None
+            for n in (len(lines) - 1, len(lines), len(lines) + 1):
+                if n < 1 or n > len(text.split()):
+                    continue
+                total = lh_ * (n - 1) + sz * 1.05
+                cy = (shape.ay if shape.ay is not None else shape.cy)
+                t0 = max(shape.ymin, min(cy - total / 2, shape.ymax - total))
+                caps = []
+                for i in range(n):
+                    y0, y1 = t0 + i * lh_ + sz * 0.12, t0 + i * lh_ + sz * 0.95
+                    left, right = shape.rooms(y0, y1)
+                    caps.append(max(1.0, 2 * min(left, right) - shear * sz))
+                bl = balance_lines(draw, text, f, n, stroke, ls, caps=caps)
+                if len(bl) != n:
+                    continue
+                pl = place(bl, f, sz)
+                if pl:
+                    fill = max(_text_w(draw, l, f, stroke, ls) / c for l, c in zip(bl, caps))
+                    # utamakan jumlah baris semula; 1 baris lebih sedikit bila tetap lega
+                    score = abs(n - len(lines)) * 0.25 + (fill if fill > 0.92 else 0)
+                    if best_pick is None or score < best_pick[0]:
+                        best_pick = (score, bl, pl)
+            if best_pick:
+                size, lines, (top, lh) = sz, best_pick[1], best_pick[2]
+                done = True
+                break
+        if not done and broken:
+            pass                                   # tetap pakai susunan dengan potongan kata
     return size, lines, top, lh
 
 
