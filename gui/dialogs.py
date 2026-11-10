@@ -221,6 +221,10 @@ class SettingsDialog(QDialog):
         self.ocr = _combo(OCR, self.s["ocr_engine"]); f.addRow("Engine OCR", self.ocr)
         self.clean = _combo(CLEAN, self.s["clean_method"]); f.addRow("Hapus teks", self.clean)
         self.gpu = QCheckBox("Pakai GPU (CUDA) jika tersedia"); self.gpu.setChecked(self.s["gpu"]); f.addRow("", self.gpu)
+        self.sfxmatch = QCheckBox("Teks spesial / SFX: pilih font yang mirip dengan aslinya")
+        self.sfxmatch.setChecked(bool(self.s.get("sfx_font_match", True))); f.addRow("", self.sfxmatch)
+        self.sysfont = QCheckBox("Boleh memakai font perangkat (Windows\\Fonts) bila lebih mirip")
+        self.sysfont.setChecked(bool(self.s.get("font_match_system", True))); f.addRow("", self.sysfont)
         tabs.addTab(w, "Proses")
 
         # --- Terjemahan
@@ -325,7 +329,8 @@ class SettingsDialog(QDialog):
                  llm_model=self.model.text().strip(), llm_api_key=self.key.text().strip(),
                  llm_temperature=self.temp.value(), llm_extra_prompt=self.extra.toPlainText().strip(),
                  max_font_size=self.maxsize.value(), default_stroke=self.stroke.value(),
-                 output_format=self.fmt.currentText(), output_dir=self.outdir.text().strip())
+                 output_format=self.fmt.currentText(), output_dir=self.outdir.text().strip(),
+                 sfx_font_match=self.sfxmatch.isChecked(), font_match_system=self.sysfont.isChecked())
         s.update(self.text.values())
         s.update(self.sc.values())
         pipeline.sync_default_style(s)

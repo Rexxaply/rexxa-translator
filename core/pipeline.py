@@ -27,7 +27,9 @@ DEFAULT_SETTINGS = {
     "max_font_size": 64,
     "text_presets": None,           # 5 preset teks; None = DEFAULT_PRESETS
     "default_font_size": 0,         # 0 = Auto-Fit (menyesuaikan balon)
-    "line_spacing": 1.2,            # jarak baris default (1.0 = rapat; manga umumnya 1.15–1.25)
+    "line_spacing": 1.2,
+    "sfx_font_match": True,         # teks spesial: cocokkan font otomatis
+    "font_match_system": True,      # boleh memakai font perangkat (Windows/Fonts)            # jarak baris default (1.0 = rapat; manga umumnya 1.15–1.25)
     "export_naming": "original",    # original | doc | num  (lihat EXPORT_NAMING)
     "shortcuts": {},                # pintasan keyboard yang diubah pengguna {id: "Ctrl+X"}
     "uppercase": True,              # gaya scanlation: HURUF KAPITAL
@@ -144,13 +146,54 @@ def step_detect(page: Page, project: Project, settings: dict):
     for b in page.blocks:
         b.stroke_width = int(settings.get("default_stroke", 0))
         inpaint.auto_style(img, b)
+    if settings.get("sfx_font_match", True):
+        match_sfx_fonts(img, page.blocks, settings)
     page.status = "dideteksi"
+
+
+def match_sfx_fonts(img, blocks, settings):
+    """Teks spesial / SFX: pilih font yang bentuk hurufnya paling mirip dengan aslinya
+    (font aplikasi dulu, lalu font perangkat)."""
+    from . import fontmatch
+    for b in blocks:
+        if getattr(b, "sfx", False) and b.text_rect and not b.font:
+            try:
+                f = fontmatch.best_font(img, b.text_rect, b.src_h,
+                                        include_system=bool(settings.get("font_match_system", True)))
+            except Exception:
+                f = None
+            if f:
+                b.font = f
+            try:   # miring hanya bila huruf aslinya memang miring
+                feat = fontmatch.source_features(img, b.text_rect, b.src_h)
+                if feat is not None:
+                    b.italic = abs(feat["slant"]) > 0.15
+            except Exception:
+                pass
 
 
 def step_ocr(page: Page, project: Project, settings: dict, progress=None):
     img = detector.load_image(page.path)
     ocr.ocr_page(img, page.blocks, settings["ocr_engine"], project.source_lang, settings["gpu"], progress)
+    # SFX yang tidak terbaca sebagai kata (mis. SFX Jepang saat sumbernya Inggris) dibiarkan apa adanya
+    page.blocks = [b for b in page.blocks
+                   if not getattr(b, "sfx", False) or sfx_text_ok(b.source, project.source_lang)]
     page.status = "di-OCR"
+
+
+def sfx_text_ok(text: str, lang: str) -> bool:
+    import re
+    t = (text or "").strip()
+    if not t:
+        return False
+    if lang in ("ja", "zh", "zh-tw", "ko"):
+        return True
+    chars = [c for c in t if not c.isspace() and c not in "!?.,…'\"-~"]
+    letters = [c for c in chars if c.isalpha()]
+    if len(letters) < 3 or len(letters) < 0.7 * max(1, len(chars)):
+        return False
+    words = re.findall(r"[A-Za-z]{2,}", t)
+    return any(re.search(r"[AEIOUYaeiouy]", w) for w in words)
 
 
 def step_translate(page: Page, project: Project, settings: dict, log=None):

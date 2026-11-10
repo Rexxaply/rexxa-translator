@@ -3,6 +3,12 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.11.0
+- **Teks spesial / SFX besar** (mis. "GET AWAY FROM HER!!" dengan huruf kuas tebal) kini dideteksi, dihapus rapi (hanya hurufnya, tanpa garis balon/gambar), lalu diganti terjemahan seukuran aslinya dan dimiringkan/diputar seperti aslinya.
+- **Cocokkan font otomatis** untuk SFX: dipilih font yang bentuk hurufnya paling mirip (tebal goresan, kekasaran, miring, lebar). Dicari di font aplikasi dulu, lalu font perangkat (Windows\\Fonts); bila tidak ada yang sama, dipilih yang paling mirip. Tombol ✦ di sebelah pilihan font = cocokkan font untuk balon mana pun.
+- SFX Jepang yang tidak terbaca sebagai kata (saat sumber Inggris) dibiarkan apa adanya.
+- Pengaturan → Proses: nyalakan/matikan pencocokan font & pemakaian font perangkat.
+
 ## 1.10.0
 - **Webtoon / strip panjang (manhwa & manhua)**: gambar yang jauh lebih tinggi dari lebarnya (.webp/.jpg/.png) kini terdeteksi dengan benar. Ukuran huruf diukur dari lebar strip, bukan tingginya (sebelumnya teks di strip panjang sama sekali tidak terdeteksi).
 - Gambar beresolusi rendah (lebar < 700 px) otomatis diperbesar 2x saat deteksi, jadi teks kecil tetap tertangkap.
@@ -17,7 +23,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 ## 1.9.2
 - Teks kini benar-benar **di tengah balon**, termasuk balon awan / lonjong (sebelumnya bisa naik ke bagian atas balon).
 - Huruf miring dimiringkan **per baris**, jadi teks tetap rata tengah dan hurufnya bisa lebih besar di balon yang sempit.
-
-## 1.9.1
-- Teks terjemahan kini **di tengah balon**, di posisi teks aslinya. Huruf miring (italic) tidak lagi keluar dari tepi balon di baris atas/bawah.
-- **Teks gradasi**: huruf bergradasi (mis. emas terang ke cokelat di manhwa) dideteksi otomatis dan terjemahannya memakai gradasi yang sama. Bisa diatur manual di panel Tipografi: kotak kedua di sebelah warna teks = warna bawah, tombol × = kembali ke warna polos.

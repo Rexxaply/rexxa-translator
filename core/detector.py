@@ -673,6 +673,11 @@ def _detect(img: np.ndarray, mode: str, lang: str, gpu: bool) -> list[TextBlock]
     if not cjk:
         for b in blocks:
             b.vertical = False
+    try:                                   # teks spesial / SFX besar
+        from .sfx import detect_sfx
+        blocks = blocks + detect_sfx(img, blocks)
+    except Exception:
+        pass
     return sort_reading_order(blocks, rtl=lang in ("ja", "zh", "zh-tw"))
 
 

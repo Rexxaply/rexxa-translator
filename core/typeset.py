@@ -413,6 +413,12 @@ def _shape_mask(b: TextBlock, stroke: int, img: np.ndarray | None = None):
     """Area yang boleh diisi teks, dalam koordinat lokal balon (0,0 = b.x,b.y).
     Balon: bentuk asli (kontur) dikurangi jarak tepi. Teks bebas: kotak dengan sedikit jarak."""
     h, w = max(2, b.h), max(2, b.w)
+    if getattr(b, "sfx", False) and b.text_rect:
+        # SFX: boleh memakai seluruh area teks aslinya (huruf besar, menimpa gambar seperti aslinya)
+        tx, ty, tw, th = (int(v) for v in b.text_rect)
+        e = int(min(tw, th) * 0.06)
+        m = np.full((th + 2 * e, tw + 2 * e), 255, np.uint8)
+        return m, tx - e, ty - e
     m = np.zeros((h, w), np.uint8)
     if b.kind == "bubble" and b.mask_poly:
         pts = np.array(b.mask_poly, np.int32) - np.array([b.x, b.y])
@@ -618,7 +624,7 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
                 shear = SHEAR
         stroke = b.stroke_width
         ls = float(b.letter_spacing or 0)
-        lsp = float(b.line_spacing or line_spacing)
+        lsp = float(b.line_spacing or (1.0 if getattr(b, "sfx", False) else line_spacing))
         smask, fx, fy = _shape_mask(b, stroke, img_bgr)
         shape = _Shape(smask)
         fh, fw = smask.shape
@@ -631,9 +637,13 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
         cap = max(max_size, int(min(b.w, b.h) * 0.45)) if not fixed else max_size
         if not fixed and b.src_h:
             # jangan jauh lebih besar dari teks aslinya (narasi di panel lebar jadi raksasa)
-            cap = min(cap, max(12, int(b.src_h * (1.9 if b.kind == "bubble" else 1.5))))
+            k = 1.9 if b.kind == "bubble" else (1.45 if getattr(b, "sfx", False) else 1.5)
+            cap = min(cap, max(12, int(b.src_h * k)))
+            if getattr(b, "sfx", False):
+                cap = max(cap, min(int(b.src_h * 1.45), 400))   # SFX boleh melebihi batas ukuran maksimum
         size, lines, top, lh = _fit_shape(measure, text, font_path, shape, stroke, ls, lsp,
-                                          min(cap, max(max_size, 8)), fixed=fixed, shear=shear)
+                                          (cap if getattr(b, "sfx", False) else min(cap, max(max_size, 8))),
+                                          fixed=fixed, shear=shear)
         b.fit_size = int(size)
         font = _font(font_path, size)
 

@@ -457,7 +457,16 @@ class MainWindow(QMainWindow):
         self.p_font.addItem("Font default", "")
         for f in typeset.list_fonts():
             self.p_font.addItem(typeset.font_name(f), f)
-        s2.lay.addWidget(self.p_font)
+        frow = QHBoxLayout()
+        frow.setSpacing(4)
+        frow.addWidget(self.p_font, 1)
+        self.p_match = QToolButton(text="✦")
+        self.p_match.setObjectName("mini")
+        self.p_match.setFixedSize(26, 24)
+        self.p_match.setToolTip("Cocokkan font: cari font (aplikasi / perangkat) yang paling mirip dengan teks asli")
+        self.p_match.clicked.connect(self._match_font)
+        frow.addWidget(self.p_match)
+        s2.lay.addLayout(frow)
 
         def field(icon_text, widget, tip):
             box = QWidget()
@@ -1068,6 +1077,42 @@ class MainWindow(QMainWindow):
             for kk, btn in self.p_al.items():
                 btn.setChecked(kk == k)
             self._schedule_render()
+
+    def _match_font(self):
+        b, p = self.sel, self.page()
+        if not b or not p:
+            return
+        from core import detector, fontmatch
+        rect = b.text_rect if b.text_rect else [b.x, b.y, b.w, b.h]
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        self.status_lbl.setText("Mencari font yang mirip… (pertama kali agak lama)")
+        QApplication.processEvents()
+        try:
+            img = detector.load_image(p.path)
+            res = fontmatch.best_font(img, rect, b.src_h or int(b.h * 0.3), top=3,
+                                      include_system=bool(self.settings.get("font_match_system", True)))
+        except Exception as e:
+            res = []
+            self.log(f"Cocokkan font gagal: {e}")
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not res:
+            self.status_lbl.setText("Tidak ada font yang cocok ditemukan")
+            return
+        self._snap()
+        path = res[0][0]
+        b.font = path
+        i = self.p_font.findData(path)
+        if i < 0:
+            self.p_font.addItem(typeset.font_name(path), path)
+            i = self.p_font.count() - 1
+        self._loading = True
+        self.p_font.setCurrentIndex(i)
+        self._loading = False
+        names = ", ".join(typeset.font_name(p_) for p_, _ in res)
+        self.status_lbl.setText(f"Font: {typeset.font_name(path)}")
+        self.log(f"Font paling mirip: {names}")
+        self._schedule_render()
 
     def _default_lsp(self) -> float:
         return round(float(self.settings.get("line_spacing", 1.2) or 1.2), 2)

@@ -16,6 +16,7 @@ class TextBlock:
     source: str = ""          # teks asli hasil OCR
     translation: str = ""     # teks terjemahan (bisa diedit manual)
     kind: str = "bubble"      # bubble | free (teks di luar balon / SFX)
+    sfx: bool = False         # teks spesial besar (huruf kuas/tebal); font dicocokkan otomatis
     vertical: bool = False    # teks asli vertikal (JP/ZH)
     font: str = ""            # kosong = pakai font default
     font_size: int = 0        # 0 = otomatis menyesuaikan kotak

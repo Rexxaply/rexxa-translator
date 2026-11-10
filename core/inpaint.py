@@ -193,6 +193,18 @@ def _text_color(img: np.ndarray, b: TextBlock):
 def auto_style(img: np.ndarray, b: TextBlock):
     """Teks bebas berhuruf putih (di atas gambar) -> terjemahan putih bergaris tepi hitam."""
     _text_color(img, b)
+    if getattr(b, "sfx", False):
+        try:   # SFX bergaris tepi putih di atas gambar -> terjemahan juga diberi garis tepi putih
+            from .sfx import sfx_mask
+            m = sfx_mask(img, b)
+            if m is not None:
+                halo = _halo(img, m, float(b.src_h or 20) * 0.25)
+                if (halo > 0).sum() > 0.15 * (m > 0).sum():
+                    b.stroke_color = "#FFFFFF"
+                    b.stroke_width = max(b.stroke_width, max(2, int(round((b.src_h or 20) * 0.07))))
+        except Exception:
+            pass
+        return
     if b.kind == "bubble":
         return
     region = block_region_mask(img.shape, b)
@@ -461,6 +473,14 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto") -
             continue
         if b.text_rect and not (b.source or "").strip() and not (b.translation or "").strip():
             continue        # hasil deteksi yang tidak terbaca (mis. SFX/gambar): jangan dihapus
+        if getattr(b, "sfx", False):
+            if (b.translation or "").strip() == (b.source or "").strip():
+                continue        # SFX yang tidak diterjemahkan (mis. "!!") dibiarkan apa adanya
+            from .sfx import sfx_mask
+            tm = sfx_mask(img, b)
+            if tm is not None:
+                ai_mask |= tm | _halo(img, tm, float(b.src_h or 20) * 0.25)
+                continue
         region = block_region_mask(img.shape, b)
         if b.kind != "bubble" and text_polarity(img, region)[0] == "light":
             ai_mask |= text_pixel_mask(img, region, dilate=3)       # huruf putih bergaris tepi
