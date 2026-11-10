@@ -185,8 +185,21 @@ def _brush(alpha: np.ndarray, size: int, rough: float, seed: int = 7) -> np.ndar
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
-def render_title(img, title: str, rect, mask, font_path: str, upper: bool = True) -> np.ndarray:
-    x, y, w, h = rect
+def mask_in_rect(img, rect) -> np.ndarray:
+    """Mask huruf logo di dalam kotak (kotak bisa digeser/diubah manual di editor)."""
+    H, W = img.shape[:2]
+    x, y, w, h = (int(v) for v in rect)
+    full = title_mask(img)
+    m = np.zeros_like(full)
+    m[max(0, y):y + h, max(0, x):x + w] = full[max(0, y):y + h, max(0, x):x + w]
+    return m
+
+
+def render_title(img, title: str, rect, mask, font_path: str, upper: bool = True, onto=None) -> np.ndarray:
+    """img = halaman asli (sumber gaya & tekstur), onto = gambar tujuan (mis. hasil yang sudah
+    dibersihkan & diketik); default = img."""
+    x, y, w, h = (int(v) for v in rect)
+    rect = [x, y, w, h]
     st = style_of(img, rect, mask)
     tex = texture_of(img, rect, mask)
     text = title.upper() if upper else title
@@ -249,7 +262,7 @@ def render_title(img, title: str, rect, mask, font_path: str, upper: bool = True
     ah, aw = a.shape
     ox, oy = x + (w - aw) // 2, y + (h - ah) // 2
 
-    out = clean_title(img, rect, mask)
+    out = clean_title(img if onto is None else onto, rect, mask)
     H, W = out.shape[:2]
     X0, Y0, X1, Y1 = max(0, ox), max(0, oy), min(W, ox + aw), min(H, oy + ah)
     if X1 <= X0 or Y1 <= Y0:

@@ -15,7 +15,7 @@ class TextBlock:
     h: int
     source: str = ""          # teks asli hasil OCR
     translation: str = ""     # teks terjemahan (bisa diedit manual)
-    kind: str = "bubble"      # bubble | free (teks di luar balon / SFX)
+    kind: str = "bubble"      # bubble | free (teks di luar balon / SFX) | title (logo judul seri)
     sfx: bool = False         # teks spesial besar (huruf kuas/tebal); font dicocokkan otomatis
     vertical: bool = False    # teks asli vertikal (JP/ZH)
     font: str = ""            # kosong = pakai font default
@@ -95,6 +95,7 @@ class Project:
     source_lang: str = "ja"
     target_lang: str = "id"
     glossary: dict = field(default_factory=dict)   # istilah tetap: {"先輩": "Senpai"}
+    series_title: str = ""    # judul seri terjemahan (untuk logo judul otomatis)
     file: str = ""
 
     def add_images(self, paths):
@@ -115,6 +116,7 @@ class Project:
             "source_lang": self.source_lang,
             "target_lang": self.target_lang,
             "glossary": self.glossary,
+            "series_title": self.series_title,
             "pages": [p.to_dict() for p in self.pages],
         }
         Path(self.file).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -127,6 +129,7 @@ class Project:
             source_lang=d.get("source_lang", "ja"),
             target_lang=d.get("target_lang", "id"),
             glossary=d.get("glossary", {}),
+            series_title=d.get("series_title", ""),
             file=file,
         )
 

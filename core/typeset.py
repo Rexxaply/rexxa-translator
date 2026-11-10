@@ -605,7 +605,7 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
 
     for b in blocks:
         text = (b.translation or "").strip()
-        if not text:
+        if not text or b.kind == "title":
             continue
         case = b.case or ("upper" if uppercase else "none")
         bold = b.bold or (default_bold and not b.preset)   # balon tanpa preset ikut tebal preset 1

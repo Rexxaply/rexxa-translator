@@ -469,7 +469,7 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto") -
     cands = None
 
     for b in blocks:
-        if not b.clean:
+        if not b.clean or b.kind == "title":      # logo judul diurus titlelogo
             continue
         if b.text_rect and not (b.source or "").strip() and not (b.translation or "").strip():
             continue        # hasil deteksi yang tidak terbaca (mis. SFX/gambar): jangan dihapus

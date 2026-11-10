@@ -6,7 +6,7 @@ import zipfile
 from pathlib import Path
 
 from . import detector, inpaint, ocr, paths, translator, typeset
-from .models import Page, Project
+from .models import Page, Project, TextBlock
 
 DEFAULT_SETTINGS = {
     "settings_rev": 2,
@@ -28,7 +28,8 @@ DEFAULT_SETTINGS = {
     "text_presets": None,           # 5 preset teks; None = DEFAULT_PRESETS
     "default_font_size": 0,         # 0 = Auto-Fit (menyesuaikan balon)
     "line_spacing": 1.2,
-    "sfx_font_match": True,         # teks spesial: cocokkan font otomatis
+    "sfx_font_match": True,
+    "auto_title": True,             # ganti logo judul otomatis bila judul seri diisi         # teks spesial: cocokkan font otomatis
     "font_match_system": True,      # boleh memakai font perangkat (Windows/Fonts)            # jarak baris default (1.0 = rapat; manga umumnya 1.15–1.25)
     "export_naming": "original",    # original | doc | num  (lihat EXPORT_NAMING)
     "shortcuts": {},                # pintasan keyboard yang diubah pengguna {id: "Ctrl+X"}
@@ -148,7 +149,56 @@ def step_detect(page: Page, project: Project, settings: dict):
         inpaint.auto_style(img, b)
     if settings.get("sfx_font_match", True):
         match_sfx_fonts(img, page.blocks, settings)
+    # halaman judul (logo seri): hanya di beberapa halaman awal & bila judul seri sudah diisi
+    if project.series_title and settings.get("auto_title", True):
+        try:
+            idx = project.pages.index(page)
+        except ValueError:
+            idx = 0
+        if idx < 3:
+            add_title_block(img, page, project, settings, strict=True)
     page.status = "dideteksi"
+
+
+def add_title_block(img, page: Page, project: Project, settings: dict, strict: bool = False):
+    """Cari logo judul di halaman lalu jadikan blok "title". strict: hanya halaman yang jelas
+    halaman judul (latar polos gelap/terang di sekeliling logo). Mengembalikan blok atau None."""
+    import cv2
+    import numpy as np
+    from . import titlelogo
+    rect, mask = titlelogo.find_title(img)
+    if rect is None:
+        return None
+    x, y, w, h = rect
+    if strict:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        H, W = gray.shape
+        e = int(h * 0.5)
+        ring = np.ones((H, W), bool)
+        ring[max(0, y):y + h, max(0, x):x + w] = False
+        win = np.zeros((H, W), bool)
+        win[max(0, y - e):y + h + e, max(0, x - e):x + w + e] = True
+        vals = gray[ring & win]
+        if vals.size == 0 or np.std(vals) > 28:        # di sekitar logo ada gambar -> bukan halaman judul
+            return None
+    # teks lain yang tertumpuk di logo (hasil deteksi biasa) dibuang
+    def inside(b):
+        cx, cy = b.x + b.w / 2, b.y + b.h / 2
+        return x <= cx <= x + w and y <= cy <= y + h
+    page.blocks = [b for b in page.blocks if b.kind == "title" or not inside(b)]
+    page.blocks = [b for b in page.blocks if b.kind != "title"]
+    b = TextBlock(x=x, y=y, w=w, h=h, kind="title", translation=project.series_title,
+                  source="[logo judul]", text_rect=[x, y, w, h])
+    try:
+        from . import fontmatch
+        f = fontmatch.best_font(img, rect, int(h * 0.15),
+                                include_system=bool(settings.get("font_match_system", True)))
+        if f:
+            b.font = f
+    except Exception:
+        pass
+    page.blocks.insert(0, b)
+    return b
 
 
 def match_sfx_fonts(img, blocks, settings):
@@ -174,7 +224,8 @@ def match_sfx_fonts(img, blocks, settings):
 
 def step_ocr(page: Page, project: Project, settings: dict, progress=None):
     img = detector.load_image(page.path)
-    ocr.ocr_page(img, page.blocks, settings["ocr_engine"], project.source_lang, settings["gpu"], progress)
+    ocr.ocr_page(img, [b for b in page.blocks if b.kind != "title"], settings["ocr_engine"],
+                 project.source_lang, settings["gpu"], progress)
     # SFX yang tidak terbaca sebagai kata (mis. SFX Jepang saat sumbernya Inggris) dibiarkan apa adanya
     page.blocks = [b for b in page.blocks
                    if not getattr(b, "sfx", False) or sfx_text_ok(b.source, project.source_lang)]
@@ -197,7 +248,11 @@ def sfx_text_ok(text: str, lang: str) -> bool:
 
 
 def step_translate(page: Page, project: Project, settings: dict, log=None):
-    texts = [b.source for b in page.blocks]
+    for b in page.blocks:
+        if b.kind == "title" and project.series_title:
+            b.translation = project.series_title       # judul seri: tidak diterjemahkan ulang
+    blocks = [b for b in page.blocks if b.kind != "title"]
+    texts = [b.source for b in blocks]
     translator.reset_stats()
     res = translator.translate(texts, project.source_lang, project.target_lang,
                                settings["translate_engine"], settings, project.glossary)
@@ -212,7 +267,7 @@ def step_translate(page: Page, project: Project, settings: dict, log=None):
         if s["tokens_in"] or s["tokens_out"]:
             msg += f" · token masuk {s['tokens_in']} / keluar {s['tokens_out']}"
         log(msg)
-    for b, t in zip(page.blocks, res):
+    for b, t in zip(blocks, res):
         b.translation = t
     page.status = "diterjemah"
 
@@ -240,6 +295,17 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
                                 default_size=int(settings.get("default_font_size", 0) or 0),
                                 default_bold=bool(settings.get("default_bold", False)),
                                 line_spacing=float(settings.get("line_spacing", 1.2) or 1.2))
+    titles = [b for b in page.blocks if b.kind == "title" and (b.translation or project.series_title).strip()]
+    if titles:
+        from . import titlelogo
+        src = detector.load_image(page.path)
+        for b in titles:
+            rect = [b.x, b.y, b.w, b.h]
+            final = titlelogo.render_title(src, (b.translation or project.series_title).strip(), rect,
+                                           titlelogo.mask_in_rect(src, rect),
+                                           b.font or settings.get("font", "") or typeset.default_font(project.target_lang),
+                                           upper=(b.case or ("upper" if settings.get("uppercase", True) else "none")) == "upper",
+                                           onto=final)
     p = output_dir(page, settings) / output_name(page, project, settings)
     detector.save_image(str(p), final)
     page.output_path = str(p)

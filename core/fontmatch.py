@@ -104,6 +104,10 @@ def source_features(img: np.ndarray, rect, src_h: int) -> dict | None:
     if crop.size == 0:
         return None
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    if np.median(gray) < 100:          # huruf terang/berwarna di latar gelap (logo judul)
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV).astype(np.float32)
+        colour = (hsv[..., 1] * hsv[..., 2] / 255.0).astype(np.uint8)   # warna pekat, bukan hitam
+        gray = 255 - cv2.max(gray, colour)
     t, _ = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     ink = gray < min(t, 140)
     sh = src_h or h

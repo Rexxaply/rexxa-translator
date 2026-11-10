@@ -251,6 +251,8 @@ class MainWindow(QMainWindow):
         m_go.addAction(icon("scan"), "Hanya OCR", lambda: self.run_stages(["ocr"]))
         m_go.addAction(icon("translate"), "Hanya terjemahkan", lambda: self.run_stages(["translate"]))
         m_go.addAction(icon("image"), "Render ulang  (Ctrl+R)", self.render_current)
+        m_go.addSeparator()
+        m_go.addAction(icon("translate"), "Logo judul seri di halaman ini…", self.make_title)
         self.b_go = QToolButton()
         self.b_go.setObjectName("primary")
         self.b_go.setText("  Terjemahkan")
@@ -601,6 +603,7 @@ class MainWindow(QMainWindow):
         self.p_kind = QComboBox()
         self.p_kind.addItem("Balon kata", "bubble")
         self.p_kind.addItem("Teks bebas / SFX / narasi", "free")
+        self.p_kind.addItem("Logo judul seri", "title")
         self.p_clean = QCheckBox("Hapus teks asli di area ini")
         self.b_del = QPushButton(icon("trash", "#ff8a9b"), " Hapus balon ini")
         self.b_del.setObjectName("danger")
@@ -1113,6 +1116,43 @@ class MainWindow(QMainWindow):
         self.status_lbl.setText(f"Font: {typeset.font_name(path)}")
         self.log(f"Font paling mirip: {names}")
         self._schedule_render()
+
+    def make_title(self):
+        """Ganti logo judul seri di halaman ini dengan logo terjemahan bergaya mirip."""
+        p = self.page()
+        if not p or self.thread:
+            return
+        from PySide6.QtWidgets import QInputDialog
+        cur = self.project.series_title or self.settings.get("last_series_title", "")
+        text, ok = QInputDialog.getText(
+            self, "Logo judul seri",
+            "Judul seri dalam bahasa tujuan (dipakai juga untuk chapter lain di proyek ini).\n"
+            "Kata sambung (yang, di, setelah, of, the…) otomatis dibuat kecil.", text=cur)
+        text = (text or "").strip()
+        if not ok or not text:
+            return
+        self.project.series_title = text
+        self.settings["last_series_title"] = text
+        try:
+            pipeline.save_settings(self.settings)
+        except Exception:
+            pass
+        proj, st, i = self.project, dict(self.settings), self.cur
+        self._snap()
+
+        def job(w: Worker):
+            from core import detector
+            img = detector.load_image(p.path)
+            b = pipeline.add_title_block(img, p, proj, st, strict=False)
+            if b is None:
+                w.log.emit("Logo judul tidak ditemukan di halaman ini. Gambar kotak manual (B) di atas "
+                           "logo, lalu ubah jenisnya ke 'Logo judul seri'.")
+                return
+            w.log.emit(f"Logo judul: {text}")
+            pipeline.step_render(p, proj, st, recalc_clean=True)
+            w.page_updated.emit(i)
+
+        self._start(job, f"Logo judul · {p.name}")
 
     def _default_lsp(self) -> float:
         return round(float(self.settings.get("line_spacing", 1.2) or 1.2), 2)

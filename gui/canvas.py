@@ -55,6 +55,8 @@ class BoxItem(QGraphicsRectItem):
     def color(self):
         if self.selected:
             return QColor("#ffbe0b")
+        if self.block.kind == "title":
+            return QColor("#c77dff")
         return QColor("#ff4d6d") if self.block.kind == "bubble" else QColor("#3a86ff")
 
     def refresh_style(self):
