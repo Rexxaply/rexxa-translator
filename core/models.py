@@ -26,6 +26,11 @@ class TextBlock:
     bold: bool = False
     italic: object = None     # None = ikut pengaturan umum; True/False = khusus balon ini
     case: object = None       # None = ikut pengaturan umum; "upper" | "lower" | "none"
+    line_spacing: float = 0.0  # 0 = default (Pengaturan → Teks)
+    letter_spacing: float = 0.0  # piksel tambahan antar huruf
+    rotation: float = 0.0     # derajat
+    dx: int = 0               # geser posisi teks (piksel)
+    dy: int = 0
     preset: int = 0           # preset teks terakhir yang dipakai (0 = belum)
     clean: bool = True        # hapus teks asli di area ini
     mask_poly: list = field(default_factory=list)  # kontur balon [[x,y],...] opsional

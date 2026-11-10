@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
-from PySide6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout, QKeySequenceEdit, QLabel,
+from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QGridLayout, QHBoxLayout, QKeySequenceEdit, QLabel,
                                QMessageBox, QPushButton, QScrollArea, QToolButton, QVBoxLayout, QWidget)
 
 from core import datastore as DS
@@ -74,7 +74,8 @@ class TextPanel(QWidget):
         v.addSpacing(10)
         g2 = QGridLayout()
         g2.addWidget(QLabel("Ukuran font"), 0, 0)
-        g2.addWidget(QLabel("Penamaan file export"), 0, 1)
+        g2.addWidget(QLabel("Jarak baris"), 0, 1)
+        g2.addWidget(QLabel("Penamaan file export"), 0, 2)
         self.size = QComboBox()
         self.size.addItem("Auto-Fit (menyesuaikan balon)", 0)
         for n in (12, 14, 16, 18, 20, 22, 24, 28, 32, 36, 40, 48, 56, 64, 72):
@@ -84,8 +85,15 @@ class TextPanel(QWidget):
         for k, label in pipeline.EXPORT_NAMING.items():
             self.naming.addItem(label, k)
         self.naming.setCurrentIndex(max(0, self.naming.findData(settings.get("export_naming", "original"))))
+        self.lsp = QDoubleSpinBox()
+        self.lsp.setRange(0.8, 2.5)
+        self.lsp.setSingleStep(0.05)
+        self.lsp.setDecimals(2)
+        self.lsp.setValue(float(settings.get("line_spacing", 1.2) or 1.2))
+        self.lsp.setToolTip("1.0 = rapat. Lettering manga umumnya 1.15–1.25.")
         g2.addWidget(self.size, 1, 0)
-        g2.addWidget(self.naming, 1, 1)
+        g2.addWidget(self.lsp, 1, 1)
+        g2.addWidget(self.naming, 1, 2)
         v.addLayout(g2)
         v.addStretch()
 
@@ -120,6 +128,7 @@ class TextPanel(QWidget):
             presets.append({"font": font.currentData() or "", "bold": b.isChecked(), "italic": it.isChecked(),
                             "case": "upper" if up.isChecked() else "lower" if lo.isChecked() else "none"})
         return {"text_presets": presets, "default_font_size": self.size.currentData(),
+                "line_spacing": round(self.lsp.value(), 2),
                 "export_naming": self.naming.currentData()}
 
 

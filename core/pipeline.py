@@ -24,9 +24,10 @@ DEFAULT_SETTINGS = {
     "llm_temperature": 0.3,
     "translation_cache": True,      # pakai ulang terjemahan teks yang sama (hemat token)
     "font": "",
-    "max_font_size": 48,
+    "max_font_size": 64,
     "text_presets": None,           # 5 preset teks; None = DEFAULT_PRESETS
     "default_font_size": 0,         # 0 = Auto-Fit (menyesuaikan balon)
+    "line_spacing": 1.2,            # jarak baris default (1.0 = rapat; manga umumnya 1.15–1.25)
     "export_naming": "original",    # original | doc | num  (lihat EXPORT_NAMING)
     "shortcuts": {},                # pintasan keyboard yang diubah pengguna {id: "Ctrl+X"}
     "uppercase": True,              # gaya scanlation: HURUF KAPITAL
@@ -194,7 +195,8 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
                                 settings.get("uppercase", True), int(settings.get("max_font_size", 48)),
                                 italic=settings.get("italic", True),
                                 default_size=int(settings.get("default_font_size", 0) or 0),
-                                default_bold=bool(settings.get("default_bold", False)))
+                                default_bold=bool(settings.get("default_bold", False)),
+                                line_spacing=float(settings.get("line_spacing", 1.2) or 1.2))
     p = output_dir(page, settings) / output_name(page, project, settings)
     detector.save_image(str(p), final)
     page.output_path = str(p)

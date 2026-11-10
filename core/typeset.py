@@ -190,14 +190,14 @@ def _font(path: str, size: int):
         return ImageFont.load_default(size)
 
 
-def _text_w(draw, text, font, stroke=0):
+def _text_w(draw, text, font, stroke=0, ls=0.0):
     if not text:
         return 0
     l, t, r, b = draw.textbbox((0, 0), text, font=font, stroke_width=stroke)
-    return r - l
+    return r - l + ls * max(0, len(text) - 1)
 
 
-def wrap_text(draw, text: str, font, max_w: int, stroke: int = 0, allow_break: bool = True):
+def wrap_text(draw, text: str, font, max_w: int, stroke: int = 0, allow_break: bool = True, ls: float = 0.0):
     """Bungkus per kata; kata kepanjangan dipotong dengan tanda hubung.
     Untuk teks tanpa spasi (CJK) bungkus per karakter."""
     lines: list[str] = []
@@ -205,7 +205,7 @@ def wrap_text(draw, text: str, font, max_w: int, stroke: int = 0, allow_break: b
         if " " not in para.strip() and len(para) > 1 and any(ord(c) > 0x2E80 for c in para):
             cur = ""
             for ch in para:
-                if _text_w(draw, cur + ch, font, stroke) <= max_w or not cur:
+                if _text_w(draw, cur + ch, font, stroke, ls) <= max_w or not cur:
                     cur += ch
                 else:
                     lines.append(cur)
@@ -216,18 +216,19 @@ def wrap_text(draw, text: str, font, max_w: int, stroke: int = 0, allow_break: b
         for word in _split_hyphens(para.split()):
             joiner = "" if cur.endswith("-") and getattr(word, "after_hyphen", False) else " "
             trial = (cur + joiner + word).strip()
-            if _text_w(draw, trial, font, stroke) <= max_w:
+            if _text_w(draw, trial, font, stroke, ls) <= max_w:
                 cur = trial
                 continue
             if cur:
                 lines.append(cur)
                 cur = ""
             # kata terlalu panjang untuk satu baris -> pecah (hanya kalau diizinkan)
-            if not allow_break and _text_w(draw, word, font, stroke) > max_w:
+            if not allow_break and _text_w(draw, word, font, stroke, ls) > max_w:
                 return None
-            while _text_w(draw, word, font, stroke) > max_w and sum(c.isalnum() for c in word) > 5:
-                cut = len(word) - 1
-                while cut > 3 and _text_w(draw, word[:cut] + "-", font, stroke) > max_w:
+            # penggalan buatan hanya untuk kata panjang (>= 9 huruf), tiap potongan minimal 4 huruf
+            while _text_w(draw, word, font, stroke, ls) > max_w and sum(c.isalnum() for c in word) >= 9:
+                cut = len(word) - 4
+                while cut > 4 and _text_w(draw, word[:cut] + "-", font, stroke, ls) > max_w:
                     cut -= 1
                 lines.append(word[:cut] + "-")
                 word = word[cut:]
@@ -332,13 +333,131 @@ def fit_text_ellipse(draw, text, font_path, W, H, stroke=0, max_size=64, min_siz
     return min_size, wrap_text(draw, text, _font(font_path, min_size), int(W * 0.8), stroke, True)
 
 
-BUBBLE_MARGIN = 0.10   # jarak teks dari garis balon (per sisi, relatif ukuran balon)
-SHEAR = 0.2            # kemiringan italic palsu
+BUBBLE_PAD = 0.08        # jarak teks dari garis balon (relatif sisi terpendek balon)
+SHEAR = 0.2              # kemiringan italic palsu
+LINE_SPACING = 1.2       # jarak baris default (lettering manga umumnya 1.15–1.25)
+
+
+def _shape_mask(b: TextBlock, stroke: int) -> np.ndarray:
+    """Area yang boleh diisi teks, dalam koordinat lokal balon (0,0 = b.x,b.y).
+    Balon: bentuk asli (kontur) dikurangi jarak tepi. Teks bebas: kotak dengan sedikit jarak."""
+    h, w = max(2, b.h), max(2, b.w)
+    m = np.zeros((h, w), np.uint8)
+    if b.kind == "bubble" and b.mask_poly:
+        pts = np.array(b.mask_poly, np.int32) - np.array([b.x, b.y])
+        cv2.fillPoly(m, [pts], 255)
+        pad = max(3, int(min(w, h) * BUBBLE_PAD)) + stroke
+    elif b.kind == "bubble":
+        cv2.ellipse(m, (w // 2, h // 2), (w // 2, h // 2), 0, 0, 360, 255, -1)
+        pad = max(3, int(min(w, h) * BUBBLE_PAD * 0.6)) + stroke
+    else:
+        m[:] = 255
+        pad = max(2, int(min(w, h) * 0.04)) + stroke
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * pad + 1, 2 * pad + 1))
+    er = cv2.erode(m, k)
+    return er if er.any() else m
+
+
+class _Shape:
+    """Lebar yang tersedia per baris piksel + titik tengah teks (bagian terdalam balon,
+    jadi ekor balon tidak menggeser teks)."""
+
+    def __init__(self, mask: np.ndarray, extra_margin: float = 0.0):
+        self.h, self.w = mask.shape
+        self.x0 = np.full(self.h, -1, np.int32)
+        self.x1 = np.full(self.h, -1, np.int32)
+        rows = np.nonzero(mask.any(axis=1))[0]
+        for y in rows:
+            xs = np.nonzero(mask[y])[0]
+            self.x0[y], self.x1[y] = xs[0], xs[-1]
+        self.ymin, self.ymax = (int(rows[0]), int(rows[-1])) if rows.size else (0, self.h - 1)
+        dist = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
+        cy, cx = np.unravel_index(int(np.argmax(dist)), dist.shape)
+        self.cy = int(cy)
+        self.cx = (self.x0[cy] + self.x1[cy]) / 2.0 if self.x0[cy] >= 0 else self.w / 2
+        self.margin = extra_margin
+        self.max_w = int(max(1, (self.x1 - self.x0).max())) if rows.size else self.w
+
+    def half_room(self, y0: float, y1: float) -> float:
+        """Setengah lebar terkecil (dari pusat cx) pada rentang baris y0..y1."""
+        a, b = int(max(0, np.floor(y0))), int(min(self.h - 1, np.ceil(y1)))
+        if a > b:
+            return -1
+        x0, x1 = self.x0[a:b + 1], self.x1[a:b + 1]
+        if (x0 < 0).any():
+            return -1
+        return float(np.minimum(self.cx - x0, x1 - self.cx).min()) - self.margin
+
+
+def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, max_size, min_size=8,
+               fixed: int = 0):
+    """Ukuran font terbesar yang muat di bentuk balon. Mengembalikan (size, lines, top, lh)."""
+    def place(lines, f, size):
+        lh = size * line_spacing
+        total = lh * (len(lines) - 1) + size * 1.05
+        widths = [_text_w(draw, l, f, stroke, ls) for l in lines]
+        tops = [shape.cy - total / 2, (shape.ymin + shape.ymax) / 2 - total / 2]
+        tops += [max(shape.ymin, min(t, shape.ymax - total)) for t in list(tops)]
+        for top in tops:
+            if top < shape.ymin - 1 or top + total > shape.ymax + 1:
+                continue
+            ok = True
+            for i, wl in enumerate(widths):
+                y0 = top + i * lh + size * 0.12          # bagian huruf yang terlihat
+                y1 = top + i * lh + size * 0.95
+                if wl / 2 > shape.half_room(y0, y1):
+                    ok = False
+                    break
+            if ok:
+                return top, lh
+        return None
+
+    def try_size(size, allow_break):
+        f = _font(font_path, size)
+        best = None
+        for frac in (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.42):
+            lines = wrap_text(draw, text, f, int(shape.max_w * frac), stroke, allow_break, ls)
+            if not lines:
+                continue
+            pl = place(lines, f, size)
+            if pl:   # pilih susunan yang paling "seimbang" (baris paling sedikit yang masih muat)
+                if best is None or len(lines) < len(best[0]):
+                    best = (lines, pl)
+        return best
+
+    if fixed:
+        f = _font(font_path, fixed)
+        lines = wrap_text(draw, text, f, int(shape.max_w * 0.9), stroke, True, ls) or [text]
+        lh = fixed * line_spacing
+        return fixed, lines, shape.cy - (lh * (len(lines) - 1) + fixed) / 2, lh
+
+    results = {}
+    for allow_break in (False, True):
+        lo, hi, best = min_size, max_size, None
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            r = try_size(mid, allow_break)
+            if r:
+                best = (mid, r)
+                lo = mid + 1
+            else:
+                hi = mid - 1
+        results[allow_break] = best
+    nb, br = results[False], results[True]
+    # tanpa memotong kata lebih rapi; potong kata hanya bila hurufnya jadi jauh lebih besar
+    pick = nb if nb and (not br or nb[0] >= br[0] * 0.68) else br
+    if pick is None:
+        f = _font(font_path, min_size)
+        lines = wrap_text(draw, text, f, shape.max_w, stroke, True, ls) or [text]
+        lh = min_size * line_spacing
+        return min_size, lines, shape.cy - (lh * (len(lines) - 1) + min_size) / 2, lh
+    size, (lines, (top, lh)) = pick
+    return size, lines, top, lh
 
 
 def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str = "id",
                 default_font_path: str = "", uppercase: bool = True, max_size: int = 64,
-                italic: bool = True, line_spacing: float = 1.05, default_size: int = 0,
+                italic: bool = True, line_spacing: float = LINE_SPACING, default_size: int = 0,
                 default_bold: bool = False) -> np.ndarray:
     pil = Image.fromarray(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)).convert("RGBA")
     measure = ImageDraw.Draw(pil)
@@ -365,55 +484,62 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
             else:
                 shear = SHEAR
         stroke = b.stroke_width
-        oval = b.kind == "bubble"
-        if oval:  # area oval di dalam balon
-            mx, my = int(b.w * BUBBLE_MARGIN), int(b.h * BUBBLE_MARGIN)
-            ax, ay, aw, ah = b.x + mx, b.y + my, b.w - 2 * mx, b.h - 2 * my
-        else:
-            ax, ay, aw, ah = text_area(b)
-        full_w = aw
-        if shear:  # sisakan ruang untuk kemiringan
-            aw = max(10, int(aw - ah * shear * (0.25 if oval else 0.5)))
+        ls = float(b.letter_spacing or 0)
+        lsp = float(b.line_spacing or line_spacing)
+        shape = _Shape(_shape_mask(b, stroke))
+        if shear:   # huruf miring butuh sedikit ruang ekstra di kiri-kanan
+            shape.margin = shear * max(8, min(b.w, b.h) * 0.06)
         fixed = b.font_size if b.font_size > 0 else int(default_size or 0)
-        if fixed > 0:
-            size = fixed
-            lines = wrap_text(measure, text, _font(font_path, size), aw, stroke)
-        elif oval:
-            size, lines = fit_text_ellipse(measure, text, font_path, aw, ah, stroke, max_size=max_size,
-                                           line_spacing=line_spacing)
-        else:
-            size, lines = fit_text(measure, text, font_path, aw, ah, stroke, max_size=max_size,
-                                   line_spacing=line_spacing)
+        cap = max(max_size, int(min(b.w, b.h) * 0.45)) if not fixed else max_size
+        size, lines, top, lh = _fit_shape(measure, text, font_path, shape, stroke, ls, lsp,
+                                          min(cap, max(max_size, 8)), fixed=fixed)
         font = _font(font_path, size)
-        lh = int(size * line_spacing)
-        total_h = lh * len(lines)
 
-        # gambar di lapisan transparan per balon, lalu (bila perlu) dimiringkan
-        pad = size
-        lw_, lh_ = aw + 2 * pad, ah + 2 * pad
-        layer = Image.new("RGBA", (lw_, lh_), (0, 0, 0, 0))
+        # gambar di lapisan transparan seukuran balon (+ jarak), lalu miring/putar & geser
+        pad = int(size * 1.5) + stroke
+        W, H = b.w + 2 * pad, b.h + 2 * pad
+        layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         d = ImageDraw.Draw(layer)
-        y = pad + (ah - total_h) // 2
-        for line in lines:
-            w_line = _text_w(d, line, font, stroke)
+        widths = [_text_w(d, l, font, stroke, ls) for l in lines]
+        block_w = max(widths) if widths else 0
+        cx = pad + shape.cx
+        for i, (line, wl) in enumerate(zip(lines, widths)):
             if b.align == "left":
-                x = pad
+                x = cx - block_w / 2
             elif b.align == "right":
-                x = pad + aw - w_line
+                x = cx + block_w / 2 - wl
             else:
-                x = pad + (aw - w_line) // 2
-            d.text((x, y), line, font=font, fill=b.color,
-                   stroke_width=stroke, stroke_fill=b.stroke_color if stroke else None)
-            if bold and not stroke:  # bold palsu untuk font tanpa varian tebal
-                d.text((x + max(1, size // 28), y), line, font=font, fill=b.color)
-            y += lh
+                x = cx - wl / 2
+            y = pad + top + i * lh
+            # koreksi offset bbox font supaya posisi visual tepat
+            l0, t0, _, _ = d.textbbox((0, 0), line, font=font, stroke_width=stroke)
+            _draw_line(d, (x - l0, y - t0 * 0.5), line, font, b.color, stroke,
+                       b.stroke_color if stroke else None, ls, bold, size)
         if shear:
-            # x_input = x + k*(y - tengah): bagian atas bergeser ke kanan -> miring ke kanan
-            layer = layer.transform(layer.size, Image.AFFINE, (1, shear, -shear * lh_ / 2, 0, 1, 0),
+            cy_l = pad + top + (lh * (len(lines) - 1) + size) / 2
+            layer = layer.transform(layer.size, Image.AFFINE, (1, shear, -shear * cy_l, 0, 1, 0),
                                     resample=Image.BICUBIC)
-        ox = ax - pad + (full_w - aw) // 2
-        _paste_clipped(pil, layer, ox, ay - pad)
+        rot = float(b.rotation or 0)
+        if rot:
+            cy_l = pad + top + (lh * (len(lines) - 1) + size) / 2
+            layer = layer.rotate(rot, resample=Image.BICUBIC, center=(cx, cy_l))
+        _paste_clipped(pil, layer, int(b.x - pad + (b.dx or 0)), int(b.y - pad + (b.dy or 0)))
     return cv2.cvtColor(np.array(pil.convert("RGB")), cv2.COLOR_RGB2BGR)
+
+
+def _draw_line(d, xy, line, font, fill, stroke, stroke_fill, ls, bold, size):
+    x, y = xy
+    off = max(1, size // 28)
+    if not ls:
+        d.text((x, y), line, font=font, fill=fill, stroke_width=stroke, stroke_fill=stroke_fill)
+        if bold and not stroke:  # bold palsu untuk font tanpa varian tebal
+            d.text((x + off, y), line, font=font, fill=fill)
+        return
+    for ch in line:   # jarak huruf: gambar per karakter
+        d.text((x, y), ch, font=font, fill=fill, stroke_width=stroke, stroke_fill=stroke_fill)
+        if bold and not stroke:
+            d.text((x + off, y), ch, font=font, fill=fill)
+        x += d.textlength(ch, font=font) + ls
 
 
 def _paste_clipped(base: Image.Image, layer: Image.Image, x: int, y: int):

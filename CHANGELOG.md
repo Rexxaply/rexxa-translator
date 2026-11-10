@@ -3,6 +3,11 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.7.1
+- Teks kini mengikuti **bentuk asli balon** dan ukurannya menyesuaikan balon (lebih besar, tidak lagi kekecilan); posisinya di bagian terdalam balon, jadi ekor balon tidak menggeser teks.
+- Jarak baris default **1.2** seperti lettering manga (bisa diatur di Pengaturan → Teks); kata pendek tidak lagi dipotong-potong (mis. "KATSUKI- / SAN!").
+- Panel **Tipografi** dirapikan: ukuran + preset 1–5, B / I / AA / Aa / aa + rata, jarak baris, jarak huruf, rotasi, tombol geser posisi, warna teks & stroke.
+
 ## 1.7.0
 - **Hemat token**: prompt LLM lebih ringkas, teks berupa tanda baca dan teks kembar tidak dikirim, glosarium hanya istilah yang dipakai, dan terjemahan disimpan di cache sehingga teks yang sama tidak diterjemahkan ulang. Jumlah token tampil di tab LOG.
 - Pengaturan → **Teks**: Preset 1–5 (font, tebal, miring, KAPITAL/kecil), ukuran font default (Auto-Fit/angka), penamaan file export. Tombol 1–5 di panel Tipografi menerapkan preset ke balon.
@@ -17,6 +22,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 
 ## 1.6.6
 - Perbaikan: teks di balon kata kembali terhapus bersih (di 1.6.4–1.6.5 sebagian huruf, mis. "Katsuki-san!", tertinggal dan tertumpuk dengan terjemahan).
-
-## 1.6.5
-- Changelog di jendela update kini hanya menampilkan 5 versi terbaru.
