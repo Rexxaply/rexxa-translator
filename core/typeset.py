@@ -461,6 +461,12 @@ class _Shape:
         self.ymin, self.ymax = (int(rows[0]), int(rows[-1])) if rows.size else (0, self.h - 1)
         dist = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
         cy, cx = np.unravel_index(int(np.argmax(dist)), dist.shape)
+        # balon awan / lonjong: titik terdalam bisa di satu "gelembung"; pakai tengah luasnya
+        mo = cv2.moments(mask, binaryImage=True)
+        if mo["m00"] > 0:
+            gy = int(round(mo["m01"] / mo["m00"]))
+            if 0 <= gy < self.h and mask[gy].any():
+                cy = int(round(0.3 * cy + 0.7 * gy))
         self.cy = int(cy)
         self.cx = (self.x0[cy] + self.x1[cy]) / 2.0 if self.x0[cy] >= 0 else self.w / 2
         self.margin = extra_margin
@@ -500,19 +506,20 @@ def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, m
         lh = size * line_spacing
         total = lh * (len(lines) - 1) + size * 1.05
         widths = [_text_w(draw, l, f, stroke, ls) for l in lines]
-        tops = []
-        if shape.ay is not None:
-            tops.append(shape.ay - total / 2)           # posisi teks asli
-        tops += [shape.cy - total / 2, (shape.ymin + shape.ymax) / 2 - total / 2]
+        if mode[0] == "anchor":
+            # posisi teks asli (sedikit boleh bergeser ke tengah balon)
+            tops = [shape.ay + k * (shape.cy - shape.ay) - total / 2 for k in (0, 0.3, 0.6)]
+        else:
+            tops = [shape.cy - total / 2, (shape.ymin + shape.ymax) / 2 - total / 2]
         tops += [max(shape.ymin, min(t, shape.ymax - total)) for t in list(tops)]
         for top in tops:
             if top < shape.ymin - 1 or top + total > shape.ymax + 1:
                 continue
-            mid = top + total / 2
             ok = True
             for i, wl in enumerate(widths):
                 y0 = top + i * lh + size * 0.12          # bagian huruf yang terlihat
                 y1 = top + i * lh + size * 0.95
+                mid = top + i * lh + size * 0.5          # italic dimiringkan per baris
                 left, right = shape.rooms(y0, y1)
                 # geser italic: bagian atas huruf ke kanan, bawah ke kiri
                 up = shear * (mid - y0)
@@ -544,8 +551,7 @@ def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, m
         cy = shape.ay if shape.ay is not None else shape.cy
         return fixed, lines, cy - (lh * (len(lines) - 1) + fixed) / 2, lh
 
-    results = {}
-    for allow_break in (False, True):
+    def search(allow_break):
         lo, hi, best = min_size, max_size, None
         while lo <= hi:
             mid = (lo + hi) // 2
@@ -555,7 +561,21 @@ def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, m
                 lo = mid + 1
             else:
                 hi = mid - 1
-        results[allow_break] = best
+        return best
+
+    def better(a, b, ratio):     # a diutamakan bila ukurannya tidak jauh lebih kecil dari b
+        return a if a and (not b or a[0] >= b[0] * ratio) else b
+
+    mode = ["any"]
+    results = {}
+    for allow_break in (False, True):
+        mode[0] = "any"
+        free = search(allow_break)
+        if shape.ay is not None:
+            mode[0] = "anchor"
+            # di posisi teks asli, kecuali hurufnya jadi jauh lebih kecil
+            free = better(search(allow_break), free, 0.85)
+        results[allow_break] = free
     nb, br = results[False], results[True]
     # tanpa memotong kata lebih rapi; potong kata hanya bila hurufnya jadi jauh lebih besar
     pick = nb if nb and (not br or nb[0] >= br[0] * 0.8) else br
@@ -641,18 +661,37 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
                        b.stroke_color if stroke else None, ls, bold, size)
             if grad:   # isi huruf saja (tanpa stroke) untuk diwarnai gradasi per baris
                 _draw_line(fm, (x - l0, y - t0 * 0.5), line, font, 255, 0, None, ls, bold, size)
+        line_tops = [pad + top + i * lh for i in range(len(lines))]
+        if shear:   # miringkan tiap baris di sekitar titik tengahnya sendiri (tetap rata tengah)
+            layer = _shear_lines(layer, line_tops, size, lh, shear)
+            if grad:
+                fill_mask = _shear_lines(fill_mask, line_tops, size, lh, shear)
         if grad:
-            layer = _apply_gradient(layer, fill_mask, grad, [pad + top + i * lh for i in range(len(lines))], size)
-        if shear:
-            cy_l = pad + top + (lh * (len(lines) - 1) + size) / 2
-            layer = layer.transform(layer.size, Image.AFFINE, (1, shear, -shear * cy_l, 0, 1, 0),
-                                    resample=Image.BICUBIC)
+            layer = _apply_gradient(layer, fill_mask, grad, line_tops, size)
         rot = float(b.rotation or 0)
         if rot:
             cy_l = pad + top + (lh * (len(lines) - 1) + size) / 2
             layer = layer.rotate(rot, resample=Image.BICUBIC, center=(cx, cy_l))
         _paste_clipped(pil, layer, int(fx - pad + (b.dx or 0)), int(fy - pad + (b.dy or 0)))
     return cv2.cvtColor(np.array(pil.convert("RGB")), cv2.COLOR_RGB2BGR)
+
+
+def _shear_lines(img: Image.Image, line_tops, size, lh, shear) -> Image.Image:
+    """Italic palsu per baris: setiap baris dimiringkan terhadap tengah barisnya sendiri."""
+    out = img.copy()
+    H = img.height
+    n = len(line_tops)
+    for i, t in enumerate(line_tops):
+        c = t + size * 0.5
+        a = 0 if i == 0 else int(round((line_tops[i - 1] + size * 0.5 + c) / 2))
+        z = H if i == n - 1 else int(round((c + line_tops[i + 1] + size * 0.5) / 2))
+        if z <= a:
+            continue
+        strip = img.crop((0, a, img.width, z))
+        sh = strip.transform(strip.size, Image.AFFINE, (1, shear, -shear * (c - a), 0, 1, 0),
+                             resample=Image.BICUBIC)
+        out.paste(sh, (0, a))
+    return out
 
 
 def _hex_rgb(c: str):

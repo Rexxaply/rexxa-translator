@@ -3,6 +3,10 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.9.2
+- Teks kini benar-benar **di tengah balon**, termasuk balon awan / lonjong (sebelumnya bisa naik ke bagian atas balon).
+- Huruf miring dimiringkan **per baris**, jadi teks tetap rata tengah dan hurufnya bisa lebih besar di balon yang sempit.
+
 ## 1.9.1
 - Teks terjemahan kini **di tengah balon**, di posisi teks aslinya. Huruf miring (italic) tidak lagi keluar dari tepi balon di baris atas/bawah.
 - **Teks gradasi**: huruf bergradasi (mis. emas terang ke cokelat di manhwa) dideteksi otomatis dan terjemahannya memakai gradasi yang sama. Bisa diatur manual di panel Tipografi: kotak kedua di sebelah warna teks = warna bawah, tombol × = kembali ke warna polos.
@@ -21,8 +25,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 
 ## 1.7.3
 - Sidebar lebih ramping (HALAMAN ±128 px, PROPERTI ±240 px) supaya fokus ke halaman manga; isi panel dipadatkan, kotak warna jadi kotak kecil (kode warna muncul saat disorot).
-
-## 1.7.2
-- Perbaikan: aplikasi 1.7.1 gagal dibuka ("QVBoxLayout already deleted").
-- Bila sebuah update membuat jendela gagal dibuka, aplikasi kini otomatis kembali ke versi sebelumnya.
-- Setiap rilis kini diuji dengan benar-benar membuat jendela utama sebelum diterbitkan.
