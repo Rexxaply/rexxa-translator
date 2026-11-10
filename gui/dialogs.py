@@ -332,6 +332,16 @@ class SettingsDialog(QDialog):
         self.sysfont.setChecked(bool(self.s.get("font_match_system", True))); f.addRow("", self.sysfont)
         self.gfont = QCheckBox("Cadangan: cari di Google Fonts bila font di perangkat kurang mirip (perlu internet)")
         self.gfont.setChecked(bool(self.s.get("font_match_online", True))); f.addRow("", self.gfont)
+        self.fontall = QCheckBox("Semua teks: pilih font yang mirip dengan aslinya & ingat untuk halaman berikutnya")
+        self.fontall.setChecked(bool(self.s.get("font_match_all", True))); f.addRow("", self.fontall)
+        from core import perf
+        self.perf = QComboBox()
+        for k, label in (("auto", f"Otomatis ({perf.describe(self.s)})"),
+                         ("hemat", "Hemat — untuk PC/laptop spesifikasi rendah (lebih stabil)"),
+                         ("normal", "Normal — pakai tenaga penuh")):
+            self.perf.addItem(label, k)
+        self.perf.setCurrentIndex(max(0, self.perf.findData(self.s.get("perf_mode", "auto"))))
+        f.addRow("Performa", self.perf)
         tabs.addTab(w, "Proses")
 
         # --- Terjemahan
@@ -438,7 +448,8 @@ class SettingsDialog(QDialog):
                  max_font_size=self.maxsize.value(), default_stroke=self.stroke.value(),
                  output_format=self.fmt.currentText(), output_dir=self.outdir.text().strip(),
                  sfx_font_match=self.sfxmatch.isChecked(), font_match_system=self.sysfont.isChecked(),
-                 font_match_online=self.gfont.isChecked())
+                 font_match_online=self.gfont.isChecked(), font_match_all=self.fontall.isChecked(),
+                 perf_mode=self.perf.currentData() or "auto")
         s.update(self.text.values())
         s.update(self.sc.values())
         pipeline.sync_default_style(s)

@@ -21,6 +21,9 @@ import threading as _threading
 _lama_lock = _threading.Lock()
 
 
+LAMA_MAX_SIDE = 1024        # diperkecil oleh core.perf di mode hemat (PC spesifikasi rendah)
+
+
 def _get_lama():
     global _lama
     with _lama_lock:          # boleh dipanggil dari thread pemanasan & thread proses bersamaan
@@ -499,7 +502,7 @@ def _inpaint_lama(img, mask):
             continue
         crop = out[y0:y1, x0:x1]
         ch, cw = crop.shape[:2]
-        scale = min(1.0, 1024.0 / max(ch, cw))          # potongan raksasa: kecilkan dulu
+        scale = min(1.0, float(LAMA_MAX_SIDE) / max(ch, cw))   # potongan raksasa: kecilkan dulu
         src, mm = crop, m
         if scale < 1.0:
             size = (max(8, int(cw * scale)), max(8, int(ch * scale)))

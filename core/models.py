@@ -45,6 +45,7 @@ class TextBlock:
     mask_poly: list = field(default_factory=list)  # kontur balon [[x,y],...] opsional
     text_rect: list = field(default_factory=list)  # [x,y,w,h] teks asli hasil deteksi (untuk OCR)
     src_h: int = 0            # tinggi huruf teks asli (px); batas ukuran font otomatis
+    font_cat: str = ""        # golongan gaya huruf asli (dialog / dialog-miring / narasi ...) untuk memori font
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
 
     @property
@@ -105,6 +106,7 @@ class Project:
     target_lang: str = "id"
     glossary: dict = field(default_factory=dict)   # istilah tetap: {"先輩": "Senpai"}
     series_title: str = ""    # judul seri terjemahan (untuk logo judul otomatis)
+    font_memory: dict = field(default_factory=dict)   # {golongan gaya: path font} dipakai ulang di halaman lain
     file: str = ""
 
     def add_images(self, paths):
@@ -126,6 +128,7 @@ class Project:
             "target_lang": self.target_lang,
             "glossary": self.glossary,
             "series_title": self.series_title,
+            "font_memory": self.font_memory,
             "pages": [p.to_dict() for p in self.pages],
         }
         Path(self.file).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -139,6 +142,7 @@ class Project:
             target_lang=d.get("target_lang", "id"),
             glossary=d.get("glossary", {}),
             series_title=d.get("series_title", ""),
+            font_memory=d.get("font_memory", {}) or {},
             file=file,
         )
 

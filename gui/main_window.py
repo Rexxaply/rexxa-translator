@@ -344,6 +344,7 @@ class MainWindow(QMainWindow):
         m_go.addAction(icon("scan"), "Hanya OCR", lambda: self.run_stages(["ocr"]))
         m_go.addAction(icon("translate"), "Hanya terjemahkan", lambda: self.run_stages(["translate"]))
         m_go.addAction(icon("wand"), "Koreksi salah baca OCR (semua halaman)…", self.fix_ocr_all)
+        m_go.addAction(icon("wand"), "Lupakan font yang diingat proyek ini", self.reset_font_memory)
         m_go.addAction(icon("image"), "Render ulang  (Ctrl+R)", self.render_current)
         m_go.addSeparator()
         m_go.addAction(icon("translate"), "Logo judul seri di halaman ini…", self.make_title)
@@ -1748,7 +1749,14 @@ class MainWindow(QMainWindow):
             return
         self._snap(("prop", b.id))
         old = (b.clean, b.kind)
-        b.font = self.p_font.currentData() or ""
+        new_font = self.p_font.currentData() or ""
+        if new_font != b.font and b.font_cat and self.settings.get("font_match_all", True):
+            # font yang dipilih manual diingat untuk golongan teks ini di halaman berikutnya
+            self.project.font_memory[b.font_cat] = new_font
+            from core.pipeline import FONT_CAT_LABEL
+            self.log(f"Font “{typeset.font_name(new_font) if new_font else 'default'}” diingat untuk "
+                     f"{FONT_CAT_LABEL.get(b.font_cat, b.font_cat)} di halaman berikutnya.")
+        b.font = new_font
         size = self.p_size.value()
         if b.font_size == 0 and size == 1 and b.fit_size:
             size = b.fit_size + 1          # naik dari "Auto": mulai dari ukuran yang sedang tampil
@@ -2383,10 +2391,26 @@ class MainWindow(QMainWindow):
             self.need_clean.discard(p.path)
 
         def job(w: Worker):
+            from core import perf
+            perf.apply(st)
             pipeline.process_page(p, proj, st, stages, log=w.log.emit, keep_boxes=keep_boxes)
             w.page_updated.emit(i)
 
         self._start(job, f"{', '.join(stages)} · {p.name}")
+
+    def reset_font_memory(self):
+        from core.pipeline import FONT_CAT_LABEL
+        mem = self.project.font_memory
+        if not mem:
+            QMessageBox.information(self, APP_NAME, "Belum ada font yang diingat di proyek ini.")
+            return
+        lines = "\n".join(f"• {FONT_CAT_LABEL.get(k, k)}: {typeset.font_name(v) if v else 'font default'}"
+                          for k, v in mem.items())
+        from .alert import ask
+        if ask(self, APP_NAME, "Lupakan font yang diingat?\n" + lines +
+               "\n\nHalaman berikutnya akan dicocokkan ulang dengan teks aslinya.", yes="Lupakan", no="Batal"):
+            self.project.font_memory = {}
+            self.log("Memori font proyek dihapus.")
 
     def fix_ocr_all(self):
         """Perbaiki salah baca OCR (mis. 'GLEARIr' -> 'CLEAR!') di teks asli semua halaman, lalu
@@ -2511,8 +2535,14 @@ class MainWindow(QMainWindow):
         proj, st = self.project, dict(self.settings)
         for _, pg in todo:
             self._snap(page=pg)
+        cur_page = self.page()
 
         def job(w: Worker):
+            import time
+            from core import perf
+            perf.apply(st)
+            low = perf.low_end(st)
+            w.log.emit(f"Terjemahkan semua: {perf.describe(st)}")
             for n, (i, p) in enumerate(todo, 1):
                 if w.stop:
                     w.log.emit("Dihentikan.")
@@ -2522,9 +2552,31 @@ class MainWindow(QMainWindow):
                     pipeline.process_page(p, proj, st, log=w.log.emit, keep_boxes=keep)
                 except ImportError:
                     raise
+                except MemoryError:
+                    # memori habis: bersihkan lalu ulangi halaman ini dengan cara yang lebih ringan
+                    perf.release()
+                    w.log.emit(f"[{p.name}] memori penuh — mencoba lagi dengan mode hemat (tanpa AI hapus teks)…")
+                    try:
+                        light = dict(st, clean_method="opencv")
+                        pipeline.process_page(p, proj, light, log=w.log.emit, keep_boxes=True)
+                    except Exception as e:
+                        w.log.emit(f"[{p.name}] gagal: {e}")
                 except Exception as e:
                     w.log.emit(f"[{p.name}] gagal: {e}")
+                perf.release(p, keep_current=p is cur_page)
                 w.page_updated.emit(i)
+                if proj.file and n % 5 == 0:          # simpan otomatis: aman bila aplikasi tertutup paksa
+                    try:
+                        proj.save()
+                        w.log.emit(f"Disimpan otomatis ({n}/{len(todo)} halaman).")
+                    except Exception:
+                        pass
+                if low:
+                    time.sleep(0.15)                    # beri napas untuk tampilan & sistem
+                if perf.free_ram_gb() < 0.6:
+                    w.log.emit("Memori komputer hampir habis — jeda sebentar…")
+                    perf.release()
+                    time.sleep(1.5)
             w.progress.emit(len(todo), len(todo))
 
         self._start(job, f"Terjemahkan {len(todo)} halaman")

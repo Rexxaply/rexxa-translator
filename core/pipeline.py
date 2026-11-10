@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import zipfile
+
+import numpy as np
 from pathlib import Path
 
 from . import detector, inpaint, ocr, paths, translator, typeset
@@ -32,6 +34,8 @@ DEFAULT_SETTINGS = {
     "auto_title": True,             # ganti logo judul otomatis bila judul seri diisi
     "font_match_system": True,      # boleh memakai font perangkat (Windows/Fonts)
     "font_match_online": True,      # cadangan: cari di Google Fonts bila font lokal kurang mirip
+    "font_match_all": True,         # cocokkan font untuk semua teks (diingat per proyek)
+    "perf_mode": "auto",            # auto | hemat | normal  (hemat = ramah PC spesifikasi rendah)
     "export_naming": "original",    # original | doc | num  (lihat EXPORT_NAMING)
     "shortcuts": {},                # pintasan keyboard yang diubah pengguna {id: "Ctrl+X"}
     "uppercase": True,              # gaya scanlation: HURUF KAPITAL
@@ -207,6 +211,74 @@ def add_title_block(img, page: Page, project: Project, settings: dict, strict: b
         pass
     page.blocks.insert(0, b)
     return b
+
+
+FONT_CAT_LABEL = {"dialog": "Dialog", "dialog-italic": "Dialog miring (bisikan / pikiran)",
+                  "dialog-bold": "Dialog tebal (teriakan)", "narration": "Narasi / teks bebas",
+                  "narration-lower": "Narasi huruf kecil (gumaman)"}
+FONT_OK = 3.5          # skor kemiripan maksimum supaya font hasil pencocokan dipakai
+
+
+def font_category(b, feat, page_stroke: float) -> str:
+    """Golongan gaya teks asli: dialog / dialog-italic / dialog-bold / narration / narration-lower."""
+    letters = [c for c in (b.source or "") if c.isalpha()]
+    lower = bool(letters) and sum(c.islower() for c in letters) > 0.5 * len(letters)
+    if b.kind == "free":
+        return "narration-lower" if lower else "narration"
+    if feat is not None and abs(feat.get("slant", 0)) > 0.15:
+        return "dialog-italic"
+    if feat is not None and page_stroke and feat.get("stroke", 0) > page_stroke * 1.4:
+        return "dialog-bold"
+    return "dialog"
+
+
+def auto_fonts(img, page: Page, project: Project, settings: dict, log=None, only=None):
+    """Pilih font yang mirip dengan teks asli untuk SEMUA teks (bukan hanya SFX), per golongan gaya.
+    Font yang terpilih DIINGAT di proyek (project.font_memory), jadi halaman berikutnya langsung
+    memakai font yang sama: cepat dan konsisten se-chapter. Kotak yang fontnya dipilih manual
+    tidak diubah."""
+    if not settings.get("font_match_all", True):
+        return
+    from . import fontmatch
+    blocks = [b for b in (page.blocks if only is None else only)
+              if b.kind in ("bubble", "free") and not getattr(b, "sfx", False) and not b.font
+              and b.text_rect and len(b.text_rect) == 4]
+    if not blocks:
+        return
+    feats = {}
+    for b in blocks:
+        try:
+            feats[b.id] = fontmatch.source_features(img, b.text_rect, b.src_h)
+        except Exception:
+            feats[b.id] = None
+    strokes = [f["stroke"] for f in feats.values() if f]
+    page_stroke = float(np.median(strokes)) if strokes else 0.0
+    mem = project.font_memory
+    by_cat = {}
+    for b in blocks:
+        b.font_cat = font_category(b, feats.get(b.id), page_stroke)
+        by_cat.setdefault(b.font_cat, []).append(b)
+    for cat, bs in by_cat.items():
+        if cat not in mem or (mem[cat] and not Path(mem[cat]).exists()):
+            # cocokkan dari teks terbanyak di golongan ini (ciri huruf paling bisa dipercaya)
+            rep = max(bs, key=lambda b: (b.text_rect[2] * b.text_rect[3]))
+            path = ""
+            try:
+                res = fontmatch.best_font(img, rep.text_rect, rep.src_h, top=3,
+                                          include_system=bool(settings.get("font_match_system", True)))
+                if res and res[0][1] <= FONT_OK:
+                    path = res[0][0]
+            except Exception:
+                path = ""
+            mem[cat] = path
+            if log:
+                from .typeset import font_name
+                log(f"[{page.name}] font {FONT_CAT_LABEL.get(cat, cat)}: "
+                    + (font_name(path) if path else "font default (tidak ada yang cukup mirip)")
+                    + " · diingat untuk halaman berikutnya")
+        for b in bs:
+            if mem.get(cat):
+                b.font = mem[cat]
 
 
 def match_sfx_fonts(img, blocks, settings):
@@ -418,6 +490,14 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
     return final
 
 
+def _auto_fonts_safe(page, project, settings, log=None, only=None):
+    try:
+        auto_fonts(detector.load_image(page.path), page, project, settings, log=log, only=only)
+    except Exception as e:      # pencocokan font gagal tidak boleh menghentikan terjemahan
+        if log:
+            log(f"[{page.name}] cocokkan font dilewati: {e}")
+
+
 def process_page(page: Page, project: Project, settings: dict, stages=("detect", "ocr", "translate", "render"),
                  log=print, keep_boxes: bool = False):
     """keep_boxes=True: bila halaman SUDAH punya kotak (hasil deteksi atau kotak manual), kotak itu
@@ -430,6 +510,7 @@ def process_page(page: Page, project: Project, settings: dict, stages=("detect",
             log(f"[{page.name}] memakai {len(page.blocks)} kotak yang ada · OCR {len(need_ocr)} kotak baru…")
             if need_ocr:
                 step_ocr(page, project, settings, only=need_ocr)
+                _auto_fonts_safe(page, project, settings, log, only=[b for b in need_ocr if b in page.blocks])
         if "translate" in stages:
             need_tr = [b for b in page.blocks if b.kind != "title" and (b.source or "").strip()
                        and not (b.translation or "").strip()]
@@ -448,6 +529,7 @@ def process_page(page: Page, project: Project, settings: dict, stages=("detect",
     if "ocr" in stages and page.blocks:
         log(f"[{page.name}] OCR…")
         step_ocr(page, project, settings)
+        _auto_fonts_safe(page, project, settings, log)
     if "translate" in stages and page.blocks:
         log(f"[{page.name}] menerjemahkan ({settings['translate_engine']})…")
         step_translate(page, project, settings, log)
