@@ -561,6 +561,7 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", b
     use_lama = lama_available()
     ai_mask = np.zeros(img.shape[:2], np.uint8)
     cands = None
+    done = []            # (blok, mask huruf, tinggi huruf) untuk tahap perapian
 
     for b in blocks:
         if not b.clean or b.kind == "title":      # logo judul diurus titlelogo
@@ -588,6 +589,7 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", b
             # ulang latarnya -- jangan menempel kotak putih yang menutupi balon / gambar
             ai_mask |= _safe_contrast_mask(img, region)
             continue
+        done.append((b, tm, _lh))
         # kerjakan hanya di sekitar blok (halaman webtoon bisa >10.000 px tingginya)
         H_, W_ = img.shape[:2]
         e = int(max(40, _lh * 3))
@@ -634,7 +636,71 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", b
         else:
             ai_mask[ry0:ry1, rx0:rx1] |= stm | _halo(sub, stm, _lh)   # latar bergambar: generate ulang (AI)
 
+    wants_lama = use_lama and method in ("lama", "auto")
     if ai_mask.any():
-        wants_lama = use_lama and method in ("lama", "auto")
         out = _inpaint_lama(out, ai_mask) if wants_lama else _inpaint_opencv(out, ai_mask)
+    if done and method != "none":
+        out = refine_clean(img, out, done, wants_lama)
+    return out
+
+
+def refine_clean(img: np.ndarray, out: np.ndarray, done, wants_lama: bool) -> np.ndarray:
+    """Tahap perapian setelah hapus teks pertama (dikerjakan per blok, hanya di sekitar teks):
+
+    2. Pulihkan potongan yang salah: garis balon / gambar (coretan panjang yang menembus jauh
+       keluar area teks) yang ikut terhapus dikembalikan dari gambar asli.
+    3. Cari sisa teks: coretan gelap yang masih tertinggal di bekas posisi huruf (tepi samar,
+       titik, ujung huruf) -> dibuat ulang lagi oleh AI (LaMa) / diisi latar.
+    4. Rapikan sambungan: tepi area yang dikembalikan / diperbaiki dihaluskan oleh AI.
+    """
+    H, W = img.shape[:2]
+    gray0 = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    residue = np.zeros((H, W), np.uint8)
+    out = out.copy()
+    for b, tm, lh in done:
+        lh = max(4.0, float(lh))
+        e = int(lh * 3) + 8
+        x0, y0 = max(0, int(b.x) - e), max(0, int(b.y) - e)
+        x1, y1 = min(W, int(b.x + b.w) + e), min(H, int(b.y + b.h) + e)
+        g0 = gray0[y0:y1, x0:x1]
+        t = tm[y0:y1, x0:x1] > 0
+        if not t.any():
+            continue
+        o = out[y0:y1, x0:x1]
+        go = cv2.cvtColor(o, cv2.COLOR_BGR2GRAY)
+        changed = np.abs(o.astype(np.int16) - img[y0:y1, x0:x1].astype(np.int16)).max(axis=2) > 12
+
+        # --- 2. coretan panjang (garis balon / gambar) yang terpotong -> kembalikan
+        dark0 = (g0 < 110).astype(np.uint8)
+        n, lbl, st, _ = cv2.connectedComponentsWithStats(dark0, connectivity=8)
+        core = cv2.erode(t.astype(np.uint8), np.ones((3, 3), np.uint8), iterations=max(1, int(lh * 0.12)))
+        restore = np.zeros_like(t)
+        for i in np.unique(lbl[changed & (dark0 > 0)]):
+            if i == 0:
+                continue
+            x, y, w, h, a = st[i]
+            comp = lbl == i
+            outside = (comp & ~t).sum()
+            # coretan panjang yang sebagian besar berada di luar area huruf = bukan huruf
+            if max(w, h) > lh * 3.2 and outside > 0.45 * a:
+                restore |= comp & changed & (core == 0)
+        if restore.any():
+            o[restore] = img[y0:y1, x0:x1][restore]
+            # 4. sambungan antara bagian yang dikembalikan & bagian yang dibersihkan
+            seam = cv2.dilate(restore.astype(np.uint8), np.ones((3, 3), np.uint8)) & changed & ~restore
+            residue[y0:y1, x0:x1] |= seam.astype(np.uint8) * 255
+
+        # --- 3. sisa huruf: masih gelap di tempat yang dulunya huruf, padahal sekitarnya terang
+        near = cv2.dilate(t.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+        bgv = cv2.medianBlur(go, max(3, int(lh * 0.8)) | 1)
+        left = near & (g0 < 160) & (go.astype(np.int16) < bgv.astype(np.int16) - 45) & ~restore
+        if left.any():
+            nn, l2, s2, _ = cv2.connectedComponentsWithStats(left.astype(np.uint8), connectivity=8)
+            for i in range(1, nn):
+                if s2[i][4] >= 3 and max(s2[i][2], s2[i][3]) <= lh * 2.5:
+                    residue[y0:y1, x0:x1][l2 == i] = 255
+        out[y0:y1, x0:x1] = o
+    if residue.any():
+        residue = cv2.dilate(residue, np.ones((3, 3), np.uint8))
+        out = _inpaint_lama(out, residue) if wants_lama else _inpaint_opencv(out, residue)
     return out
