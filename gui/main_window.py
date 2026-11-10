@@ -775,7 +775,7 @@ class MainWindow(QMainWindow):
         for cv in (self.cv_src, self.cv_out):
             cv.set_zoom(s)
             if cv.pix_item:
-                cv.centerOn(cv.pix_item)
+                cv._center_or_top()
         self.zoom_lbl.setText(f"{round(s * 100)}%")
 
     def resizeEvent(self, e):

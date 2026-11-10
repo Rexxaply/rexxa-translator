@@ -34,14 +34,22 @@ def save_image(path: str, img: np.ndarray):
 
 # ---------------------------------------------------------------- bubble (OpenCV)
 
+def _ref_size(shape) -> float:
+    """Ukuran acuan halaman. Manga: tinggi halaman. Webtoon (strip panjang manhwa/manhua):
+    tinggi gambar bisa 20x lebarnya, jadi ukuran huruf diukur dari lebar, bukan tinggi."""
+    H, W = shape[:2]
+    return float(min(H, W * 1.45))
+
+
 def _letter_candidates(gray, weak=False):
     H, W = gray.shape
     # gelap relatif terhadap latar lokal (tangkap huruf tipis/abu-abu)
     bg = cv2.dilate(gray, np.ones((9, 9), np.uint8))
     dark = ((gray < 170) & (bg.astype(int) - gray > 55)).astype(np.uint8)
     n, lbl, stats, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
-    hmin = max(6, int(H * 0.005))
-    hmax = int(H * 0.05)
+    ref = _ref_size(gray.shape)
+    hmin = max(6, int(ref * 0.005))
+    hmax = int(ref * 0.05)
     light = gray > 190
     mid = (gray > 170) & (gray <= 190) | ((gray >= 60) & (gray <= 170) & (dark == 0))
     out = []
@@ -305,7 +313,7 @@ def _split_by_bubble(g, lbl, stats, shape):
         if r == 0:
             return [g]
         bx, by, bw, bh, area = stats[r]
-        if bx <= 1 or by <= 1 or bx + bw >= W - 1 or by + bh >= H - 1 or area > 0.2 * H * W:
+        if bx <= 1 or by <= 1 or bx + bw >= W - 1 or by + bh >= H - 1 or area > 0.2 * _ref_size(shape) * W:
             return [g]          # bukan balon tertutup -> jangan dipecah
         by_region.setdefault(r, []).append(l)
     if len(by_region) < 2:
@@ -329,7 +337,7 @@ def _find_bubble(gray, rect, closek, line_rects=None):
         return None
     bx, by, bw, bh, area = st[i]
     touches = bx <= 1 or by <= 1 or bx + bw >= W - 1 or by + bh >= H - 1
-    if touches or area > 14 * w * h or area > 0.2 * H * W:
+    if touches or area > 14 * w * h or area > 0.2 * _ref_size(gray.shape) * W:
         return None
     mask = (lbl == i).astype(np.uint8) * 255
     if not _text_centered(mask[by:by + bh, bx:bx + bw], (x - bx, y - by, w, h)):
@@ -474,7 +482,7 @@ def detect_bubbles(img: np.ndarray, vertical: bool = True) -> list[TextBlock]:
     groups = _group_letters(strong, gray.shape, allow_v=vertical)   # huruf latin: selalu baris mendatar
     groups = _absorb_single(groups, strong)
     groups = _extend_lines(groups, list(set(_letter_candidates(gray, weak=True)) - set(strong)))
-    closek = max(3, int(min(H, W) * 0.004)) | 1
+    closek = max(3, int(min(_ref_size(gray.shape), W) * 0.004)) | 1
     _, lbl, stats, _ = _white_regions(gray, groups, closek)
     split = []
     for g in groups:
@@ -501,7 +509,7 @@ def detect_bubbles(img: np.ndarray, vertical: bool = True) -> list[TextBlock]:
         r = _region_of(g, lbl)
         if r:
             bx, by, bw, bh, area = stats[r]
-            closed = not (bx <= 1 or by <= 1 or bx + bw >= W - 1 or by + bh >= H - 1) and area <= 0.2 * H * W
+            closed = not (bx <= 1 or by <= 1 or bx + bw >= W - 1 or by + bh >= H - 1) and area <= 0.2 * _ref_size(gray.shape) * W
             if closed:
                 shared.setdefault(r, []).append(g)
     lobes = {}
@@ -617,7 +625,33 @@ def _merge_close(rects, gap):
 
 # ---------------------------------------------------------------- API utama
 
+def _upscale_factor(img) -> int:
+    """Gambar kecil / webtoon resolusi rendah (lebar < 700 px): huruf hanya beberapa piksel,
+    jadi deteksi dijalankan di gambar yang diperbesar 2x."""
+    h, w = img.shape[:2]
+    return 2 if w < 700 and h * w * 4 <= 60_000_000 else 1
+
+
+def _scale_block(b: TextBlock, f: float) -> TextBlock:
+    b.x, b.y, b.w, b.h = (int(round(v * f)) for v in (b.x, b.y, b.w, b.h))
+    if b.text_rect:
+        b.text_rect = [int(round(v * f)) for v in b.text_rect]
+    if b.mask_poly:
+        b.mask_poly = [[int(round(px * f)), int(round(py * f))] for px, py in b.mask_poly]
+    b.src_h = int(round(b.src_h * f))
+    return b
+
+
 def detect(img: np.ndarray, mode: str = "bubble", lang: str = "ja", gpu: bool = False) -> list[TextBlock]:
+    k = _upscale_factor(img) if mode in ("bubble", "hybrid") else 1
+    if k > 1:
+        big = cv2.resize(img, None, fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
+        blocks = _detect(big, mode, lang, gpu)
+        return [_scale_block(b, 1.0 / k) for b in blocks]
+    return _detect(img, mode, lang, gpu)
+
+
+def _detect(img: np.ndarray, mode: str, lang: str, gpu: bool) -> list[TextBlock]:
     cjk = lang in ("ja", "zh", "zh-tw", "ko")
     if mode == "bubble":
         blocks = detect_bubbles(img, vertical=cjk)

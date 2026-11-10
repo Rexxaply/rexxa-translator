@@ -303,13 +303,30 @@ class PageCanvas(QGraphicsView):
         vp = self.viewport().rect()
         if r.width() <= 0 or r.height() <= 0:
             return 1.0
-        return max(0.05, min((vp.width() - 16) / r.width(), (vp.height() - 16) / r.height()))
+        sw, sh = (vp.width() - 16) / r.width(), (vp.height() - 16) / r.height()
+        if self.is_strip():
+            return max(0.05, sw)          # strip webtoon panjang: pas lebar, gulir ke bawah
+        return max(0.05, min(sw, sh))
+
+    def is_strip(self) -> bool:
+        """Gambar webtoon (manhwa/manhua) yang jauh lebih tinggi dari lebarnya."""
+        if not self.pix_item:
+            return False
+        r = self.pix_item.boundingRect()
+        return r.width() > 0 and r.height() / r.width() > 2.5
 
     def fit(self):
         if self.pix_item:
             self.set_zoom(self.fit_scale())
-            self.centerOn(self.pix_item)
+            self._center_or_top()
             self.zoom_changed.emit(self.zoom())
+
+    def _center_or_top(self):
+        if self.is_strip():   # mulai dari atas strip
+            r = self.pix_item.sceneBoundingRect()
+            self.centerOn(r.center().x(), r.top() + self.viewport().height() / (2 * max(self.zoom(), 1e-6)))
+        else:
+            self.centerOn(self.pix_item)
 
     def zoom(self) -> float:
         return self.transform().m11()
