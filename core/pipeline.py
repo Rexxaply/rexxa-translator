@@ -322,8 +322,8 @@ def step_ocr(page: Page, project: Project, settings: dict, progress=None, only=N
         from . import ocrfix
 
         def ok(b):
-            if b not in targets or b.kind == "title":
-                return True
+            if b not in targets or b.kind == "title" or not b.text_rect:
+                return True                        # kotak buatan pengguna tidak pernah dibuang otomatis
             conf = getattr(b, "_ocr_conf", None)
             if conf is not None and conf < 0.15:
                 return False                       # OCR sendiri tidak yakin sama sekali

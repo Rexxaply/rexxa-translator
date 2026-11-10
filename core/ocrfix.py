@@ -166,6 +166,8 @@ def _fix_core(core: str) -> str:
     cand, cost = got
     if _known(w) and cost > 1.0:          # kata langka yang dikenal: hanya koreksi yang sangat jelas
         return core
+    if cost > 1.0 and not odd and len(w) < 8:
+        return core                       # 2 huruf berubah di kata pendek: mungkin logat sengaja ("BESHT")
     return _case_like(core, cand)
 
 

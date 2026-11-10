@@ -995,12 +995,15 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, APP_NAME, "Gambar itu sudah ada di proyek.")
             return
         pos = len(self.project.pages) if after is None else max(0, min(len(self.project.pages), after + 1))
-        self.project.pages[pos:pos] = new
         keep = self.page()
+        self.project.pages[pos:pos] = new
+        self.cur = self.project.pages.index(keep) if keep is not None else -1
         self._refresh_page_list()
-        row = pos if keep is None else self.project.pages.index(keep)
-        self.cur = -1
-        self.pages.setCurrentRow(pos if after is not None or keep is None else row)
+        target = pos if (after is not None or keep is None) else self.cur
+        if target != self.pages.currentRow():
+            self.pages.setCurrentRow(target)
+        elif target != self.cur or self.page() is None:
+            self.open_page(target)
         self.log(f"{len(new)} gambar ditambahkan (sekarang {len(self.project.pages)} halaman).")
 
     def _on_pages_moved(self, _parent, start, end, _dest, row):
@@ -1083,9 +1086,11 @@ class MainWindow(QMainWindow):
         self.sel = None
         self._refresh_page_list()
         if self.project.pages:
-            c = self.cur
-            self.cur = -1
-            self.pages.setCurrentRow(max(0, c))
+            c = max(0, self.cur)
+            self.pages.blockSignals(True)
+            self.pages.setCurrentRow(c)
+            self.pages.blockSignals(False)
+            self.open_page(c)
         else:
             self.cur = -1
             for cv in (self.cv_src, self.cv_out):
