@@ -462,7 +462,7 @@ class MainWindow(QMainWindow):
             box = QWidget()
             box.setObjectName("field")
             h = QHBoxLayout(box)
-            h.setContentsMargins(8, 0, 2, 0)
+            h.setContentsMargins(8, 1, 4, 1)
             h.setSpacing(4)
             ic = QLabel(icon_text)
             ic.setObjectName("fieldIcon")
@@ -484,6 +484,9 @@ class MainWindow(QMainWindow):
             w.setButtonSymbols(QAbstractSpinBox.NoButtons)
             w.setAlignment(Qt.AlignCenter)
             w.setObjectName("bare")
+            w.setMinimumWidth(44)
+            w.setFixedHeight(22)
+            w.setKeyboardTracking(False)
             return w
 
         def mini(text, tip, checkable=True, w=30):
@@ -536,9 +539,9 @@ class MainWindow(QMainWindow):
             srow.addWidget(b)
         g.addLayout(srow, 1, 0, 1, 2)
         # baris 3: jarak baris | jarak huruf
-        self.p_lsp = spin(0.0, 3.0, 0.05, 2, "Default")
+        self.p_lsp = spin(0.5, 3.0, 0.05, 2)
         self.p_ls = spin(-10.0, 40.0, 0.5, 1)
-        g.addWidget(field("≡", self.p_lsp, "Jarak baris (Default = Pengaturan → Teks, umumnya 1.2)"), 2, 0)
+        g.addWidget(field("≡", self.p_lsp, "Jarak antar baris (1.20 = default dari Pengaturan → Teks)"), 2, 0)
         g.addWidget(field("AV", self.p_ls, "Jarak antar huruf (piksel)"), 2, 1)
         # baris 4: rotasi | posisi
         self.p_rot = spin(-180, 180, 1, 0, None, "°")
@@ -1017,6 +1020,7 @@ class MainWindow(QMainWindow):
                 i = self.p_font.count() - 1
             self.p_font.setCurrentIndex(max(0, i))
             self.p_size.setValue(b.font_size)
+            self._update_fit_text(b)
             self.p_bold.setChecked(b.bold)
             for n, btn in enumerate(self.p_presets, 1):
                 btn.setChecked(b.preset == n)
@@ -1026,7 +1030,7 @@ class MainWindow(QMainWindow):
             self._color_btn(self.p_color, b.color)
             self._grad_btn(b)
             self.p_stroke.setValue(b.stroke_width)
-            self.p_lsp.setValue(float(b.line_spacing or 0))
+            self.p_lsp.setValue(float(b.line_spacing or self._default_lsp()))
             self.p_ls.setValue(float(b.letter_spacing or 0))
             self.p_rot.setValue(int(round(b.rotation or 0)))
             for k, btn in self.p_case.items():
@@ -1079,6 +1083,21 @@ class MainWindow(QMainWindow):
                 btn.setChecked(kk == k)
             self._schedule_render()
 
+    def _default_lsp(self) -> float:
+        return round(float(self.settings.get("line_spacing", 1.2) or 1.2), 2)
+
+    def _update_fit_text(self, b=None):
+        """Ukuran Auto ditampilkan dengan angka hasil render terakhir, mis. "Auto · 24"."""
+        b = b or self.sel
+        if not b:
+            return
+        self.p_size.setSpecialValueText(f"Auto · {b.fit_size}" if b.fit_size else "Auto")
+        if b.font_size == 0:              # paksa tampilan ulang teks khusus
+            self._loading, was = True, self._loading
+            self.p_size.setValue(1)
+            self.p_size.setValue(0)
+            self._loading = was
+
     def _on_prop_change(self, *_):
         b = self.sel
         if self._loading or not b:
@@ -1086,10 +1105,18 @@ class MainWindow(QMainWindow):
         self._snap(("prop", b.id))
         old = (b.clean, b.kind)
         b.font = self.p_font.currentData() or ""
-        b.font_size = self.p_size.value()
+        size = self.p_size.value()
+        if b.font_size == 0 and size == 1 and b.fit_size:
+            size = b.fit_size + 1          # naik dari "Auto": mulai dari ukuran yang sedang tampil
+            self._loading = True
+            self.p_size.setValue(size)
+            self._loading = False
+        b.font_size = size
         b.bold = self.p_bold.isChecked()
         b.stroke_width = self.p_stroke.value()
-        b.line_spacing = round(self.p_lsp.value(), 2)
+        lsp = round(self.p_lsp.value(), 2)
+        # tetap "ikut default" bila nilainya tidak diubah
+        b.line_spacing = 0.0 if (not b.line_spacing and abs(lsp - self._default_lsp()) < 1e-6) else lsp
         b.letter_spacing = round(self.p_ls.value(), 1)
         b.rotation = float(self.p_rot.value())
         b.kind = self.p_kind.currentData()
@@ -1340,6 +1367,8 @@ class MainWindow(QMainWindow):
 
     def _on_page_updated(self, i):
         self._update_page_item(i)
+        if i == self.cur and getattr(self, "sel", None):
+            self._update_fit_text()
         p = self.project.pages[i]
         if p.output_path and Path(p.output_path).exists():
             self.pages.item(i).setIcon(self._thumb(p.output_path))
@@ -1573,7 +1602,8 @@ QWidget#propsPanel QPlainTextEdit, QWidget#propsPanel QCheckBox { font-size: 8pt
 QWidget#propsPanel QComboBox { padding: 2px 6px; min-height: 22px; }
 QWidget#propsPanel QPushButton { padding: 4px 6px; }
 QLabel#fieldIcon { color: #8a8e9a; font-weight: 600; background: transparent; min-width: 16px; }
-QSpinBox#bare, QDoubleSpinBox#bare { background: transparent; border: none; padding: 0; }
+QSpinBox#bare, QDoubleSpinBox#bare { background: transparent; border: none; padding: 0 2px; margin: 0;
+  color: #e4e6ea; min-height: 20px; selection-background-color: #ff4d6d; }
 QToolButton#mini { background: #23252b; border: 1px solid #30333b; border-radius: 6px; padding: 0; }
 QToolButton#mini:hover { background: #2a2c34; }
 QToolButton#mini:checked { background: #ff4d6d; border-color: #ff4d6d; color: white; }

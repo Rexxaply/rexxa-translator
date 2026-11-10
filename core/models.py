@@ -19,6 +19,7 @@ class TextBlock:
     vertical: bool = False    # teks asli vertikal (JP/ZH)
     font: str = ""            # kosong = pakai font default
     font_size: int = 0        # 0 = otomatis menyesuaikan kotak
+    fit_size: int = 0         # ukuran hasil "Auto" pada render terakhir (info untuk panel)
     color: str = "#000000"
     color2: str = ""          # warna bawah untuk teks gradasi (kosong = warna polos)
     stroke_color: str = "#FFFFFF"

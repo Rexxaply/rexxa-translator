@@ -634,6 +634,7 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
             cap = min(cap, max(12, int(b.src_h * (1.9 if b.kind == "bubble" else 1.5))))
         size, lines, top, lh = _fit_shape(measure, text, font_path, shape, stroke, ls, lsp,
                                           min(cap, max(max_size, 8)), fixed=fixed, shear=shear)
+        b.fit_size = int(size)
         font = _font(font_path, size)
 
         # gambar di lapisan transparan seukuran balon (+ jarak), lalu miring/putar & geser

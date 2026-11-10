@@ -3,6 +3,9 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.9.3
+- Panel **Tipografi**: nilai ukuran font, jarak baris, jarak huruf, dan rotasi kini terlihat. Ukuran otomatis menampilkan angkanya (mis. "Auto · 24"); menaikkan ukuran dari Auto mulai dari angka itu. Jarak baris menampilkan nilai sebenarnya (1.20 = default).
+
 ## 1.9.2
 - Teks kini benar-benar **di tengah balon**, termasuk balon awan / lonjong (sebelumnya bisa naik ke bagian atas balon).
 - Huruf miring dimiringkan **per baris**, jadi teks tetap rata tengah dan hurufnya bisa lebih besar di balon yang sempit.
@@ -22,6 +25,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - **Hapus teks lebih rapi**: kini hanya **huruf** yang dideteksi & dihapus (bukan garis balon, rambut, atau gambar di sekitarnya), lalu bekasnya diisi warna latar (latar polos) atau **di-generate ulang oleh AI** LaMa (latar bergambar). Balon tidak lagi terpotong atau tertutup kotak putih.
 - Terjemahan teks bebas / balon terbuka ditempel di **area putih balon** (boleh lebih luas dari kotaknya), tidak lagi keluar dari balon.
 - Kata panjang dipenggal di **batas suku kata** (mis. KEBERUN-TUNGAN).
-
-## 1.7.3
-- Sidebar lebih ramping (HALAMAN ±128 px, PROPERTI ±240 px) supaya fokus ke halaman manga; isi panel dipadatkan, kotak warna jadi kotak kecil (kode warna muncul saat disorot).
