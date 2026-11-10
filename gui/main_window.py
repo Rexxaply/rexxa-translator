@@ -572,8 +572,8 @@ class MainWindow(QMainWindow):
         g.setColumnStretch(1, 1)
         s2.lay.addLayout(g)
         self.p_font.currentIndexChanged.connect(self._on_prop_change)
-        for w in (self.p_size, self.p_stroke, self.p_lsp, self.p_ls, self.p_rot):
-            w.valueChanged.connect(self._on_prop_change)
+        for sp in (self.p_size, self.p_stroke, self.p_lsp, self.p_ls, self.p_rot):   # jangan pakai nama `w`!
+            sp.valueChanged.connect(self._on_prop_change)
         self.p_bold.toggled.connect(self._on_prop_change)
         self.p_ital.toggled.connect(self._on_italic)
 
@@ -1557,6 +1557,33 @@ QToolTip { background: #23252b; color: #e4e6ea; border: 1px solid #33363f; paddi
 """
 
 
+def _rollback_after_crash() -> bool:
+    """Update terakhir membuat jendela gagal dibuka: pulihkan app.old -> app lalu jalankan ulang.
+    (Peluncur hanya memulihkan otomatis bila kode gagal dimuat; ini menangani error saat jendela dibuat.)"""
+    import os
+    import sys
+    import traceback
+    from core import paths
+    if not paths.is_frozen() or os.environ.get("REXXA_ROLLED_BACK"):
+        return False
+    code = Path(paths.code_dir())
+    old, broken = code.with_name(code.name + ".old"), code.with_name(code.name + ".broken")
+    if not old.is_dir():
+        return False
+    try:
+        (paths.data_dir() / "crash.txt").write_text(traceback.format_exc(), encoding="utf-8")
+        import shutil
+        shutil.rmtree(broken, ignore_errors=True)
+        os.replace(code, broken)
+        os.replace(old, code)
+    except OSError:
+        return False
+    import subprocess
+    env = dict(os.environ, REXXA_ROLLED_BACK="1")
+    subprocess.Popen([sys.executable] + sys.argv[1:], env=env, close_fds=True)
+    return True
+
+
 def run():
     import sys
     app = QApplication(sys.argv)
@@ -1568,7 +1595,12 @@ def run():
     if ic.exists():
         from PySide6.QtGui import QIcon
         app.setWindowIcon(QIcon(str(ic)))
-    w = MainWindow()
+    try:
+        w = MainWindow()
+    except Exception:
+        if _rollback_after_crash():
+            return
+        raise
     w.show()
     if len(sys.argv) > 1:
         w._load_paths(sys.argv[1:])

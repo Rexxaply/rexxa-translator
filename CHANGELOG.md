@@ -3,6 +3,11 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.7.2
+- Perbaikan: aplikasi 1.7.1 gagal dibuka ("QVBoxLayout already deleted").
+- Bila sebuah update membuat jendela gagal dibuka, aplikasi kini otomatis kembali ke versi sebelumnya.
+- Setiap rilis kini diuji dengan benar-benar membuat jendela utama sebelum diterbitkan.
+
 ## 1.7.1
 - Teks kini mengikuti **bentuk asli balon** dan ukurannya menyesuaikan balon (lebih besar, tidak lagi kekecilan); posisinya di bagian terdalam balon, jadi ekor balon tidak menggeser teks.
 - Jarak baris default **1.2** seperti lettering manga (bisa diatur di Pengaturan → Teks); kata pendek tidak lagi dipotong-potong (mis. "KATSUKI- / SAN!").
@@ -19,6 +24,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 
 ## 1.6.7
 - Layar ASLI dan TERJEMAHAN kini selalu sama lebar (dibagi rata 50:50).
-
-## 1.6.6
-- Perbaikan: teks di balon kata kembali terhapus bersih (di 1.6.4–1.6.5 sebagian huruf, mis. "Katsuki-san!", tertinggal dan tertumpuk dengan terjemahan).

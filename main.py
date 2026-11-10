@@ -81,6 +81,14 @@ def _selftest(code):
     import torchvision.ops as ops
     ops.nms(torch.zeros((1, 4)), torch.zeros(1), 0.5)
     out.append("torchvision.ops.nms OK")
+    # buat jendela utama sungguhan (tanpa ditampilkan): menangkap error saat membangun tampilan
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication(sys.argv[:1])
+    from gui.main_window import MainWindow
+    win = MainWindow()
+    win.close()
+    del win, app
+    out.append("MainWindow dibuat OK")
     path = os.environ.get("REXXA_SELFTEST_OUT")
     if path:
         with open(path, "w", encoding="utf-8") as f:
