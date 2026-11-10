@@ -330,6 +330,7 @@ class MainWindow(QMainWindow):
         m_go.addAction(icon("scan"), "Hanya deteksi balon (halaman ini)", lambda: self.run_stages(["detect"]))
         m_go.addAction(icon("scan"), "Hanya OCR", lambda: self.run_stages(["ocr"]))
         m_go.addAction(icon("translate"), "Hanya terjemahkan", lambda: self.run_stages(["translate"]))
+        m_go.addAction(icon("wand"), "Koreksi salah baca OCR (semua halaman)…", self.fix_ocr_all)
         m_go.addAction(icon("image"), "Render ulang  (Ctrl+R)", self.render_current)
         m_go.addSeparator()
         m_go.addAction(icon("translate"), "Logo judul seri di halaman ini…", self.make_title)
@@ -2046,6 +2047,64 @@ class MainWindow(QMainWindow):
             w.page_updated.emit(i)
 
         self._start(job, f"{', '.join(stages)} · {p.name}")
+
+    def fix_ocr_all(self):
+        """Perbaiki salah baca OCR (mis. 'GLEARIr' -> 'CLEAR!') di teks asli semua halaman, lalu
+        (bila dipilih) terjemahkan ulang hanya balon yang berubah."""
+        if self.thread or not self.project.pages:
+            return
+        from core import ocrfix
+        if self.project.source_lang != "en":
+            QMessageBox.information(self, APP_NAME, "Koreksi OCR otomatis saat ini untuk teks asli bahasa Inggris.\n"
+                                    "Untuk bahasa lain, pakai mesin terjemah LLM: salah baca ikut dibetulkan "
+                                    "saat menerjemahkan.")
+            return
+        changed = []
+        self._snap()
+        for i, pg in enumerate(self.project.pages):
+            for b in pg.blocks:
+                if b.kind == "title" or not (b.source or "").strip():
+                    continue
+                new = ocrfix.fix(b.source, "en")
+                if new != b.source:
+                    changed.append((i, pg, b, b.source, new))
+        if not changed:
+            QMessageBox.information(self, APP_NAME, "Tidak ada salah baca OCR yang perlu diperbaiki.")
+            return
+        sample = "\n".join(f"• {o}  →  {n}" for _, _, _, o, n in changed[:6])
+        more = f"\n… dan {len(changed) - 6} lainnya" if len(changed) > 6 else ""
+        ans = Alert(self, APP_NAME, f"{len(changed)} teks OCR diperbaiki", sample + more, kind="success",
+                    buttons=[("Terapkan + terjemah ulang", "primary", "tr"), ("Terapkan saja", "neutral", "apply"),
+                             ("Batal", "neutral", None)], escape_value=None).exec_value()
+        if not ans:
+            return
+        for _, _, b, _, new in changed:
+            b.source = new
+        self._show_current()
+        self.log(f"Koreksi OCR: {len(changed)} teks diperbaiki.")
+        if ans != "tr":
+            return
+        pages = {}
+        for i, pg, b, _, _ in changed:
+            pages.setdefault(i, (pg, []))[1].append(b)
+        proj, st = self.project, dict(self.settings)
+
+        def job(w: Worker):
+            items = sorted(pages.items())
+            for n, (i, (pg, blocks)) in enumerate(items, 1):
+                if w.stop:
+                    break
+                w.progress.emit(n - 1, len(items))
+                try:
+                    pipeline.step_translate(pg, proj, st, w.log.emit, only=blocks)
+                    if pg.output_path or pg.status == "selesai":
+                        pipeline.step_render(pg, proj, st, recalc_clean=False)
+                except Exception as e:
+                    w.log.emit(f"[{pg.name}] gagal: {e}")
+                w.page_updated.emit(i)
+            w.progress.emit(len(items), len(items))
+
+        self._start(job, f"Terjemah ulang {len(changed)} balon")
 
     def detect_all(self):
         """Deteksi balon di semua halaman sekaligus (tanpa OCR / terjemah), supaya kotak bisa

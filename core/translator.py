@@ -76,7 +76,8 @@ def translate_deepl(texts, src, tgt, glossary, api_key):
 # Prompt dibuat ringkas: dikirim di SETIAP permintaan, jadi tiap kata = token yang dibayar.
 SYSTEM_PROMPT = ("Translate manga speech bubbles {src}->{tgt}. Natural, concise dialogue; keep tone, "
                  "character voice & honorifics; short SFX. Items are one page in reading order (use as "
-                 "context). {glossary}{extra}Reply JSON only: {{\"id\":\"translation\"}}")
+                 "context). Source text comes from OCR and may contain misread letters (e.g. G/C, I/l/!, 0/O); "
+                 "silently fix obvious OCR mistakes before translating. {glossary}{extra}Reply JSON only: {{\"id\":\"translation\"}}")
 
 
 def _glossary_for(texts, glossary):
