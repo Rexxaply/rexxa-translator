@@ -13,6 +13,7 @@ SHORTCUTS = [
 
     ("translate_page", "Proses", "Terjemahkan halaman ini", "F5", False),
     ("translate_all", "Proses", "Terjemahkan semua halaman", "F6", False),
+    ("detect_all", "Proses", "Deteksi balon semua halaman", "Shift+F6", False),
     ("render", "Proses", "Render ulang halaman", "Ctrl+R", False),
 
     ("undo", "Edit", "Undo", "Ctrl+Z", False),

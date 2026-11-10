@@ -288,7 +288,9 @@ class MainWindow(QMainWindow):
         m_go = QMenu(self)
         m_go.addAction(icon("zapall"), "Terjemahkan SEMUA halaman  (F6)", self.run_all)
         m_go.addSeparator()
-        m_go.addAction(icon("scan"), "Hanya deteksi balon", lambda: self.run_stages(["detect"]))
+        m_go.addAction(icon("scan"), "Deteksi balon SEMUA halaman  (Shift+F6)", self.detect_all)
+        m_go.addSeparator()
+        m_go.addAction(icon("scan"), "Hanya deteksi balon (halaman ini)", lambda: self.run_stages(["detect"]))
         m_go.addAction(icon("scan"), "Hanya OCR", lambda: self.run_stages(["ocr"]))
         m_go.addAction(icon("translate"), "Hanya terjemahkan", lambda: self.run_stages(["translate"]))
         m_go.addAction(icon("image"), "Render ulang  (Ctrl+R)", self.render_current)
@@ -468,7 +470,19 @@ class MainWindow(QMainWindow):
         split.setStretchFactor(2, 0)
         split.setChildrenCollapsible(False)
         split.splitterMoved.connect(lambda *_: QTimer.singleShot(0, self._fit_both))
-        self.setCentralWidget(split)
+        # layar awal (belum ada gambar) <-> editor; panel samping hanya muncul di editor
+        from PySide6.QtWidgets import QStackedWidget
+        from .welcome import WelcomeView
+        self.welcome = WelcomeView()
+        self.welcome.open_folder.connect(self.open_folder)
+        self.welcome.open_images.connect(self.open_images)
+        self.welcome.open_project.connect(self.open_project)
+        self.welcome.files_dropped.connect(self._load_paths)
+        self.center_stack = QStackedWidget()
+        self.center_stack.addWidget(self.welcome)
+        self.center_stack.addWidget(split)
+        self.center_stack.setCurrentIndex(0)
+        self.setCentralWidget(self.center_stack)
 
     def _build_props(self):
         w = QWidget()
@@ -775,6 +789,7 @@ class MainWindow(QMainWindow):
             "settings": self.edit_settings,
             "translate_page": lambda: self.run_stages(["detect", "ocr", "translate", "render"]),
             "translate_all": self.run_all,
+            "detect_all": self.detect_all,
             "render": self.render_current,
             "undo": self.undo,
             "redo": self.redo,
@@ -859,6 +874,11 @@ class MainWindow(QMainWindow):
         self.pages_hdr.setText(f"HALAMAN ({n})")
         self.pages.setVisible(n > 0)
         self.pages_empty.setVisible(n == 0)
+        if hasattr(self, "center_stack"):
+            was = self.center_stack.currentIndex()
+            self.center_stack.setCurrentIndex(1 if n else 0)
+            if n and was == 0:
+                QTimer.singleShot(0, self._fit_both)
         if 0 <= self.cur < n:
             self.pages.setCurrentRow(self.cur)
 
@@ -995,7 +1015,7 @@ class MainWindow(QMainWindow):
                 cur = Path(self.project.file)
                 default = str(cur.with_name(cur.stem + " (salinan).mtproj")) if ask_path else str(cur)
             else:
-                default = str(Path(self.project.pages[0].path).parent / "unfiledfiles.mtproj")
+                default = str(Path(self.project.pages[0].path).parent / "untitled.mtproj")
             f, _ = QFileDialog.getSaveFileName(self, "Simpan proyek sebagai" if ask_path else "Simpan proyek",
                                                default, "Proyek Rexxa Translator (*.mtproj)")
             if not f:
@@ -1849,6 +1869,55 @@ class MainWindow(QMainWindow):
 
         self._start(job, f"{', '.join(stages)} · {p.name}")
 
+    def detect_all(self):
+        """Deteksi balon di semua halaman sekaligus (tanpa OCR / terjemah), supaya kotak bisa
+        dicek & dirapikan dulu sebelum diterjemahkan."""
+        if not self.project.pages:
+            self.open_folder()
+            return
+        if self.thread:
+            return
+        pages = list(enumerate(self.project.pages))
+        done = [x for x in pages if x[1].blocks]
+        todo = pages
+        if done:
+            ans = Alert(self, APP_NAME, "Deteksi balon semua halaman",
+                        f"{len(done)} dari {len(pages)} halaman sudah punya balon. Deteksi ulang akan "
+                        "mengganti balon (beserta teks & terjemahannya) di halaman tersebut.",
+                        kind="question",
+                        buttons=[("Hanya yang belum", "primary", "new"), ("Deteksi ulang semua", "danger", "all"),
+                                 ("Batal", "neutral", None)], escape_value=None).exec_value()
+            if not ans:
+                return
+            if ans == "new":
+                todo = [x for x in pages if not x[1].blocks]
+                if not todo:
+                    QMessageBox.information(self, APP_NAME, "Semua halaman sudah punya balon.")
+                    return
+        proj, st = self.project, dict(self.settings)
+        for _, pg in todo:
+            self._snap(page=pg)
+
+        def job(w: Worker):
+            total = 0
+            for n, (i, p) in enumerate(todo, 1):
+                if w.stop:
+                    w.log.emit("Dihentikan.")
+                    break
+                w.progress.emit(n - 1, len(todo))
+                try:
+                    pipeline.process_page(p, proj, st, ["detect"], log=w.log.emit)
+                    total += len(p.blocks)
+                except ImportError:
+                    raise
+                except Exception as e:
+                    w.log.emit(f"[{p.name}] gagal: {e}")
+                w.page_updated.emit(i)
+            w.progress.emit(len(todo), len(todo))
+            w.log.emit(f"Deteksi selesai: {total} balon di {len(todo)} halaman.")
+
+        self._start(job, f"Deteksi balon {len(todo)} halaman")
+
     def run_all(self):
         if not self.project.pages:
             self.open_folder()
@@ -2013,7 +2082,7 @@ class MainWindow(QMainWindow):
         self._refresh_state()
         if not self._dirty:
             return True
-        name = Path(self.project.file).name if self.project.file else "unfiledfiles.mtproj"
+        name = Path(self.project.file).name if self.project.file else "untitled.mtproj"
         choice = Alert(self, "Simpan proyek (.mtproj)", "Simpan perubahan sebelum menutup?",
                        f"Perubahan di “{name}” belum disimpan. Kalau tidak disimpan, perubahan terakhir hilang.",
                        kind="save",

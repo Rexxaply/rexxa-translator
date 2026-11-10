@@ -3,6 +3,12 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.21.0
+- **Layar awal baru**: saat aplikasi dibuka tanpa gambar, tampil layar "Buka gambar untuk mulai". Seret & lepas file/folder ke area itu, tekan Ctrl+O, atau klik tombol **Buka folder chapter / Buka gambar / Buka proyek**. Panel halaman & properti baru muncul setelah ada gambar.
+- **Deteksi balon SEMUA halaman** (menu ⚡, Shift+F6): mendeteksi kotak teks di seluruh chapter sekaligus tanpa OCR/terjemah, jadi kotak bisa dicek dulu. Bila sebagian halaman sudah punya balon, pilih "Hanya yang belum" atau "Deteksi ulang semua".
+- Nama default proyek baru kini **untitled.mtproj**.
+- Ikon folder (buka/simpan) di toolbar selalu aktif.
+
 ## 1.20.0
 - **Ikon file proyek**: file **.mtproj** kini punya ikon Rexxa Translator di Windows Explorer dan bisa dibuka dengan **klik ganda** (didaftarkan otomatis saat aplikasi dibuka, tanpa hak admin).
 - **Simpan sebagai…** (Ctrl+Shift+S, di menu ikon folder): simpan proyek ke file baru, mis. untuk membuat cadangan / versi lain. File lama tetap seperti terakhir disimpan.
@@ -18,12 +24,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - Tombol **Simpan** kini hanya aktif bila ada perubahan yang belum disimpan (ikon baru, dengan titik merah saat ada perubahan; judul jendela diberi tanda •).
 - Menutup aplikasi dengan perubahan yang belum disimpan memunculkan pertanyaan **Simpan / Jangan simpan / Batal**. Nama default proyek baru: **unfiledfiles.mtproj**. Hal yang sama juga ditanyakan sebelum aplikasi dibuka ulang untuk update.
 - **Undo** dibatasi **5 langkah** per halaman, **Redo** memuat langkah yang di-undo. Tombol Undo / Redo otomatis nonaktif saat sudah mentok.
-
-## 1.17.0
-- **Alat sunting gambar** di toolbar (bisa dipakai di gambar Asli maupun Hasil):
-  - **Pen tool (P)**: klik titik-titik mengelilingi area; klik titik awal / klik kanan / Enter = selesai, Backspace = hapus titik terakhir, Esc = batal.
-  - **Shape tool (A)**: seret kotak atau oval (tekan A lagi untuk ganti bentuk, Shift = persegi/lingkaran).
-  - Setelah area dibuat, pilih: **Hapus dengan AI (LaMa)** (latar dibuat ulang), isi putih, isi warna, isi warna latar sekitar, kembalikan gambar asli, buat kotak teks, atau jadikan bentuk balon terpilih.
-  - **Healing brush (J)**: sapukan di atas noda / sisa teks / objek, AI LaMa membuat ulang latarnya. Ukuran kuas di toolbar atau tombol **[ ]**.
-  - **V** = kembali ke alat pilih. Semua suntingan tersimpan di proyek dan bisa di-undo (Ctrl+Z).
-- Perbaikan: hasil bersih proyek tersimpan kini benar-benar langsung dipakai saat proyek dibuka (perbaikan 1.16.1 belum aktif).
