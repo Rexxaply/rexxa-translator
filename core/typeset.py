@@ -614,6 +614,7 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
         elif latin and case == "lower":
             text = text.lower()
         font_path = b.font or base_font
+        text = _fix_glyphs(text, font_path)
         want_italic = (b.italic if b.italic is not None else italic) and latin
         shear = 0.0
         if want_italic and not is_italic_font(font_path):
@@ -703,6 +704,50 @@ def _shear_lines(img: Image.Image, line_tops, size, lh, shear) -> Image.Image:
                              resample=Image.BICUBIC)
         out.paste(sh, (0, a))
     return out
+
+
+_GLYPH_ALT = {"—": "-", "–": "-", "‐": "-", "‑": "-", "―": "-", "…": "...", "“": '"', "”": '"',
+              "‘": "'", "’": "'", "«": '"', "»": '"', "～": "~", "！": "!", "？": "?", "♡": "<3", "♥": "<3"}
+
+
+@lru_cache(maxsize=64)
+def _cmap(font_path: str):
+    """Kode karakter yang dimiliki font (fontTools), atau None bila tidak bisa dibaca."""
+    try:
+        from fontTools.ttLib import TTFont
+        kw = {"fontNumber": 0} if font_path.lower().endswith(".ttc") else {}
+        t = TTFont(font_path, lazy=True, **kw)
+        cm = t.getBestCmap() or {}
+        t.close()
+        return frozenset(cm.keys())
+    except Exception:
+        return None
+
+
+@lru_cache(maxsize=256)
+def _missing_glyphs(font_path: str, chars: str) -> frozenset:
+    """Karakter yang tidak ada di font (akan tampil sebagai kotak kosong / 'tofu')."""
+    cm = _cmap(font_path)
+    if cm is not None:
+        return frozenset(c for c in chars if ord(c) not in cm)
+    # cadangan tanpa fontTools: bandingkan dengan glyph kotak .notdef
+    try:
+        f = ImageFont.truetype(font_path, 40)
+        g = f.getmask("\U0010FFFD")
+        tofu = (g.size, bytes(g))
+        return frozenset(c for c in chars if (f.getmask(c).size, bytes(f.getmask(c))) == tofu)
+    except Exception:
+        return frozenset()
+
+
+def _fix_glyphs(text: str, font_path: str) -> str:
+    special = "".join(sorted({c for c in text if ord(c) > 127}))
+    if not special or not font_path:
+        return text
+    miss = _missing_glyphs(font_path, special)
+    for c in miss:
+        text = text.replace(c, _GLYPH_ALT.get(c, ""))
+    return text
 
 
 def _hex_rgb(c: str):

@@ -157,6 +157,7 @@ def _bundle_hint():  # pragma: no cover — TIDAK pernah dipanggil
     import PySide6.QtCore, PySide6.QtGui, PySide6.QtWidgets, PySide6.QtSvg  # noqa: E401,F401
     import cv2, numpy, PIL.Image, PIL.ImageDraw, PIL.ImageFont, requests, deep_translator  # noqa: E401,F401
     import deep_translator.google  # noqa: F401
+    import fontTools.ttLib  # noqa: F401  (cek huruf yang tidak dimiliki font)
     # pustaka standar yang dipakai / mungkin dipakai update kode di masa depan
     import argparse, base64, collections, concurrent.futures, contextlib, copy, csv, ctypes  # noqa: E401,F401
     import dataclasses, datetime, difflib, enum, fnmatch, functools, glob, hashlib, html, io  # noqa: E401,F401

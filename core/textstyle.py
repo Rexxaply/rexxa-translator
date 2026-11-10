@@ -153,6 +153,12 @@ def analyze(img: np.ndarray, b: TextBlock) -> dict | None:
         swap = _enclosed_fill(crop, (lbl == best).astype(np.uint8), sh)
         if swap is not None:
             inside_px, width = swap
+            li = cv2.cvtColor(np.uint8([[np.median(inside_px, axis=0)]]), cv2.COLOR_BGR2LAB)[0, 0].astype(float)
+            lo2 = cv2.cvtColor(np.uint8([[np.median(crop[(lbl == best) & inner], axis=0)]]),
+                               cv2.COLOR_BGR2LAB)[0, 0].astype(float)
+            if abs(li[0] - lo2[0]) < 90 and np.linalg.norm(li - lo2) < 110:
+                swap = None          # bukan garis tepi asli (hanya tepi huruf yang lebih gelap)
+        if swap is not None:
             res0 = {"color": _hex(_snap(np.median(inside_px, axis=0))), "color2": "",
                     "stroke_color": _hex(_snap(np.median(crop[(lbl == best) & inner], axis=0))),
                     "stroke_width": int(round(min(width, sh * 0.25)))}
@@ -197,6 +203,16 @@ def analyze(img: np.ndarray, b: TextBlock) -> dict | None:
                 near = near & False
         if near.any():
             width = float(np.percentile(df[near], 85))
+            # garis tepi asli selalu sangat kontras dengan isi huruf (putih/hitam, kuning/merah tua).
+            # Tepi huruf yang sedikit lebih gelap karena JPEG / penajaman bukan garis tepi.
+            ln_ = np.median(lo_[near], axis=0)
+            lf_ = np.median(lo_[fill_m > 0], axis=0)
+            dL = abs(float(ln_[0]) - float(lf_[0]))
+            dE = float(np.linalg.norm(ln_ - lf_))
+            # tebal garis tepi juga harus nyata dibanding tebal goresan huruf
+            stroke_w = 2.0 * float(np.median(fill_d[fill_d > 0])) if (fill_d > 0).any() else 0
+            if (dL < 90 and dE < 110) or width < max(1.8, 0.35 * stroke_w):
+                width = 0
             if width >= 1.8:
                 res["stroke_color"] = _hex(_snap(np.median(crop[near], axis=0)))
                 res["stroke_width"] = int(round(min(width, sh * 0.25)))

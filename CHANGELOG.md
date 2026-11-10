@@ -3,6 +3,10 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.14.2
+- Perbaikan warna: tepi huruf yang sedikit lebih gelap (efek JPEG / penajaman gambar) tidak lagi dikira **garis tepi hitam tebal**. Garis tepi hanya dipakai bila benar-benar kontras dengan isi huruf (mis. putih/hitam, kuning/merah tua).
+- Tanda baca yang tidak dimiliki font (mis. tanda pisah panjang "—", "…", tanda kutip miring) tidak lagi tampil sebagai kotak kosong; otomatis diganti versi biasanya ("-", "...", '"').
+
 ## 1.14.1
 - Panel **Properti** kini mengikuti lebar sidebar saat digeser: tidak ada lagi bagian yang terpotong di kanan (font, preset, warna, stroke, jenis balon menyempit dengan rapi).
 - Tombol **Posisi** memakai ikon panah yang jelas (kiri, atas, bawah, kanan, kembalikan) dan bisa ditahan untuk menggeser terus. Ikon cocokkan font (tongkat) & ambil warna (pipet) diperbarui.
@@ -23,8 +27,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - Logo judul di **latar terang** (mis. judul Korea bergradasi emas-biru): huruf diberi garis tepi gelap agar terbaca, tekstur warna asli tetap dipakai.
 - Pencocokan font tidak lagi memilih font simbol / tanpa huruf latin (huruf jadi kotak-kotak); logo judul mengutamakan font tebal.
 - Huruf logo bergradasi tidak lagi dianggap "kuas kasar" (efek gores hanya untuk logo yang memang kasar).
-
-## 1.12.0
-- **Logo judul seri otomatis**: menu ⚡ (panah di tombol Terjemahkan) → **Logo judul seri di halaman ini…**, isi judul terjemahan sekali (mis. "Player yang Kembali Setelah 10.000 Tahun"). Logo asli dihapus lalu diganti logo terjemahan: kata penting besar, kata sambung kecil, huruf diisi tekstur & warna logo asli, tepi kasar seperti kuas, miring, dan bayangan.
-- Setelah judul seri diisi, halaman judul di 3 halaman awal setiap chapter otomatis dikenali & diganti saat ⚡ Terjemahkan.
-- Font logo dipilih otomatis yang paling mirip (font aplikasi → font perangkat). Kotak logo bisa digeser/diubah; jenis balon "Logo judul seri" juga bisa dipilih manual.
