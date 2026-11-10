@@ -39,6 +39,7 @@ DEFAULT_SETTINGS = {
     "default_stroke": 0,
     "line_width": 3,                # alat garis: tebal (px)
     "line_color": "#000000",        # alat garis: warna
+    "recent_projects": [],          # proyek terakhir (layar awal), terbaru dulu
     "box_mode": "box",              # kotak manual baru: box (kotak saja) | ocr (+ baca teks) | ocr_tr (+ terjemah)
     "output_format": "png",         # png | jpg | webp
     "output_dir": "",               # kosong = <folder gambar>/translated

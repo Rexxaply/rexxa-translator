@@ -536,6 +536,9 @@ class MainWindow(QMainWindow):
         self.welcome.open_images.connect(self.open_images)
         self.welcome.open_project.connect(self.open_project)
         self.welcome.files_dropped.connect(self._load_paths)
+        self.welcome.open_recent.connect(self._open_recent)
+        self.welcome.remove_recent.connect(self._remove_recent)
+        self.welcome.set_recent(self.settings.get("recent_projects") or [])
         self.center_stack = QStackedWidget()
         self.center_stack.addWidget(self.welcome)
         self.center_stack.addWidget(split)
@@ -1060,6 +1063,7 @@ class MainWindow(QMainWindow):
             self.pages.setCurrentRow(0)
         self._update_title()
         self.log(f"Proyek dibuka: {f}")
+        self._add_recent(f)
 
     def _warm_up_ai(self):
         """Muat model AI hapus-teks (LaMa) di latar belakang supaya render pertama tidak lama."""
@@ -1105,6 +1109,7 @@ class MainWindow(QMainWindow):
             return False
         self._mark_saved()
         self.log(f"Tersimpan: {self.project.file}")
+        self._add_recent(self.project.file)
         return True
 
     # ------------------------------------------------------------------ status simpan & undo/redo
@@ -1118,6 +1123,30 @@ class MainWindow(QMainWindow):
                 "pages": [{"path": p.path, "edits": p.edits, "blocks": [b.to_dict() for b in p.blocks]}
                           for p in pr.pages]}
         return hashlib.md5(json.dumps(data, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+    # ------------------------------------------------------------------ proyek terakhir (layar awal)
+    def _add_recent(self, f):
+        if not f:
+            return
+        import os
+        key = os.path.normcase(os.path.abspath(f))
+        lst = [p for p in (self.settings.get("recent_projects") or [])
+               if os.path.normcase(os.path.abspath(p)) != key]
+        self.settings["recent_projects"] = [os.path.abspath(f)] + lst[:9]
+        pipeline.save_settings(self.settings)
+        self.welcome.set_recent(self.settings["recent_projects"])
+
+    def _remove_recent(self, f):
+        self.settings["recent_projects"] = [p for p in (self.settings.get("recent_projects") or []) if p != f]
+        pipeline.save_settings(self.settings)
+        self.welcome.set_recent(self.settings["recent_projects"])
+
+    def _open_recent(self, f):
+        if not Path(f).exists():
+            QMessageBox.warning(self, APP_NAME, f"File proyek tidak ditemukan:\n{f}")
+            self._remove_recent(f)
+            return
+        self._load_project(f)
 
     def _mark_saved(self):
         self._saved_sig = self._project_sig()

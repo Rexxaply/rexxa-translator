@@ -3,6 +3,9 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.25.0
+- **Proyek terakhir di layar awal**: 5 proyek .mtproj terbaru (yang pernah dibuka / disimpan) tampil di bawah tombol "Buka", lengkap dengan nama, folder, dan waktu terakhir diubah. Klik untuk langsung membuka; tombol × menghapusnya dari daftar (file proyeknya tidak dihapus). Proyek yang filenya sudah tidak ada otomatis disembunyikan.
+
 ## 1.24.0
 - **Alat garis (L) kini pakai pratinjau yang bisa diedit**, seperti Pen Tool:
   - Klik = tambah titik, seret = gambar bebas (otomatis disederhanakan jadi beberapa titik), Shift = ruas lurus.
@@ -31,10 +34,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - **Kotak tersambung ke tombol Terjemahkan**: bila halaman sudah punya kotak (hasil deteksi atau kotak manual), tombol **Terjemahkan** (F5) dan **Terjemahkan SEMUA** (F6) kini **memakai kotak yang ada**, tidak mendeteksi ulang. Kotak yang belum punya teks di-OCR, yang belum punya terjemahan diterjemahkan, lalu halaman dirender. Teks & terjemahan yang sudah diedit tidak tertimpa.
 - Alur baru yang enak: Deteksi balon semua halaman → tambah/hapus/rapikan kotak (mode "kotak saja") → Terjemahkan SEMUA.
 - Untuk mengulang dari nol: menu ⚡ → **Terjemahkan ulang halaman ini dari awal (deteksi ulang)**.
-
-## 1.21.1
-- **Pilihan untuk kotak manual**: klik panah kecil di tombol "Tambah kotak" (B) untuk memilih apa yang dilakukan setelah kotak dibuat:
-  - **Tambah kotak saja** (default baru): tidak menjalankan apa-apa, teks bisa diketik sendiri.
-  - **Tambah kotak + OCR**: hanya membaca teks aslinya.
-  - **Tambah kotak + OCR + terjemahkan**: perilaku lama.
-  Pilihan disimpan. Kotak yang sudah dibuat tetap bisa di-OCR / diterjemahkan lewat tombol "OCR ulang" dan "Terjemah ulang" di panel Properti.
