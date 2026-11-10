@@ -225,7 +225,9 @@ class PageCanvas(QGraphicsView):
     zoom_changed = Signal(float)
     heal_stroke = Signal(list, int)          # healing brush: titik-titik goresan, jari-jari kuas
     region_done = Signal(list, object)       # pen / bentuk: titik poligon, posisi layar (QPoint) untuk menu
-    line_stroke = Signal(list, int)          # alat garis: titik-titik garis, tebal (px gambar)
+    line_stroke = Signal(list, int)          # (lama) garis langsung jadi
+    draft_changed = Signal(bool)             # alat garis: ada / tidak ada pratinjau garis yang bisa diedit
+    draft_menu = Signal(object)              # klik kanan di pratinjau garis -> posisi layar (QPoint)
     space_held = False                       # spasi ditahan = mode tangan (geser) sementara, semua kanvas
 
     def __init__(self, parent=None, editable=True, ghost=False):
@@ -263,10 +265,23 @@ class PageCanvas(QGraphicsView):
         self._shape_item = None
         self.line_color = "#000000"              # alat garis
         self._line_start = None
+        # pratinjau garis (putus-putus) yang bisa diedit sebelum dijadikan garis sungguhan
+        self.draft = {"pts": [], "closed": False, "smooth": True}
+        self._draft_items = []
+        self._draft_drag = None                  # {"i": indeks titik} / {"new": start_index}
+        self._draft_page = None
 
     # ------------------------------------------------------------ konten
     def set_page(self, image_path: str | None, blocks, fit=True):
         self.scene().clear()
+        self._draft_items = []
+        if image_path != self._draft_page:
+            had = bool(self.draft["pts"])
+            self.draft = {"pts": [], "closed": False, "smooth": True}
+            self._draft_drag = None
+            self._draft_page = image_path
+            if had:
+                self.draft_changed.emit(False)
         self._stroke_item = self._pen_item = self._pen_rubber = self._shape_item = self._brush_item = None
         self._stroke, self._pen_pts = None, []
         self.boxes = []
@@ -278,6 +293,7 @@ class PageCanvas(QGraphicsView):
         self.pix_item.setZValue(0)
         self.scene().setSceneRect(QRectF(pm.rect()))
         self.set_blocks(blocks)
+        self._draw_draft()
         if fit:
             self.fit()
 
@@ -457,6 +473,8 @@ class PageCanvas(QGraphicsView):
     def _tool_press(self, e) -> bool:
         if self.tool == "select" or self.pix_item is None:
             return False
+        if self.tool == "line":
+            return self._line_press(e)
         sp = self.mapToScene(e.position().toPoint())
         x, y = sp.x(), sp.y()
         if e.button() == Qt.RightButton:
@@ -467,13 +485,6 @@ class PageCanvas(QGraphicsView):
             return True
         if e.button() != Qt.LeftButton:
             return False
-        if self.tool == "line":
-            self._stroke = [(x, y)]
-            self._line_start = (x, y)
-            pen = QPen(QColor(self.line_color), max(1, self.brush), Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
-            self._stroke_item = self.scene().addPath(self._stroke_path(), pen)
-            self._stroke_item.setZValue(30)
-            return True
         if self.tool == "heal":
             self._stroke = [(x, y)]
             pen = QPen(QColor(255, 77, 109, 120), 2 * self.brush, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
@@ -506,6 +517,8 @@ class PageCanvas(QGraphicsView):
     def _tool_move(self, e) -> bool:
         if self.tool == "select" or self.pix_item is None:
             return False
+        if self.tool == "line":
+            return self._line_move(e)
         sp = self.mapToScene(e.position().toPoint())
         if self.tool == "heal":
             self._update_brush_cursor(sp)
@@ -514,16 +527,6 @@ class PageCanvas(QGraphicsView):
                 if abs(sp.x() - lx) + abs(sp.y() - ly) >= max(1.0, self.brush * 0.25):
                     self._stroke.append((sp.x(), sp.y()))
                     self._stroke_item.setPath(self._stroke_path())
-            return True
-        if self.tool == "line":
-            if self._stroke is not None:
-                if e.modifiers() & Qt.ShiftModifier:      # Shift = garis lurus
-                    self._stroke = [self._line_start, (sp.x(), sp.y())]
-                else:
-                    lx, ly = self._stroke[-1]
-                    if abs(sp.x() - lx) + abs(sp.y() - ly) >= 1.5:
-                        self._stroke.append((sp.x(), sp.y()))
-                self._stroke_item.setPath(self._stroke_path())
             return True
         if self.tool == "pen" and self._pen_pts:
             from PySide6.QtCore import QLineF
@@ -548,11 +551,8 @@ class PageCanvas(QGraphicsView):
     def _tool_release(self, e) -> bool:
         if self.tool == "select" or self.pix_item is None:
             return False
-        if self.tool == "line" and self._stroke is not None:
-            pts = [[round(x, 1), round(y, 1)] for x, y in self._stroke]
-            self.cancel_tool()
-            self.line_stroke.emit(pts, int(self.brush))
-            return True
+        if self.tool == "line":
+            return self._line_release(e)
         if self.tool == "heal" and self._stroke is not None:
             pts = [[int(round(x)), int(round(y))] for x, y in self._stroke]
             self.cancel_tool()
@@ -576,7 +576,196 @@ class PageCanvas(QGraphicsView):
             return True
         return self.tool in ("pen", "heal", "shape", "line")
 
+    # ------------------------------------------------------------ alat garis: pratinjau yang bisa diedit
+    def has_draft(self) -> bool:
+        return len(self.draft["pts"]) >= 2
+
+    def clear_draft(self):
+        had = bool(self.draft["pts"])
+        self.draft = {"pts": [], "closed": False, "smooth": True}
+        self._draft_drag = None
+        self._draw_draft()
+        if had:
+            self.draft_changed.emit(False)
+
+    def take_draft(self) -> dict:
+        d = {"pts": [[round(x, 1), round(y, 1)] for x, y in self.draft["pts"]],
+             "closed": bool(self.draft["closed"]), "smooth": bool(self.draft["smooth"])}
+        self.clear_draft()
+        return d
+
+    def set_draft_option(self, key, value):
+        self.draft[key] = value
+        self._draw_draft()
+
+    def _tol(self, px=7.0):
+        return px / max(self.zoom(), 1e-6)
+
+    def _draw_draft(self):
+        from PySide6.QtGui import QPainterPath
+        from PySide6.QtWidgets import QGraphicsItem
+        sc = self.scene()
+        for it in self._draft_items:
+            if it.scene() is sc:
+                sc.removeItem(it)
+        self._draft_items = []
+        pts = self.draft["pts"]
+        if not pts or self.pix_item is None:
+            return
+        from core.edits import spline
+        curve = spline(pts, self.draft["closed"] and len(pts) >= 3, self.draft["smooth"],
+                       step=max(1.0, 2.0 / max(self.zoom(), 1e-6)))
+        path = QPainterPath()
+        path.moveTo(float(curve[0][0]), float(curve[0][1]))
+        for x, y in curve[1:]:
+            path.lineTo(float(x), float(y))
+        # bayangan putih tipis + garis putus-putus warna garis -> terlihat di latar gelap & terang
+        under = QPen(QColor(255, 255, 255, 200), 3.5)
+        under.setCosmetic(True)
+        dash = QPen(QColor(self.line_color if QColor(self.line_color).lightness() < 200 else "#ff4d6d"), 1.8,
+                    Qt.CustomDashLine)
+        dash.setDashPattern([5, 4])
+        dash.setCosmetic(True)
+        for pen in (under, dash):
+            it = sc.addPath(path, pen)
+            it.setZValue(35)
+            self._draft_items.append(it)
+        for i, (x, y) in enumerate(pts):
+            first = i == 0
+            it = sc.addRect(QRectF(-4, -4, 8, 8), self._pen("#ff4d6d" if first else "#06d6a0", 1.5),
+                            QBrush(QColor("#ffffff")))
+            it.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
+            it.setPos(x, y)
+            it.setZValue(36)
+            self._draft_items.append(it)
+
+    def _hit_point(self, sp) -> int:
+        tol = self._tol(7)
+        best, bi = tol, -1
+        for i, (x, y) in enumerate(self.draft["pts"]):
+            d = abs(x - sp.x()) + abs(y - sp.y())
+            if d <= best * 1.4:
+                best, bi = d, i
+        return bi
+
+    def _hit_segment(self, sp) -> int:
+        """Indeks sisipan bila titik dekat ke ruas garis (-1 bila tidak)."""
+        import numpy as np
+        pts = self.draft["pts"]
+        if len(pts) < 2:
+            return -1
+        P = np.array(pts, np.float32)
+        segs = list(range(len(P) - 1)) + ([len(P) - 1] if self.draft["closed"] and len(P) >= 3 else [])
+        q = np.array([sp.x(), sp.y()], np.float32)
+        best, bi = self._tol(6), -1
+        for i in segs:
+            a, b = P[i], P[(i + 1) % len(P)]
+            ab = b - a
+            t = float(np.clip(np.dot(q - a, ab) / max(1e-6, np.dot(ab, ab)), 0, 1))
+            d = float(np.linalg.norm(a + t * ab - q))
+            if d < best:
+                best, bi = d, i + 1
+        return bi
+
+    def _line_press(self, e) -> bool:
+        sp = self.mapToScene(e.position().toPoint())
+        pts = self.draft["pts"]
+        if e.button() == Qt.RightButton:
+            if pts:
+                self.draft_menu.emit(e.globalPosition().toPoint())
+            return True
+        if e.button() != Qt.LeftButton:
+            return False
+        self._last_added = None
+        i = self._hit_point(sp)
+        if i >= 0:
+            if e.modifiers() & Qt.AltModifier:                 # Alt + klik titik = hapus titik
+                pts.pop(i)
+                self._after_draft_edit()
+                return True
+            if i == 0 and len(pts) >= 3 and not self.draft["closed"] and not (e.modifiers() & Qt.ControlModifier):
+                self.draft["closed"] = True                    # klik titik awal = tutup bentuk
+                self._after_draft_edit()
+                return True
+            self._draft_drag = {"i": i}
+            return True
+        if e.modifiers() & Qt.ControlModifier or (pts and self.draft["closed"]):
+            k = self._hit_segment(sp)
+            if k >= 0:                                         # Ctrl + klik di garis = tambah titik
+                pts.insert(k, (sp.x(), sp.y()))
+                self._draft_drag = {"i": k}
+                self._after_draft_edit()
+                return True
+            if self.draft["closed"]:
+                return True
+        # klik = tambah titik di ujung; seret = gambar bebas (disederhanakan jadi titik-titik)
+        pts.append((sp.x(), sp.y()))
+        self._last_added = (len(pts) - 1, sp.x(), sp.y())
+        self._draft_drag = {"new": len(pts) - 1, "start": (sp.x(), sp.y())}
+        self._after_draft_edit()
+        return True
+
+    def _line_move(self, e) -> bool:
+        if not self._draft_drag:
+            return True
+        sp = self.mapToScene(e.position().toPoint())
+        pts = self.draft["pts"]
+        if "i" in self._draft_drag:
+            i = self._draft_drag["i"]
+            if 0 <= i < len(pts):
+                pts[i] = (sp.x(), sp.y())
+                self._draw_draft()
+            return True
+        k = self._draft_drag["new"]
+        if e.modifiers() & Qt.ShiftModifier:                   # Shift = ruas lurus
+            del pts[k + 1:]
+            pts.append((sp.x(), sp.y()))
+        else:
+            lx, ly = pts[-1]
+            if abs(sp.x() - lx) + abs(sp.y() - ly) >= self._tol(2):
+                pts.append((sp.x(), sp.y()))
+        self._draw_draft()
+        return True
+
+    def _line_release(self, e) -> bool:
+        d = self._draft_drag
+        self._draft_drag = None
+        if d and "new" in d:
+            pts = self.draft["pts"]
+            k = d["new"]
+            seg = pts[k:]
+            if len(seg) > 2:      # goresan bebas -> sedikit titik jangkar supaya mudah diedit
+                import cv2
+                import numpy as np
+                arr = np.array(seg, np.float32).reshape(-1, 1, 2)
+                simp = cv2.approxPolyDP(arr, self._tol(2.5), False).reshape(-1, 2)
+                self.draft["pts"] = pts[:k] + [(float(x), float(y)) for x, y in simp]
+            self._after_draft_edit()
+        return True
+
+    def _after_draft_edit(self):
+        if len(self.draft["pts"]) < 3:
+            self.draft["closed"] = False
+        self._draw_draft()
+        self.draft_changed.emit(bool(self.draft["pts"]))
+
     def mouseDoubleClickEvent(self, e):
+        if self.tool == "line" and self.draft["pts"]:
+            sp = self.mapToScene(e.position().toPoint())
+            la = getattr(self, "_last_added", None)
+            pts = self.draft["pts"]
+            if la and la[0] == len(pts) - 1 and abs(la[1] - sp.x()) + abs(la[2] - sp.y()) < self._tol(6):
+                pts.pop()                                      # titik dari klik pertama klik-dua-kali
+            self._last_added = None
+            i = self._hit_point(sp)
+            if i >= 0:                                         # klik dua kali titik = hapus titik
+                self.draft["pts"].pop(i)
+            else:
+                k = self._hit_segment(sp)
+                if k >= 0:                                     # klik dua kali garis = tambah titik
+                    self.draft["pts"].insert(k, (sp.x(), sp.y()))
+            self._after_draft_edit()
+            return
         if self.tool == "pen" and len(self._pen_pts) >= 2:
             sp = self.mapToScene(e.position().toPoint())
             if len(self._pen_pts) < 3:
@@ -586,6 +775,17 @@ class PageCanvas(QGraphicsView):
         super().mouseDoubleClickEvent(e)
 
     def keyPressEvent(self, e):
+        if self.tool == "line" and self.draft["pts"]:
+            if e.key() in (Qt.Key_Return, Qt.Key_Enter):
+                self.draft_menu.emit("commit")
+                return
+            if e.key() == Qt.Key_Escape:
+                self.clear_draft()
+                return
+            if e.key() in (Qt.Key_Backspace, Qt.Key_Delete):
+                self.draft["pts"].pop()
+                self._after_draft_edit()
+                return
         if self.tool == "pen":
             if e.key() in (Qt.Key_Return, Qt.Key_Enter) and len(self._pen_pts) >= 3:
                 self._finish_pen(None)

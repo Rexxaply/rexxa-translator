@@ -69,6 +69,30 @@ def _smooth(pts: np.ndarray, closed: bool, it: int = 2) -> np.ndarray:
     return pts
 
 
+def spline(pts, closed: bool = False, smooth: bool = True, step: float = 3.0) -> np.ndarray:
+    """Kurva halus Catmull-Rom yang MELEWATI semua titik jangkar (untuk garis yang bisa diedit).
+    smooth=False -> garis patah lurus antar titik."""
+    P = np.asarray(pts, np.float32).reshape(-1, 2)
+    if len(P) < 3 or not smooth:
+        return np.vstack([P, P[:1]]) if (closed and len(P) >= 3) else P
+    if closed:
+        ext = np.vstack([P[-1:], P, P[:2]])
+        segs = len(P)
+    else:
+        ext = np.vstack([2 * P[0] - P[1], P, 2 * P[-1] - P[-2]])
+        segs = len(P) - 1
+    out = []
+    for i in range(segs):
+        p0, p1, p2, p3 = ext[i], ext[i + 1], ext[i + 2], ext[i + 3]
+        n = max(2, int(np.linalg.norm(p2 - p1) / step))
+        t = np.linspace(0, 1, n, endpoint=False)[:, None]
+        t2, t3 = t * t, t * t * t
+        out.append(0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2
+                          + (-p0 + 3 * p1 - 3 * p2 + p3) * t3))
+    out.append((P[0] if closed else P[-1])[None])
+    return np.vstack(out).astype(np.float32)
+
+
 def _draw_lines(img: np.ndarray, e: dict, closed: bool) -> np.ndarray:
     key_ = "poly" if closed else "pts"
     pts = np.array(e.get(key_) or [], np.float32).reshape(-1, 2)
@@ -76,6 +100,13 @@ def _draw_lines(img: np.ndarray, e: dict, closed: bool) -> np.ndarray:
         return img
     w = max(1, int(e.get("w", 3)))
     col = tuple(int(v) for v in _hex_bgr(e.get("color") or "#000000"))
+    if "smooth" in e:                           # garis dari alat garis (titik jangkar yang bisa diedit)
+        pts = spline(pts, closed and len(pts) >= 3, bool(e["smooth"]))
+        if closed and len(pts) > 1 and np.allclose(pts[0], pts[-1]):
+            pts = pts[:-1]
+    # sudut tajam bentuk (kotak) dipertahankan; goresan tangan / oval dihaluskan
+    elif not (closed and len(pts) <= 6):
+        pts = _smooth(pts, closed)
     out = img.copy()
     if closed and len(pts) >= 3 and e.get("fill"):
         fm = np.zeros(img.shape[:2], np.uint8)
@@ -83,9 +114,6 @@ def _draw_lines(img: np.ndarray, e: dict, closed: bool) -> np.ndarray:
         a = fm.astype(np.float32)[..., None] / 255.0
         fc = np.array(_hex_bgr(e["fill"]), np.float32)
         out = (out * (1 - a) + fc * a).astype(np.uint8)
-    # sudut tajam bentuk (kotak) dipertahankan; goresan tangan / oval dihaluskan
-    if not (closed and len(pts) <= 6):
-        pts = _smooth(pts, closed)
     SH = 4                                      # koordinat sub-piksel (garis lebih halus)
     ip = np.round(pts * (1 << SH)).astype(np.int32)
     if len(ip) == 1:

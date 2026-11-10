@@ -298,6 +298,23 @@ class MainWindow(QMainWindow):
         self.b_line_color.setEnabled(False)
         self._paint_line_swatch()
         tb.addWidget(self.b_line_color)
+        # pratinjau garis -> jadikan garis (muncul hanya saat ada pratinjau)
+        self.b_line_ok = QToolButton()
+        self.b_line_ok.setObjectName("primary")
+        self.b_line_ok.setText(" Jadikan garis")
+        self.b_line_ok.setIcon(icon("line", "#ffffff"))
+        self.b_line_ok.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.b_line_ok.setToolTip("Ubah pratinjau (garis putus-putus) menjadi garis sungguhan  ·  Enter")
+        self.b_line_ok.setPopupMode(QToolButton.MenuButtonPopup)
+        self.b_line_ok.clicked.connect(lambda: self._commit_draft(None, "auto"))
+        m_line = QMenu(self)
+        m_line.aboutToShow.connect(lambda: self._fill_draft_menu(m_line, None))
+        self.b_line_ok.setMenu(m_line)
+        self.b_line_cancel = tool_btn("close", "Hapus pratinjau garis  ·  Esc", lambda: self._commit_draft(None, "cancel"))
+        self._a_line_ok = tb.addWidget(self.b_line_ok)
+        self._a_line_cancel = tb.addWidget(self.b_line_cancel)
+        self._a_line_ok.setVisible(False)
+        self._a_line_cancel.setVisible(False)
         tb.addWidget(vline())
 
         self.src = QComboBox()
@@ -435,6 +452,8 @@ class MainWindow(QMainWindow):
             cv.heal_stroke.connect(self._on_heal)
             cv.region_done.connect(self._on_region)
             cv.line_stroke.connect(self._on_line)
+            cv.draft_changed.connect(lambda on, c=cv: self._on_draft_changed(c, on))
+            cv.draft_menu.connect(lambda pos, c=cv: self._draft_menu(c, pos))
         # sinkron zoom & geser
         self.cv_src.zoom_changed.connect(lambda s: self._sync_zoom(self.cv_src, self.cv_out, s))
         self.cv_out.zoom_changed.connect(lambda s: self._sync_zoom(self.cv_out, self.cv_src, s))
@@ -1727,7 +1746,8 @@ class MainWindow(QMainWindow):
                  "shape": f"Shape ({'oval' if self.cv_src.shape_kind == 'ellipse' else 'kotak'}): seret di gambar. "
                           "Shift = persegi/lingkaran. Tekan A lagi untuk ganti bentuk.",
                  "heal": "Healing brush: sapukan di atas noda / sisa teks / objek. [ ] = ukuran kuas.",
-                 "line": "Garis: seret untuk menggambar (Shift = lurus). [ ] = tebal. Tahan Spasi = geser gambar."}
+                 "line": "Garis: klik = tambah titik, seret = gambar bebas (Shift = lurus). Hasilnya pratinjau "
+                         "putus-putus yang bisa diedit; Enter / tombol 'Jadikan garis' = jadi garis."}
         self.status_lbl.setText(hints.get(tool, ""))
 
     def _shape_key(self):
@@ -1775,6 +1795,86 @@ class MainWindow(QMainWindow):
             for cv in (self.cv_src, self.cv_out):
                 cv.line_color = self.line_color
             self._paint_line_swatch()
+
+    # ------------------------------------------------------------------ pratinjau garis (alat garis)
+    def _draft_canvas(self, cv=None):
+        if cv is not None and cv.draft["pts"]:
+            return cv
+        for c in (self.cv_src, self.cv_out):
+            if c.draft["pts"]:
+                return c
+        return None
+
+    def _on_draft_changed(self, cv, on):
+        has = self._draft_canvas() is not None
+        self._a_line_ok.setVisible(has)
+        self._a_line_cancel.setVisible(has)
+        c = self._draft_canvas()
+        self.b_line_ok.setEnabled(bool(c and c.has_draft()))
+        if has and getattr(self, "tool", "") == "line":
+            self.status_lbl.setText("Pratinjau garis: seret titik untuk mengedit · Ctrl+klik / klik 2x garis = "
+                                    "tambah titik · klik 2x / Alt+klik titik = hapus · klik titik awal = tutup · "
+                                    "Enter = jadikan garis · klik kanan = pilihan")
+
+    def _fill_draft_menu(self, m, cv):
+        m.clear()
+        c = self._draft_canvas(cv)
+        if not c:
+            return
+        closed = c.draft["closed"]
+        ok = c.has_draft()
+        a = m.addAction(icon("line"), "Jadikan garis" + ("  (tertutup)" if closed else ""),
+                        lambda: self._commit_draft(c, "auto"))
+        a.setEnabled(ok)
+        if len(c.draft["pts"]) >= 3:
+            m.addAction(icon("line"), "Jadikan balon: isi putih + garis tepi",
+                        lambda: self._commit_draft(c, "bubble"))
+            m.addAction("Jadikan area isi putih (tanpa garis)", lambda: self._commit_draft(c, "fill"))
+        m.addSeparator()
+        a_s = m.addAction("Garis melengkung halus")
+        a_s.setCheckable(True)
+        a_s.setChecked(c.draft["smooth"])
+        a_s.toggled.connect(lambda v: c.set_draft_option("smooth", v))
+        if len(c.draft["pts"]) >= 3:
+            a_c = m.addAction("Tutup bentuk (sambung ke titik awal)")
+            a_c.setCheckable(True)
+            a_c.setChecked(closed)
+            a_c.toggled.connect(lambda v: c.set_draft_option("closed", v))
+        m.addSeparator()
+        m.addAction(icon("close"), "Hapus pratinjau", lambda: self._commit_draft(c, "cancel"))
+
+    def _draft_menu(self, cv, pos):
+        if pos == "commit":
+            self._commit_draft(cv, "auto")
+            return
+        m = QMenu(self)
+        self._fill_draft_menu(m, cv)
+        m.exec(pos)
+
+    def _commit_draft(self, cv, how):
+        c = self._draft_canvas(cv)
+        if not c:
+            return
+        if how == "cancel":
+            c.clear_draft()
+            return
+        if not c.has_draft() and how == "auto":
+            return
+        d = c.take_draft()
+        w, col = self._line_w(), self.line_color
+        closed = d["closed"] or how in ("bubble", "fill")
+        if how == "fill":
+            from core.edits import spline
+            poly = [[int(round(x)), int(round(y))] for x, y in spline(d["pts"], True, d["smooth"])]
+            self._add_edit({"op": "fill", "poly": poly, "color": "#FFFFFF"}, "Area diisi putih")
+        elif closed:
+            self._add_edit({"op": "outline", "poly": d["pts"], "w": w, "color": col, "smooth": d["smooth"],
+                            "fill": "#FFFFFF" if how == "bubble" else ""},
+                           "Balon digambar" if how == "bubble" else "Garis tepi digambar")
+        else:
+            self._add_edit({"op": "stroke", "pts": d["pts"], "w": w, "color": col, "smooth": d["smooth"]},
+                           "Garis digambar")
+        pipeline.save_settings(self.settings)
 
     def _line_w(self) -> int:
         return int(self._tool_sizes.get("line", 3))

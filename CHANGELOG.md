@@ -3,6 +3,14 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.24.0
+- **Alat garis (L) kini pakai pratinjau yang bisa diedit**, seperti Pen Tool:
+  - Klik = tambah titik, seret = gambar bebas (otomatis disederhanakan jadi beberapa titik), Shift = ruas lurus.
+  - Hasilnya **garis putus-putus (pratinjau)** dulu, belum menempel di gambar.
+  - **Seret titik** untuk mengubah bentuk, **Ctrl+klik / klik 2x di garis** = tambah titik, **klik 2x / Alt+klik titik** = hapus titik, **klik titik awal** = tutup bentuk, Backspace = hapus titik terakhir, Esc = buang pratinjau.
+  - Garis otomatis **melengkung halus** melewati titik-titik (bisa dimatikan untuk garis patah lurus).
+- Setelah pas, tekan **"Jadikan garis"** di toolbar (atau Enter, atau **klik kanan**): pilih jadikan garis, **jadikan balon (isi putih + garis tepi)**, atau isi putih saja.
+
 ## 1.23.0
 - **OCR lebih pintar untuk teks bergaya** (judul, SFX, teks miring seperti "Mission Clear!"):
   - Teks **miring diluruskan** otomatis sebelum dibaca.
@@ -30,9 +38,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
   - **Tambah kotak + OCR**: hanya membaca teks aslinya.
   - **Tambah kotak + OCR + terjemahkan**: perilaku lama.
   Pilihan disimpan. Kotak yang sudah dibuat tetap bisa di-OCR / diterjemahkan lewat tombol "OCR ulang" dan "Terjemah ulang" di panel Properti.
-
-## 1.21.0
-- **Layar awal baru**: saat aplikasi dibuka tanpa gambar, tampil layar "Buka gambar untuk mulai". Seret & lepas file/folder ke area itu, tekan Ctrl+O, atau klik tombol **Buka folder chapter / Buka gambar / Buka proyek**. Panel halaman & properti baru muncul setelah ada gambar.
-- **Deteksi balon SEMUA halaman** (menu ⚡, Shift+F6): mendeteksi kotak teks di seluruh chapter sekaligus tanpa OCR/terjemah, jadi kotak bisa dicek dulu. Bila sebagian halaman sudah punya balon, pilih "Hanya yang belum" atau "Deteksi ulang semua".
-- Nama default proyek baru kini **untitled.mtproj**.
-- Ikon folder (buka/simpan) di toolbar selalu aktif.
