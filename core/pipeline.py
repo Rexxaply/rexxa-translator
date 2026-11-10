@@ -145,6 +145,7 @@ def output_dir(page: Page, settings: dict) -> Path:
 def step_detect(page: Page, project: Project, settings: dict):
     img = detector.load_image(page.path)
     page.blocks = detector.detect(img, settings["detect_mode"], project.source_lang, settings["gpu"])
+    page._clean_sigs = None           # balon baru semua -> hapus teks penuh
     for b in page.blocks:
         b.stroke_width = int(settings.get("default_stroke", 0))
         inpaint.auto_style(img, b)
@@ -280,14 +281,67 @@ def step_translate(page: Page, project: Project, settings: dict, log=None):
     page.status = "diterjemah"
 
 
-def step_clean(page: Page, settings: dict):
+def _clean_sig(b) -> tuple:
+    """Hal-hal yang memengaruhi hasil hapus teks sebuah blok."""
+    return (int(b.x), int(b.y), int(b.w), int(b.h), bool(b.clean), b.kind, bool(getattr(b, "sfx", False)),
+            tuple(map(tuple, b.mask_poly or [])), tuple(b.text_rect or []),
+            bool((b.source or "").strip()), bool((b.translation or "").strip()),
+            (b.translation or "").strip() == (b.source or "").strip())
+
+
+def _rect_pad(r, pad, W, H):
+    x, y, w, h = r[:4]
+    return max(0, x - pad), max(0, y - pad), min(W, x + w + pad), min(H, y + h + pad)
+
+
+def mark_clean_valid(project: Project):
+    """Proyek dibuka: hasil bersih yang tersimpan dianggap cocok dengan balon yang tersimpan."""
+    for pg in project.pages:
+        if pg.cleaned_path and Path(pg.cleaned_path).exists():
+            pg._clean_sigs = {b.id: _clean_sig(b) for b in pg.blocks}
+
+
+def step_clean(page: Page, settings: dict, incremental: bool = True):
+    """Hapus teks. Bila hasil bersih sebelumnya masih ada, hanya balon yang BERUBAH (digeser, diubah
+    ukurannya, ditambah, dihapus, dsb.) yang dibersihkan ulang -- jauh lebih cepat, terutama dengan LaMa."""
     img = detector.load_image(page.path)
-    cleaned = inpaint.clean_page(img, page.blocks, settings["clean_method"])
+    H, W = img.shape[:2]
+    method = settings["clean_method"]
+    sigs_new = {b.id: _clean_sig(b) for b in page.blocks}
+    old = getattr(page, "_clean_sigs", None)
+    cached = page.cleaned_path if page.cleaned_path and Path(page.cleaned_path).exists() else ""
+    cleaned = None
+    if incremental and old is not None and cached:
+        base = detector.load_image(cached)
+        if base is not None and base.shape == img.shape:
+            changed = [bid for bid, sg in sigs_new.items() if old.get(bid) != sg]
+            removed = [bid for bid in old if bid not in sigs_new]
+            if not changed and not removed:
+                return base
+            pad = 24
+            regions = []
+            for bid in changed + removed:
+                for sg in (old.get(bid), sigs_new.get(bid)):
+                    if sg:
+                        regions.append(_rect_pad(sg, pad, W, H))
+            # balon lain yang bersinggungan dengan area yang dikembalikan juga dibersihkan ulang
+            def hits(b):
+                bx0, by0, bx1, by1 = _rect_pad((b.x, b.y, b.w, b.h), pad, W, H)
+                return any(bx0 < x1 and x0 < bx1 and by0 < y1 and y0 < by1 for x0, y0, x1, y1 in regions)
+            redo = [b for b in page.blocks if hits(b)]
+            for b in redo:
+                regions.append(_rect_pad((b.x, b.y, b.w, b.h), pad, W, H))
+            for x0, y0, x1, y1 in regions:
+                base[y0:y1, x0:x1] = img[y0:y1, x0:x1]
+            cleaned = inpaint.clean_page(img, redo, method, base=base)
+    if cleaned is None:
+        cleaned = inpaint.clean_page(img, page.blocks, method)
     out = output_dir(page, settings) / ".cache"
     out.mkdir(exist_ok=True)
     p = out / (Path(page.path).stem + "_clean.png")
     detector.save_image(str(p), cleaned, fast=True)
     page.cleaned_path = str(p)
+    page._clean_sigs = sigs_new
     return cleaned
 
 
@@ -296,6 +350,8 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
         base = step_clean(page, settings)
     else:
         base = detector.load_image(page.cleaned_path)
+        if getattr(page, "_clean_sigs", None) is None:     # proyek baru dibuka: hasil bersih tersimpan = sah
+            page._clean_sigs = {b.id: _clean_sig(b) for b in page.blocks}
     sync_default_style(settings)
     final = typeset.render_page(base, page.blocks, project.target_lang, settings.get("font", ""),
                                 settings.get("uppercase", True), int(settings.get("max_font_size", 48)),

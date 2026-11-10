@@ -228,6 +228,8 @@ class MainWindow(QMainWindow):
         self.src.setToolTip("Bahasa asli")
         for l in SRC_LANGS:
             self.src.addItem(f"{SHORT.get(l, l)}  {LANG_NAMES.get(l, l)}", l)
+        pipeline.mark_clean_valid(self.project)
+        self._warm_up_ai()
         self.src.setCurrentIndex(max(0, self.src.findData(self.project.source_lang)))
         self.src.currentIndexChanged.connect(self._on_lang)
         self.tgt = QComboBox()
@@ -875,6 +877,7 @@ class MainWindow(QMainWindow):
         if self.cur < 0 and self.project.pages:
             self.pages.setCurrentRow(0)
         self.log(f"{len(self.project.pages)} halaman dimuat.")
+        self._warm_up_ai()
 
     def open_folder(self):
         d = QFileDialog.getExistingDirectory(self, "Pilih folder chapter")
@@ -905,6 +908,15 @@ class MainWindow(QMainWindow):
             self.pages.setCurrentRow(0)
         self._update_title()
         self.log(f"Proyek dibuka: {f}")
+
+    def _warm_up_ai(self):
+        """Muat model AI hapus-teks (LaMa) di latar belakang supaya render pertama tidak lama."""
+        if getattr(self, "_warmed", False):
+            return
+        self._warmed = True
+        import threading
+        from core import inpaint
+        threading.Thread(target=inpaint.warm_up, daemon=True).start()
 
     def save_project(self):
         if not self.project.pages:

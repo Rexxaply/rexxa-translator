@@ -3,6 +3,10 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.16.1
+- **Memperbarui hasil tetap cepat setelah membuka proyek tersimpan**: hasil bersih yang tersimpan langsung dipakai, dan saat balon digeser / diubah / ditambah / dihapus / di-undo, hanya area balon itu yang dibersihkan ulang (bukan seluruh halaman).
+- Model AI hapus teks (LaMa) dimuat di latar belakang begitu proyek / gambar dibuka, jadi proses pertama tidak lagi menunggu model dimuat.
+
 ## 1.16.0
 - **Pengaturan gradasi seperti Photoshop**: tombol gradasi baru di panel Tipografi (di sebelah warna teks) membuka pengaturan:
   - **Bentuk**: Linear, Cermin (reflected), Oval (radial), **Pisah 2 warna** (batas tegas).
@@ -24,8 +28,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 ## 1.14.2
 - Perbaikan warna: tepi huruf yang sedikit lebih gelap (efek JPEG / penajaman gambar) tidak lagi dikira **garis tepi hitam tebal**. Garis tepi hanya dipakai bila benar-benar kontras dengan isi huruf (mis. putih/hitam, kuning/merah tua).
 - Tanda baca yang tidak dimiliki font (mis. tanda pisah panjang "—", "…", tanda kutip miring) tidak lagi tampil sebagai kotak kosong; otomatis diganti versi biasanya ("-", "...", '"').
-
-## 1.14.1
-- Panel **Properti** kini mengikuti lebar sidebar saat digeser: tidak ada lagi bagian yang terpotong di kanan (font, preset, warna, stroke, jenis balon menyempit dengan rapi).
-- Tombol **Posisi** memakai ikon panah yang jelas (kiri, atas, bawah, kanan, kembalikan) dan bisa ditahan untuk menggeser terus. Ikon cocokkan font (tongkat) & ambil warna (pipet) diperbarui.
-- Saat belum ada balon dipilih, kolom angka menampilkan nilai netral (Auto, 1.20, 0, 0°), bukan -180° / -10.

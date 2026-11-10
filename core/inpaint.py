@@ -17,14 +17,26 @@ import numpy as np
 from .models import TextBlock
 
 _lama = None
+import threading as _threading
+_lama_lock = _threading.Lock()
 
 
 def _get_lama():
     global _lama
-    if _lama is None:
-        from simple_lama_inpainting import SimpleLama
-        _lama = SimpleLama()
+    with _lama_lock:          # boleh dipanggil dari thread pemanasan & thread proses bersamaan
+        if _lama is None:
+            from simple_lama_inpainting import SimpleLama
+            _lama = SimpleLama()
     return _lama
+
+
+def warm_up():
+    """Muat model LaMa di latar belakang (beberapa detik di CPU) supaya proses pertama tidak lambat."""
+    if _lama is None and lama_available():
+        try:
+            _get_lama()
+        except Exception:
+            pass
 
 
 def lama_available() -> bool:
@@ -471,8 +483,10 @@ def _inpaint_lama(img, mask):
     return out
 
 
-def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto") -> np.ndarray:
-    out = img.copy()
+def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", base=None) -> np.ndarray:
+    """img = halaman asli (sumber deteksi huruf). base = gambar awal hasil (mis. hasil bersih lama yang
+    sebagian dikembalikan ke asli); default salinan img."""
+    out = img.copy() if base is None else base.copy()
     use_lama = lama_available()
     ai_mask = np.zeros(img.shape[:2], np.uint8)
     cands = None
