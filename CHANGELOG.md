@@ -3,6 +3,11 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.8.0
+- **Hapus teks lebih rapi**: kini hanya **huruf** yang dideteksi & dihapus (bukan garis balon, rambut, atau gambar di sekitarnya), lalu bekasnya diisi warna latar (latar polos) atau **di-generate ulang oleh AI** LaMa (latar bergambar). Balon tidak lagi terpotong atau tertutup kotak putih.
+- Terjemahan teks bebas / balon terbuka ditempel di **area putih balon** (boleh lebih luas dari kotaknya), tidak lagi keluar dari balon.
+- Kata panjang dipenggal di **batas suku kata** (mis. KEBERUN-TUNGAN).
+
 ## 1.7.3
 - Sidebar lebih ramping (HALAMAN ±128 px, PROPERTI ±240 px) supaya fokus ke halaman manga; isi panel dipadatkan, kotak warna jadi kotak kecil (kode warna muncul saat disorot).
 
@@ -21,6 +26,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - Pengaturan → **Teks**: Preset 1–5 (font, tebal, miring, KAPITAL/kecil), ukuran font default (Auto-Fit/angka), penamaan file export. Tombol 1–5 di panel Tipografi menerapkan preset ke balon.
 - Pengaturan → **Shortcut**: lihat & ubah semua pintasan keyboard.
 - Pengaturan → **Data**: ukuran & hapus cache terjemahan, cache gambar, model AI; reset shortcut; reset aplikasi.
-
-## 1.6.8
-- Pembatas antara layar ASLI dan TERJEMAHAN bisa digeser lagi; posisi awalnya tetap 50:50. Klik dua kali pembatas untuk kembali ke 50:50.

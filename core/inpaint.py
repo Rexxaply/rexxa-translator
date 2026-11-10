@@ -145,6 +145,104 @@ def auto_style(img: np.ndarray, b: TextBlock):
         b.stroke_width = max(b.stroke_width, max(2, int(round(h * 0.12))) if h else 3)
 
 
+def page_letters(img: np.ndarray):
+    """Kandidat huruf untuk SELURUH halaman (ukuran huruf dinilai relatif ke halaman, bukan kotak)."""
+    from .detector import _letter_candidates
+    return _letter_candidates(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
+
+
+def text_only_mask(img: np.ndarray, b: TextBlock, cands=None):
+    """Mask HANYA huruf di area blok (huruf + tanda baca di dekatnya), BUKAN garis balon, rambut,
+    atau gambar. Dipakai supaya yang dihapus/di-generate ulang hanya bekas teks.
+    Mengembalikan (mask_seukuran_gambar, tinggi_huruf) atau (None, 0) bila tidak ada teks."""
+    from .detector import _group_letters
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    H, W = gray.shape
+    x0, y0 = max(0, int(b.x)), max(0, int(b.y))
+    x1, y1 = min(W, int(b.x + b.w)), min(H, int(b.y + b.h))
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return None, 0
+    crop = gray[y0:y1, x0:x1]
+    if cands is None:
+        cands = page_letters(img)
+    # huruf yang titik tengahnya di dalam kotak, dalam koordinat kotak
+    inside = [(cx - x0, cy - y0, cw, ch) for cx, cy, cw, ch in cands
+              if x0 <= cx + cw / 2 < x1 and y0 <= cy + ch / 2 < y1]
+    groups = [g for g in _group_letters(inside, crop.shape) if g["n"] >= 2]
+    if not groups:
+        return None, 0
+    # gabungkan baris-baris yang berdekatan jadi satu blok teks, mulai dari kelompok terbesar;
+    # kelompok jauh / beda ukuran (mis. pola gambar yang mirip huruf) tidak ikut
+    groups.sort(key=lambda g: -g["n"])
+    main = groups[0]
+    lh = max(4.0, main["med_h"])
+    ux, uy, uw, uh = main["rect"]
+    U = [ux, uy, ux + uw, uy + uh]
+    changed = True
+    used = {id(main)}
+    while changed:
+        changed = False
+        for g in groups:
+            if id(g) in used or not (0.55 <= g["med_h"] / lh <= 1.8):
+                continue
+            gx, gy, gw, gh = g["rect"]
+            gap_x = max(0, max(U[0], gx) - min(U[2], gx + gw))
+            gap_y = max(0, max(U[1], gy) - min(U[3], gy + gh))
+            if gap_x <= lh * 1.6 and gap_y <= lh * 1.2:
+                U = [min(U[0], gx), min(U[1], gy), max(U[2], gx + gw), max(U[3], gy + gh)]
+                used.add(id(g))
+                changed = True
+    X0, Y0, X1, Y1 = U[0] - lh * 1.2, U[1] - lh * 0.7, U[2] + lh * 1.2, U[3] + lh * 0.7
+    dark = (crop < 150).astype(np.uint8)
+    n, lbl, st, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+    keep = np.zeros(n, bool)
+    hs = [lh]
+    ix0, iy0, ix1, iy1 = int(max(0, U[0])), int(max(0, U[1])), int(U[2]), int(U[3])
+    bg_light = np.median(crop[iy0:iy1, ix0:ix1]) >= 185     # teks di latar terang (balon)
+    for i in range(1, n):
+        x, y, w, h, a = st[i]
+        # coretan gelap yang SELURUHNYA di dalam blok teks = huruf / tanda baca
+        # (boleh setinggi ±2,8 baris: huruf yang tersambung antar baris, mis. "g" dengan "k";
+        #  lengkungan garis balon yang masuk ke dalam biasanya lebih tinggi lagi)
+        if x >= X0 and y >= Y0 and x + w <= X1 and y + h <= Y1 and h <= lh * 2.8:
+            keep[i] = True
+    # huruf dikelilingi latar terang di semua sisi; garis balon / gambar punya sisi luar yang gelap
+    if bg_light:
+        for i in np.nonzero(keep)[0]:
+            x, y, w, h, a = st[i]
+            p = 10
+            sx0, sy0, sx1, sy1 = max(0, x - p), max(0, y - p), min(crop.shape[1], x + w + p), min(crop.shape[0], y + h + p)
+            comp = (lbl[sy0:sy1, sx0:sx1] == i).astype(np.uint8)
+            k3 = np.ones((3, 3), np.uint8)
+            # cincin 2–6 px dari coretan (lewati tepi abu-abu antialias), tanpa coretan lain
+            ring = (cv2.dilate(comp, k3, iterations=6) > 0) & (cv2.dilate(comp, k3, iterations=2) == 0) \
+                & (dark[sy0:sy1, sx0:sx1] == 0)
+            if ring.sum() and (crop[sy0:sy1, sx0:sx1][ring] >= 185).mean() < 0.85:
+                keep[i] = False
+    keep[0] = False
+    m = keep[lbl].astype(np.uint8) * 255
+    if not m.any():
+        return None, 0
+    lh = float(np.median(hs))
+    r = max(2, int(round(lh * 0.14)))           # tutup juga tepi huruf yang samar (antialias)
+    m = cv2.dilate(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1)))
+    full = np.zeros((H, W), np.uint8)
+    full[y0:y1, x0:x1] = m
+    return full, lh
+
+
+def _flat_background(img: np.ndarray, mask: np.ndarray):
+    """Warna latar bila sekitar teks polos (mis. putih balon); None bila bertekstur/bergambar."""
+    ring = cv2.dilate(mask, np.ones((7, 7), np.uint8), iterations=2) & ~mask
+    vals = img[ring > 0]
+    if vals.size < 30:
+        return None
+    gray = vals.mean(axis=1)
+    if gray.std() < 14 and np.percentile(gray, 10) > 150:
+        return np.median(vals, axis=0).astype(np.uint8)
+    return None
+
+
 def _fill_bubble(img, b):
     # bagian dalam balon (tanpa garis tepi) diisi warna dominan latar balon
     shrink = max(4, int(min(b.w, b.h) * 0.035)) if b.mask_poly else 0
@@ -176,6 +274,22 @@ def _fill_bubble(img, b):
     img[zone > 0] = color
 
 
+def _safe_contrast_mask(img, region):
+    """Cadangan bila huruf tidak terdeteksi: piksel kontras, TANPA garis panjang yang menyentuh tepi
+    area (garis balon / gambar), supaya balon tidak ikut terhapus."""
+    txt = contrast_mask(img, region, dilate=0)
+    border = region - cv2.erode(region, np.ones((3, 3), np.uint8), iterations=2)
+    n, lbl, st, _ = cv2.connectedComponentsWithStats(txt)
+    ys, xs = np.nonzero(region)
+    rh = (ys.max() - ys.min()) if ys.size else 1
+    drop = np.zeros(n, bool)
+    for i in set(np.unique(lbl[(border > 0) & (txt > 0)])) | {i for i in range(1, n) if st[i][3] > rh * 0.5}:
+        drop[i] = True
+    drop[0] = True
+    txt = (~drop[lbl]).astype(np.uint8) * 255 & txt
+    return cv2.dilate(txt, np.ones((3, 3), np.uint8), iterations=2)
+
+
 def _inpaint_opencv(img, mask):
     return cv2.inpaint(img, mask, 7, cv2.INPAINT_TELEA)
 
@@ -193,18 +307,30 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto") -
     out = img.copy()
     use_lama = lama_available()
     ai_mask = np.zeros(img.shape[:2], np.uint8)
+    cands = None
 
     for b in blocks:
         if not b.clean:
             continue
-        m = method
-        if m == "auto":
-            m = "fill" if b.kind == "bubble" else ("lama" if use_lama else "opencv")
-        if m == "fill":
-            _fill_bubble(out, b)
+        region = block_region_mask(img.shape, b)
+        if b.kind != "bubble" and text_polarity(img, region)[0] == "light":
+            ai_mask |= text_pixel_mask(img, region, dilate=3)       # huruf putih bergaris tepi
+            continue
+        # hanya HURUF yang dihapus; garis balon & gambar di sekitarnya tidak disentuh
+        if cands is None:
+            cands = page_letters(img)          # sekali per halaman
+        tm, _lh = text_only_mask(img, b, cands)
+        if tm is None:
+            if b.kind == "bubble":
+                _fill_bubble(out, b)                                 # cadangan lama
+            else:
+                ai_mask |= _safe_contrast_mask(img, region)
+            continue
+        color = _flat_background(img, tm) if method in ("auto", "fill") else None
+        if color is not None:
+            out[tm > 0] = color                                      # latar polos: isi warna latar
         else:
-            region = block_region_mask(img.shape, b)
-            ai_mask |= text_pixel_mask(img, region, dilate=3)
+            ai_mask |= tm                                            # latar bergambar: generate ulang (AI)
 
     if ai_mask.any():
         wants_lama = use_lama and method in ("lama", "auto")

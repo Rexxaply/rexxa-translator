@@ -225,16 +225,41 @@ def wrap_text(draw, text: str, font, max_w: int, stroke: int = 0, allow_break: b
             # kata terlalu panjang untuk satu baris -> pecah (hanya kalau diizinkan)
             if not allow_break and _text_w(draw, word, font, stroke, ls) > max_w:
                 return None
-            # penggalan buatan hanya untuk kata panjang (>= 9 huruf), tiap potongan minimal 4 huruf
+            # penggalan buatan hanya untuk kata panjang (>= 9 huruf), di batas suku kata bila bisa
             while _text_w(draw, word, font, stroke, ls) > max_w and sum(c.isalnum() for c in word) >= 9:
-                cut = len(word) - 4
-                while cut > 4 and _text_w(draw, word[:cut] + "-", font, stroke, ls) > max_w:
-                    cut -= 1
+                cuts = [c for c in _syllable_cuts(word) if 3 <= c <= len(word) - 3]
+                fit = [c for c in cuts if _text_w(draw, word[:c] + "-", font, stroke, ls) <= max_w]
+                if fit:
+                    cut = max(fit)
+                else:
+                    cut = len(word) - 4
+                    while cut > 4 and _text_w(draw, word[:cut] + "-", font, stroke, ls) > max_w:
+                        cut -= 1
                 lines.append(word[:cut] + "-")
                 word = word[cut:]
             cur = word
         lines.append(cur)
     return [l for l in lines if l is not None]
+
+
+_VOWELS = set("aeiouAEIOU")
+
+
+def _syllable_cuts(word: str) -> list[int]:
+    """Posisi penggalan yang wajar (pola suku kata Indonesia/Inggris sederhana):
+    V|KV  (ke|be)  dan  K|KV  (run|tu), tanpa memisah 'ng', 'ny', 'kh', 'sy'."""
+    cuts = []
+    w = word
+    for i in range(1, len(w) - 1):
+        a, b, c = w[i - 1], w[i], w[i + 1]
+        if not (a.isalpha() and b.isalpha() and c.isalpha()):
+            continue
+        if a in _VOWELS and b not in _VOWELS and c in _VOWELS:
+            cuts.append(i)                               # ke|be
+        elif a not in _VOWELS and b not in _VOWELS and c in _VOWELS:
+            if (a + b).lower() not in ("ng", "ny", "kh", "sy", "th", "ch", "sh", "ph", "wh"):
+                cuts.append(i)                           # run|tu
+    return cuts
 
 
 class _Piece(str):
@@ -338,7 +363,53 @@ SHEAR = 0.2              # kemiringan italic palsu
 LINE_SPACING = 1.2       # jarak baris default (lettering manga umumnya 1.15–1.25)
 
 
-def _shape_mask(b: TextBlock, stroke: int) -> np.ndarray:
+def _light_area(img: np.ndarray, b: TextBlock):
+    """Area terang (bagian dalam balon, termasuk balon yang terbuka) di sekitar teks bebas.
+    Boleh melebihi kotak (kotak sering lebih sempit dari balonnya), tapi sisi yang 'bocor'
+    ke luar (balon terbuka / latar halaman) dipotong di batas kotak.
+    Mengembalikan (mask, fx, fy) dalam bingkai yang mungkin lebih besar dari kotak, atau None."""
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    H, W = gray.shape
+    e = int(max(b.w, b.h) * 0.35)
+    fx0, fy0 = max(0, b.x - e), max(0, b.y - e)
+    fx1, fy1 = min(W, b.x + b.w + e), min(H, b.y + b.h + e)
+    if fx1 - fx0 < 10 or fy1 - fy0 < 10:
+        return None
+    light = (gray[fy0:fy1, fx0:fx1] >= 200).astype(np.uint8)
+    light = cv2.morphologyEx(light, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+    n, lbl, st, _ = cv2.connectedComponentsWithStats(light, connectivity=4)
+    if n <= 1:
+        return None
+    if b.text_rect and len(b.text_rect) == 4:
+        tx, ty, tw, th = b.text_rect
+        cx, cy = int(tx + tw / 2 - fx0), int(ty + th / 2 - fy0)
+    else:
+        cx, cy = int(b.x + b.w / 2 - fx0), int(b.y + b.h / 2 - fy0)
+    cx, cy = min(max(cx, 0), fx1 - fx0 - 1), min(max(cy, 0), fy1 - fy0 - 1)
+    i = lbl[cy, cx]
+    if not i:
+        return None
+    m = (lbl == i).astype(np.uint8) * 255
+    # sisi yang menyentuh tepi bingkai = bocor keluar balon -> batasi di tepi kotak
+    bx, by, bw, bh, _a = st[i]
+    lim = np.zeros_like(m)
+    lx0 = b.x - fx0 if bx <= 0 else 0
+    ly0 = b.y - fy0 if by <= 0 else 0
+    lx1 = b.x + b.w - fx0 if bx + bw >= fx1 - fx0 else fx1 - fx0
+    ly1 = b.y + b.h - fy0 if by + bh >= fy1 - fy0 else fy1 - fy0
+    lim[max(0, ly0):max(0, ly1), max(0, lx0):max(0, lx1)] = 255
+    m &= lim
+    cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return None
+    full = np.zeros_like(m)
+    cv2.drawContours(full, [max(cnts, key=cv2.contourArea)], -1, 255, -1)   # isi lubang (bekas huruf)
+    if (full > 0).sum() < 0.15 * b.w * b.h:
+        return None
+    return full, fx0, fy0
+
+
+def _shape_mask(b: TextBlock, stroke: int, img: np.ndarray | None = None):
     """Area yang boleh diisi teks, dalam koordinat lokal balon (0,0 = b.x,b.y).
     Balon: bentuk asli (kontur) dikurangi jarak tepi. Teks bebas: kotak dengan sedikit jarak."""
     h, w = max(2, b.h), max(2, b.w)
@@ -351,11 +422,28 @@ def _shape_mask(b: TextBlock, stroke: int) -> np.ndarray:
         cv2.ellipse(m, (w // 2, h // 2), (w // 2, h // 2), 0, 0, 360, 255, -1)
         pad = max(3, int(min(w, h) * BUBBLE_PAD * 0.6)) + stroke
     else:
+        area = _light_area(img, b) if img is not None and _is_dark(b.color) else None
+        if area is not None:
+            m, fx, fy = area                          # teks bebas: tempel di area terang (bagian dalam balon)
+            pad = max(3, int(min(w, h) * BUBBLE_PAD * 0.8)) + stroke
+            k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * pad + 1, 2 * pad + 1))
+            er = cv2.erode(m, k)
+            return (er if er.any() else m), fx, fy
         m[:] = 255
         pad = max(2, int(min(w, h) * 0.04)) + stroke
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * pad + 1, 2 * pad + 1))
     er = cv2.erode(m, k)
-    return er if er.any() else m
+    return (er if er.any() else m), b.x, b.y
+
+
+def _is_dark(color: str) -> bool:
+    """Warna teks gelap? (teks putih di atas gambar memakai seluruh kotak)."""
+    c = (color or "#000000").lstrip("#")
+    try:
+        r, g, b = int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+    except ValueError:
+        return True
+    return (r * 299 + g * 587 + b * 114) / 1000 < 128
 
 
 class _Shape:
@@ -486,7 +574,9 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
         stroke = b.stroke_width
         ls = float(b.letter_spacing or 0)
         lsp = float(b.line_spacing or line_spacing)
-        shape = _Shape(_shape_mask(b, stroke))
+        smask, fx, fy = _shape_mask(b, stroke, img_bgr)
+        shape = _Shape(smask)
+        fh, fw = smask.shape
         if shear:   # huruf miring butuh sedikit ruang ekstra di kiri-kanan
             shape.margin = shear * max(8, min(b.w, b.h) * 0.06)
         fixed = b.font_size if b.font_size > 0 else int(default_size or 0)
@@ -497,7 +587,7 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
 
         # gambar di lapisan transparan seukuran balon (+ jarak), lalu miring/putar & geser
         pad = int(size * 1.5) + stroke
-        W, H = b.w + 2 * pad, b.h + 2 * pad
+        W, H = fw + 2 * pad, fh + 2 * pad
         layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         d = ImageDraw.Draw(layer)
         widths = [_text_w(d, l, font, stroke, ls) for l in lines]
@@ -523,7 +613,7 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
         if rot:
             cy_l = pad + top + (lh * (len(lines) - 1) + size) / 2
             layer = layer.rotate(rot, resample=Image.BICUBIC, center=(cx, cy_l))
-        _paste_clipped(pil, layer, int(b.x - pad + (b.dx or 0)), int(b.y - pad + (b.dy or 0)))
+        _paste_clipped(pil, layer, int(fx - pad + (b.dx or 0)), int(fy - pad + (b.dy or 0)))
     return cv2.cvtColor(np.array(pil.convert("RGB")), cv2.COLOR_RGB2BGR)
 
 
