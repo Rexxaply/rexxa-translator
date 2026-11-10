@@ -34,7 +34,7 @@ def save_image(path: str, img: np.ndarray):
 
 # ---------------------------------------------------------------- bubble (OpenCV)
 
-def _letter_candidates(gray):
+def _letter_candidates(gray, weak=False):
     H, W = gray.shape
     # gelap relatif terhadap latar lokal (tangkap huruf tipis/abu-abu)
     bg = cv2.dilate(gray, np.ones((9, 9), np.uint8))
@@ -61,7 +61,11 @@ def _letter_candidates(gray):
             continue
         lf = (light[y0:y1, x0:x1] & others).sum() / tot
         mf = (mid[y0:y1, x0:x1] & others).sum() / tot
-        if lf < 0.45 or mf > 0.35:
+        if weak:
+            # huruf di pita abu-abu balon transparan: hanya dipakai untuk MEMPERPANJANG baris yang sudah ada
+            if lf + mf < 0.6:
+                continue
+        elif lf < 0.45 or mf > 0.35:
             continue
         out.append((int(x), int(y), int(w), int(h)))
     return out
@@ -116,7 +120,7 @@ def _ov(a0, a1, b0, b1):
     return max(0, min(a1, b1) - max(a0, b0))
 
 
-def _group_letters(cands, shape):
+def _group_letters(cands, shape, allow_v: bool = True):
     """Huruf -> baris (horizontal atau vertikal) -> blok."""
     if not cands:
         return []
@@ -142,12 +146,14 @@ def _group_letters(cands, shape):
         return gap < 0.6 * max(sa, sb)
 
     lines = []
-    for link, kind in ((link_h, "h"), (link_v, "v")):
+    for link, kind in ((link_h, "h"), (link_v, "v")) if allow_v else ((link_h, "h"),):
         for mem in _clusters(cands, link):  # noqa: B023
             if len(mem) >= 3 or (len(mem) == 2 and kind == "h"):
                 r = _bbox(mem)
                 hs = np.array([c[3] for c in mem], float)
                 size = float(np.median(hs)) if kind == "h" else float(np.median([max(c[2], c[3]) for c in mem]))
+                if kind == "v" and r[2] > 1.8 * size:
+                    continue    # "kolom" selebar beberapa huruf = baris-baris teks horizontal yang bertumpuk
                 lines.append(dict(rect=r, n=len(mem), size=size, kind=kind,
                                   cv=float(hs.std() / (hs.mean() or 1)), mem=mem))
     # buang baris yang hampir tertutup baris lain (h vs v ganda)
@@ -167,7 +173,12 @@ def _group_letters(cands, shape):
             return False
         gx = max(ax, bx) - min(ax + aw, bx + bw)
         gy = max(ay, by) - min(ay + ah, by + bh)
-        return gx < 0.8 * s and gy < 0.8 * s
+        if gx < 0.8 * s and gy < 0.8 * s:
+            return True
+        # teks rata tengah dengan satu baris pendek yang tak terbaca di antaranya ("AS" yang hurufnya menempel)
+        acx, bcx = ax + aw / 2, bx + bw / 2
+        return (a["n"] >= 3 and b["n"] >= 3 and gx < 0 and gy < 1.6 * s
+                and abs(acx - bcx) < 0.25 * max(aw, bw) + 0.5 * s)
 
     blocks = []
     for mem in _clusters(keep, link_b, rect=lambda l: l["rect"]):
@@ -183,6 +194,80 @@ def _block_from_lines(mem):
                 cv=float(np.mean([l["cv"] for l in mem])),
                 vertical=sum(l["kind"] == "v" for l in mem) > len(mem) / 2,
                 line_list=mem)
+
+
+def _absorb_single(groups, cands):
+    """Baris yang hurufnya menempel jadi SATU komponen ("OUT", "AS") tidak membentuk baris sendiri.
+    Masukkan ke blok di atas/bawahnya bila tingginya sama dan posisinya di dalam lebar blok."""
+    used = {c for g in groups for l in g["line_list"] for c in l["mem"]}
+    free = [c for c in cands if c not in used]
+    if not free:
+        return groups
+    out = []
+    for g in groups:
+        if g["vertical"] or g["n"] < 4:
+            out.append(g)
+            continue
+        lines = list(g["line_list"])
+        s = g["med_h"]
+        x0, y0, w, h = g["rect"]
+        added = True
+        while added:
+            added = False
+            for c in free:
+                cx, cy, cw, ch = c
+                if any(c in l["mem"] for l in lines) or not (0.75 * s <= ch <= 1.35 * s):
+                    continue
+                if not (x0 <= cx + cw / 2 <= x0 + w) or cw > w:
+                    continue
+                gy = max(y0, cy) - min(y0 + h, cy + ch)
+                if 0 <= gy < 0.8 * s:
+                    lines.append(dict(rect=c, n=1, size=float(ch), kind="h", cv=0.0, mem=[c]))
+                    y0, y1 = min(y0, cy), max(y0 + h, cy + ch)
+                    h = y1 - y0
+                    added = True
+        out.append(_block_from_lines(lines) if len(lines) != len(g["line_list"]) else g)
+    return out
+
+
+def _extend_lines(groups, weak):
+    """Huruf di ujung baris yang latarnya abu-abu (balon transparan di atas gambar) sering lolos dari
+    deteksi ketat. Tambahkan ke baris bila tingginya sama, sejajar, dan menempel di ujung baris."""
+    if not weak:
+        return groups
+    out = []
+    for g in groups:
+        lines = []
+        changed_any = False
+        for l in g["line_list"]:
+            if l["kind"] != "h":
+                lines.append(l)
+                continue
+            mem = list(l["mem"])
+            x0, y0, w, h = l["rect"]
+            x1, y1 = x0 + w, y0 + h
+            s = l["size"]
+            grow = True
+            while grow:
+                grow = False
+                for c in weak:
+                    cx, cy, cw, ch = c
+                    if c in mem or not (0.65 * s <= ch <= 1.5 * s):
+                        continue
+                    if _ov(y0, y1, cy, cy + ch) < 0.6 * min(ch, y1 - y0):
+                        continue
+                    gap = max(x0, cx) - min(x1, cx + cw)
+                    if gap < 0.9 * s and (cx + cw <= x0 + 2 or cx >= x1 - 2):
+                        mem.append(c)
+                        x0, x1 = min(x0, cx), max(x1, cx + cw)
+                        y0, y1 = min(y0, cy), max(y1, cy + ch)
+                        grow = changed_any = True
+            if len(mem) != len(l["mem"]):
+                hs = np.array([c[3] for c in mem], float)
+                l = dict(l, rect=_bbox(mem), n=len(mem), mem=mem, cv=float(hs.std() / (hs.mean() or 1)))
+            lines.append(l)
+        out.append(_block_from_lines(lines) if changed_any else g)
+    return out
 
 
 def _white_regions(gray, groups, closek):
@@ -247,11 +332,26 @@ def _find_bubble(gray, rect, closek, line_rects=None):
     if touches or area > 14 * w * h or area > 0.2 * H * W:
         return None
     mask = (lbl == i).astype(np.uint8) * 255
+    if not _text_centered(mask[by:by + bh, bx:bx + bw], (x - bx, y - by, w, h)):
+        return None     # area putih panel/langit yang kebetulan tertutup, bukan balon
     mask = cv2.dilate(mask, np.ones((closek, closek), np.uint8))
     cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     c = max(cnts, key=cv2.contourArea)
     hull = cv2.convexHull(c)
     return cv2.boundingRect(hull), hull.reshape(-1, 2)
+
+
+def _text_centered(region, trect) -> bool:
+    """Teks di balon selalu berada di tengah balon. Narasi di pojok panel putih / langit
+    juga tampak 'tertutup', tapi teksnya menempel di satu sisi -> bukan balon."""
+    rh, rw = region.shape
+    tx, ty, tw, th = trect
+    tcx, tcy = tx + tw / 2, ty + th / 2
+    if abs(tcx - rw / 2) > 0.24 * rw or abs(tcy - rh / 2) > 0.24 * rh:
+        return False
+    dist = cv2.distanceTransform((region > 0).astype(np.uint8), cv2.DIST_L2, 5)
+    py, px = np.unravel_index(int(np.argmax(dist)), dist.shape)
+    return abs(px - tcx) <= tw / 2 + 0.15 * rw and abs(py - tcy) <= th / 2 + 0.15 * rh
 
 
 def _region_of(g, lbl):
@@ -361,7 +461,7 @@ def _grow_light(gray, x0, y0, x1, y1, step, limit):
     return int(x0), int(y0), int(x1), int(y1)
 
 
-def detect_bubbles(img: np.ndarray) -> list[TextBlock]:
+def detect_bubbles(img: np.ndarray, vertical: bool = True) -> list[TextBlock]:
     """Teks dulu, baru balon:
     1. cari komponen berbentuk huruf yang dikelilingi latar terang,
     2. susun jadi baris (horizontal / vertikal) lalu blok teks,
@@ -370,7 +470,10 @@ def detect_bubbles(img: np.ndarray) -> list[TextBlock]:
     """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     H, W = gray.shape
-    groups = _group_letters(_letter_candidates(gray), gray.shape)
+    strong = _letter_candidates(gray)
+    groups = _group_letters(strong, gray.shape, allow_v=vertical)   # huruf latin: selalu baris mendatar
+    groups = _absorb_single(groups, strong)
+    groups = _extend_lines(groups, list(set(_letter_candidates(gray, weak=True)) - set(strong)))
     closek = max(3, int(min(H, W) * 0.004)) | 1
     _, lbl, stats, _ = _white_regions(gray, groups, closek)
     split = []
@@ -379,12 +482,16 @@ def detect_bubbles(img: np.ndarray) -> list[TextBlock]:
     good = []
     for g in split:
         x, y, w, h = g["rect"]
-        if g["n"] < 3 or g["cv"] > 0.3:
+        # huruf campuran besar-kecil ("A good luck kiss!") punya tinggi lebih beragam
+        cv_max = 0.42 if g["n"] >= 8 else 0.3
+        if g["n"] < 2 or g["cv"] > cv_max:
             continue
         if (gray[y:y + h, x:x + w] < 120).mean() < 0.12:
             continue
         g["ring"] = _ring_light(gray, g["rect"], int(g["med_h"] * 0.8))
         if g["ring"] < 0.5:     # teks putih di atas gambar gelap -> lewati (pakai mode hybrid)
+            continue
+        if g["n"] < 10 and g["ring"] < 0.65:   # sedikit "huruf" di latar ramai -> garis gambar
             continue
         good.append(g)
 
@@ -412,17 +519,27 @@ def detect_bubbles(img: np.ndarray) -> list[TextBlock]:
             b = lobes[id(g)]          # None = gagal dibelah -> diperlakukan sebagai teks bebas
         else:
             b = _find_bubble(gray, g["rect"], closek, [l["rect"] for l in g["line_list"]])
+        x, y, w, h = g["rect"]
+        if g["n"] < 3 and (ring < (0.9 if b is not None else 0.97)
+                           or (gray[y:y + h, x:x + w] < 120).mean() < 0.3):
+            continue                  # 2 huruf ("OH.") hanya diterima bila latarnya bersih
         if b is not None:
             (bx, by, bw, bh), hull = b
             blocks.append(TextBlock(x=int(bx), y=int(by), w=int(bw), h=int(bh), kind="bubble",
                                     vertical=bool(g["vertical"]), text_rect=text_rect,
-                                    mask_poly=hull.astype(int).tolist()))
+                                    src_h=int(round(g["med_h"])), mask_poly=hull.astype(int).tolist()))
         elif ring > 0.75:
             # balon terbuka / tanpa garis: lebarkan kotak ke area putih di sekitarnya
             x0, y0, x1, y1 = _grow_light(gray, x, y, x + w, y + h, step=max(2, int(g["med_h"] * 0.25)),
                                          limit=int(g["med_h"] * 3))
             blocks.append(TextBlock(x=x0, y=y0, w=x1 - x0, h=y1 - y0, kind="free",
-                                    vertical=bool(g["vertical"]), text_rect=text_rect))
+                                    vertical=bool(g["vertical"]), text_rect=text_rect,
+                                    src_h=int(round(g["med_h"]))))
+    # teks bebas yang hurufnya jauh lebih besar dari teks dialog = SFX -> biarkan
+    sizes = [b.src_h for b in blocks if b.kind == "bubble" and b.src_h]
+    if len(sizes) >= 2:
+        med = float(np.median(sizes))
+        blocks = [b for b in blocks if not (b.kind == "free" and b.src_h > 2.2 * med)]
     return _dedupe(blocks)
 
 
@@ -501,12 +618,13 @@ def _merge_close(rects, gap):
 # ---------------------------------------------------------------- API utama
 
 def detect(img: np.ndarray, mode: str = "bubble", lang: str = "ja", gpu: bool = False) -> list[TextBlock]:
+    cjk = lang in ("ja", "zh", "zh-tw", "ko")
     if mode == "bubble":
-        blocks = detect_bubbles(img)
+        blocks = detect_bubbles(img, vertical=cjk)
     elif mode == "easyocr":
         blocks = detect_text_easyocr(img, lang, gpu)
     elif mode == "hybrid":
-        bubbles = detect_bubbles(img)
+        bubbles = detect_bubbles(img, vertical=cjk)
         try:
             extra = detect_text_easyocr(img, lang, gpu)
         except ImportError:
@@ -518,6 +636,9 @@ def detect(img: np.ndarray, mode: str = "bubble", lang: str = "ja", gpu: bool = 
         blocks = bubbles
     else:
         raise ValueError(f"Mode deteksi tidak dikenal: {mode}")
+    if not cjk:
+        for b in blocks:
+            b.vertical = False
     return sort_reading_order(blocks, rtl=lang in ("ja", "zh", "zh-tw"))
 
 

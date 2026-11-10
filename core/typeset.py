@@ -533,7 +533,7 @@ def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, m
         results[allow_break] = best
     nb, br = results[False], results[True]
     # tanpa memotong kata lebih rapi; potong kata hanya bila hurufnya jadi jauh lebih besar
-    pick = nb if nb and (not br or nb[0] >= br[0] * 0.68) else br
+    pick = nb if nb and (not br or nb[0] >= br[0] * 0.8) else br
     if pick is None:
         f = _font(font_path, min_size)
         lines = wrap_text(draw, text, f, shape.max_w, stroke, True, ls) or [text]
@@ -581,6 +581,9 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
             shape.margin = shear * max(8, min(b.w, b.h) * 0.06)
         fixed = b.font_size if b.font_size > 0 else int(default_size or 0)
         cap = max(max_size, int(min(b.w, b.h) * 0.45)) if not fixed else max_size
+        if not fixed and b.src_h:
+            # jangan jauh lebih besar dari teks aslinya (narasi di panel lebar jadi raksasa)
+            cap = min(cap, max(12, int(b.src_h * (1.9 if b.kind == "bubble" else 1.5))))
         size, lines, top, lh = _fit_shape(measure, text, font_path, shape, stroke, ls, lsp,
                                           min(cap, max(max_size, 8)), fixed=fixed)
         font = _font(font_path, size)

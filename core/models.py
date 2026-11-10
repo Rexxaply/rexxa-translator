@@ -35,6 +35,7 @@ class TextBlock:
     clean: bool = True        # hapus teks asli di area ini
     mask_poly: list = field(default_factory=list)  # kontur balon [[x,y],...] opsional
     text_rect: list = field(default_factory=list)  # [x,y,w,h] teks asli hasil deteksi (untuk OCR)
+    src_h: int = 0            # tinggi huruf teks asli (px); batas ukuran font otomatis
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
 
     @property
