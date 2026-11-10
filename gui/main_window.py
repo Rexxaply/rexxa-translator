@@ -30,6 +30,7 @@ from .dialogs import GlossaryDialog, SettingsDialog
 from . import shortcuts as SC
 from .icons import icon
 from .updater import UpdateChecker
+from .alert import Alert, MessageBox as QMessageBox  # noqa: E402,F811  (semua alert bergaya Rexxa)
 
 UNDO_LIMIT = 5        # langkah undo per halaman (redo menampung langkah yang di-undo)
 APP_NAME = "Rexxa Translator"
@@ -1825,8 +1826,9 @@ class MainWindow(QMainWindow):
             return
         todo = [(i, p) for i, p in enumerate(self.project.pages) if p.status != "selesai"]
         if not todo:
-            r = QMessageBox.question(self, APP_NAME, "Semua halaman sudah selesai. Proses ulang semuanya?")
-            if r != QMessageBox.Yes:
+            from .alert import ask
+            if not ask(self, APP_NAME, "Semua halaman sudah selesai.\nProses ulang semua halaman dari awal?",
+                       yes="Proses ulang", no="Batal"):
                 return
             todo = list(enumerate(self.project.pages))
         proj, st = self.project, dict(self.settings)
@@ -1982,22 +1984,16 @@ class MainWindow(QMainWindow):
         self._refresh_state()
         if not self._dirty:
             return True
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle("Simpan perubahan?")
         name = Path(self.project.file).name if self.project.file else "unfiledfiles.mtproj"
-        box.setText(f"<b>Ada perubahan yang belum disimpan di “{name}”.</b>")
-        box.setInformativeText("Simpan dulu sebelum keluar? Kalau tidak disimpan, perubahan terakhir akan hilang.")
-        b_save = box.addButton("Simpan", QMessageBox.AcceptRole)
-        b_dont = box.addButton("Jangan simpan", QMessageBox.DestructiveRole)
-        b_cancel = box.addButton("Batal", QMessageBox.RejectRole)
-        box.setDefaultButton(b_save)
-        box.setEscapeButton(b_cancel)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is b_save:
+        choice = Alert(self, "Simpan proyek (.mtproj)", "Simpan perubahan sebelum menutup?",
+                       f"Perubahan di “{name}” belum disimpan. Kalau tidak disimpan, perubahan terakhir hilang.",
+                       kind="save",
+                       buttons=[("Simpan .mtproj", "primary", "save"), ("Jangan simpan", "danger", "discard"),
+                                ("Batal", "neutral", "cancel")],
+                       escape_value="cancel").exec_value()
+        if choice == "save":
             return self.save_project()       # dialog simpan dibatalkan -> tetap di aplikasi
-        return clicked is b_dont
+        return choice == "discard"
 
     def closeEvent(self, e):
         if getattr(self, "_closing_confirmed", False) or self.confirm_unsaved():

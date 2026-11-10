@@ -3,6 +3,10 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.19.0
+- **Tampilan alert baru** untuk semua pesan aplikasi (simpan, error, peringatan, konfirmasi, update, data, font): kartu gelap membulat, lencana ikon berwarna sesuai jenis pesan, judul tebal di tengah, keterangan redup, dan tombol selebar sama (utama merah muda, bahaya merah lembut, biasa abu-abu).
+- Pesan keluar aplikasi: **"Simpan perubahan sebelum menutup?"** dengan tombol **Simpan .mtproj / Jangan simpan / Batal**.
+
 ## 1.18.1
 - Tombol yang tidak bisa ditekan kini benar-benar **redup** (ikonnya ikut gelap), bukan hanya tidak bisa diklik: Simpan, Undo, Redo, alat sunting, halaman sebelumnya/berikutnya, Export, dan ukuran kuas (aktif hanya saat Healing brush dipilih). Sebelum ada gambar yang dibuka, alat-alat yang butuh halaman juga redup.
 
@@ -23,12 +27,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 ## 1.16.1
 - **Memperbarui hasil tetap cepat setelah membuka proyek tersimpan**: hasil bersih yang tersimpan langsung dipakai, dan saat balon digeser / diubah / ditambah / dihapus / di-undo, hanya area balon itu yang dibersihkan ulang (bukan seluruh halaman).
 - Model AI hapus teks (LaMa) dimuat di latar belakang begitu proyek / gambar dibuka, jadi proses pertama tidak lagi menunggu model dimuat.
-
-## 1.16.0
-- **Pengaturan gradasi seperti Photoshop**: tombol gradasi baru di panel Tipografi (di sebelah warna teks) membuka pengaturan:
-  - **Bentuk**: Linear, Cermin (reflected), Oval (radial), **Pisah 2 warna** (batas tegas).
-  - **Arah**: 8 tombol arah cepat (↓ → ↘ dst.) atau putar kenop untuk sudut bebas 0–359°.
-  - **Posisi**: seberapa jauh warna pertama sebelum berganti (mis. pisah di 30%).
-  - **Kehalusan**: dari batas tegas sampai peralihan halus penuh.
-  - **Ulangi tiap baris** atau satu gradasi untuk seluruh teks; tukar warna; reset; hapus gradasi.
-  - Perubahan langsung terlihat di hasil, bisa di-undo.

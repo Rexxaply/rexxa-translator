@@ -15,6 +15,7 @@ from core import paths, pipeline, translator, typeset, version
 
 from . import shortcuts as SC
 from .settings_panels import DataPanel, ShortcutPanel, TextPanel
+from .alert import Alert, MessageBox as QMessageBox  # noqa: E402,F811  (semua alert bergaya Rexxa)
 
 DETECT = [("Balon (OpenCV, cepat)", "bubble"), ("EasyOCR (teks di mana saja)", "easyocr"),
           ("Hybrid (balon + teks bebas)", "hybrid")]
@@ -239,9 +240,9 @@ class FontPanel(QWidget):
         if errors:
             QMessageBox.warning(self, "Instal font", "Sebagian font gagal diinstal:\n\n" + "\n".join(errors))
         elif len(done) == 1:
-            r = QMessageBox.question(self, "Instal font",
-                                     f"Terinstal: {typeset.font_name(done[0])}\n\nJadikan font default sekarang?")
-            if r == QMessageBox.Yes:
+            from .alert import ask
+            if ask(self, "Instal font", f"Font terinstal: {typeset.font_name(done[0])}\nJadikan font default sekarang?",
+                   yes="Jadikan default", no="Nanti", kind="success"):
                 self._set_default(done[0])
         elif done:
             QMessageBox.information(self, "Instal font",
@@ -266,7 +267,9 @@ class FontPanel(QWidget):
         if not sel:
             return
         names = "\n".join(typeset.font_name(f) for f in sel)
-        if QMessageBox.question(self, "Hapus font", f"Hapus font ini dari aplikasi?\n\n{names}") != QMessageBox.Yes:
+        from .alert import ask
+        if not ask(self, "Hapus font", f"Hapus font ini dari aplikasi?\n{names}", yes="Hapus", no="Batal",
+                   kind="warn", danger=True):
             return
         if self.default_font() in sel:
             self._set_default_cb("")

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QGridLayout, Q
 from core import datastore as DS
 from core import pipeline, translator, typeset
 from . import shortcuts as SC
+from .alert import Alert, MessageBox as QMessageBox  # noqa: E402,F811  (semua alert bergaya Rexxa)
 
 DIM = "color:#8a8e9a;"
 
@@ -274,7 +275,8 @@ class DataPanel(QWidget):
         self.refresh()
 
     def _ask(self, text) -> bool:
-        return QMessageBox.question(self, "Data", text) == QMessageBox.Yes
+        from .alert import ask
+        return ask(self, "Data", text, yes="Hapus", no="Batal", kind="warn", danger=True)
 
     def _clear_tr(self):
         if self._ask("Hapus semua terjemahan yang tersimpan di cache?"):

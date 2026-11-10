@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QApplication, QDialog, QHBoxLayout, QLabel, QMess
                                QPushButton, QTextBrowser, QVBoxLayout)
 
 from core import pipeline, selfupdate, version
+from .alert import Alert, MessageBox as QMessageBox  # noqa: E402,F811  (semua alert bergaya Rexxa)
 
 
 def _mb(n):
