@@ -75,10 +75,14 @@ def style_of(img, rect, mask) -> dict:
     cs, _ = cv2.findContours(sm, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
     per_s = sum(cv2.arcLength(c, True) for c in cs) or per or 1
     rough = float(per / per_s)
+    if rough > 1.5:        # huruf bergradasi/bertekstur pecah-pecah di mask -> bukan tepi kuas
+        rough = 1.0
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    light_bg = float(np.median(gray)) > 140
     # kemiringan huruf (shear) dari momen
     mo = cv2.moments(mm, binaryImage=True)
     slant = float(-mo["mu11"] / mo["mu02"]) if mo["mu02"] else 0.0
-    return {"color": color, "rough": rough, "slant": slant}
+    return {"color": color, "rough": rough, "slant": slant, "light_bg": light_bg}
 
 
 def texture_of(img, rect, mask) -> np.ndarray:
@@ -269,12 +273,21 @@ def render_title(img, title: str, rect, mask, font_path: str, upper: bool = True
         return out
     A = a[Y0 - oy:Y1 - oy, X0 - ox:X1 - ox].astype(np.float32) / 255.0
     region = out[Y0:Y1, X0:X1].astype(np.float32)
-    # bayangan gelap + cahaya warna logo di belakang huruf
-    glow = cv2.GaussianBlur(A, (0, 0), max(2.0, ah * 0.02))[..., None]
-    gcol = np.array(st["color"], np.float32) * 0.35
-    region = region * (1 - 0.55 * glow) + gcol * 0.55 * glow
     shadow = np.roll(np.roll(A, int(ah * 0.012) + 1, 0), int(ah * 0.008) + 1, 1)
-    region = region * (1 - 0.7 * shadow[..., None])
+    if st.get("light_bg"):
+        # latar terang: garis tepi gelap (warna logo yang digelapkan) supaya huruf tetap terbaca
+        r = max(2, int(ah * 0.012))
+        ring = cv2.dilate((A > 0.3).astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1,) * 2))
+        ring = cv2.GaussianBlur(ring.astype(np.float32), (0, 0), 0.8)[..., None]
+        ocol = np.array(st["color"], np.float32) * 0.35
+        region = region * (1 - ring) + ocol * ring
+        region = region * (1 - 0.25 * shadow[..., None])
+    else:
+        # latar gelap: cahaya warna logo + bayangan
+        glow = cv2.GaussianBlur(A, (0, 0), max(2.0, ah * 0.02))[..., None]
+        gcol = np.array(st["color"], np.float32) * 0.35
+        region = region * (1 - 0.55 * glow) + gcol * 0.55 * glow
+        region = region * (1 - 0.7 * shadow[..., None])
     # isi huruf dengan tekstur logo asli (diregangkan ke area judul baru)
     t = cv2.resize(tex, (aw, ah), interpolation=cv2.INTER_CUBIC)[Y0 - oy:Y1 - oy, X0 - ox:X1 - ox].astype(np.float32)
     # sedikit lebih terang di bagian atas huruf, seperti cat yang terkena cahaya

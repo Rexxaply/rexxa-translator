@@ -191,7 +191,7 @@ def add_title_block(img, page: Page, project: Project, settings: dict, strict: b
                   source="[logo judul]", text_rect=[x, y, w, h])
     try:
         from . import fontmatch
-        f = fontmatch.best_font(img, rect, int(h * 0.15),
+        f = fontmatch.best_font(img, rect, int(h * 0.15), heavy=True,
                                 include_system=bool(settings.get("font_match_system", True)))
         if f:
             b.font = f

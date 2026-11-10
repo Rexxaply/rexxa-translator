@@ -32,7 +32,7 @@ _SKIP = ("symbol", "wingding", "webding", "marlett", "emoji", "mdl2", "holomdl",
 _WEIGHTS = {"stroke": (3.0, 0.05), "fill": (1.5, 0.12), "rough": (1.5, 0.25),
             "slant": (1.0, 0.15), "aspect": (1.0, 0.25)}
 _cache: dict = {}
-_VER = 4          # naikkan bila cara menghitung ciri berubah (cache lama diabaikan)
+_VER = 5          # naikkan bila cara menghitung ciri berubah (cache lama diabaikan)
 
 
 # ---------------------------------------------------------------- daftar font perangkat
@@ -131,6 +131,9 @@ def font_features(path: str) -> dict | None:
     feat = None
     try:
         f = ImageFont.truetype(path, 96)
+        if not _has_latin(f):
+            _cache[key] = None
+            return None
         text = "  ".join(SAMPLE)
         l, t, r, b = f.getbbox(text)
         if r - l > 40 and b - t > 30:
@@ -143,6 +146,17 @@ def font_features(path: str) -> dict | None:
         feat = None
     _cache[key] = feat
     return feat
+
+
+def _has_latin(f) -> bool:
+    """Font simbol / tanpa huruf latin menggambar kotak yang sama untuk setiap huruf."""
+    seen = set()
+    for ch in "ABOe":
+        m = f.getmask(ch)
+        if m.size[0] == 0 or m.size[1] == 0:
+            return False
+        seen.add((m.size, bytes(m)))
+    return len(seen) == 4
 
 
 def _load_disk_cache():
@@ -205,7 +219,18 @@ def candidates(include_system: bool = True) -> list[tuple[str, float]]:
     return out
 
 
-def best_font(img: np.ndarray, rect, src_h: int, include_system: bool = True, top: int = 1):
+def _weight_bias(path: str) -> float:
+    n = Path(path).stem.lower()
+    if any(k in n for k in ("black", "heavy", "extrabold", "ultra", "bold", "impact", "poster")):
+        return -1.5
+    if any(k in n for k in ("light", "thin", "hairline", "mono", "code")):
+        return 2.0
+    return 0.0
+
+
+def best_font(img: np.ndarray, rect, src_h: int, include_system: bool = True, top: int = 1,
+              heavy: bool = False):
+    """heavy=True: utamakan font tebal (logo judul selalu memakai huruf tebal)."""
     """Font paling mirip untuk teks di rect. Mengembalikan path (atau list (path, skor) bila top>1)."""
     src = source_features(img, rect, src_h)
     if src is None:
@@ -217,7 +242,8 @@ def best_font(img: np.ndarray, rect, src_h: int, include_system: bool = True, to
     for path, pen in candidates(include_system):
         f = font_features(path)
         if f:
-            scored.append((distance(src, f) + pen + _style_bias(path, src), path))
+            scored.append((distance(src, f) + pen + _style_bias(path, src)
+                           + (_weight_bias(path) if heavy else 0.0), path))
     if len(_cache) != n0:
         _save_disk_cache()
     scored.sort()
