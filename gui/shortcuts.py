@@ -8,6 +8,7 @@ local=True : hanya aktif saat fokus di gambar / daftar halaman, supaya tidak ben
 SHORTCUTS = [
     ("open", "File", "Buka folder chapter", "Ctrl+O", False),
     ("save", "File", "Simpan proyek", "Ctrl+S", False),
+    ("save_as", "File", "Simpan proyek sebagai… (file baru)", "Ctrl+Shift+S", False),
     ("settings", "File", "Pengaturan", "Ctrl+,", False),
 
     ("translate_page", "Proses", "Terjemahkan halaman ini", "F5", False),

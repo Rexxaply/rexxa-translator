@@ -195,6 +195,11 @@ class MainWindow(QMainWindow):
         self._update_title()
         self._show_current(fit=True)
         self.log(f"{APP_NAME} {__version__} siap. Seret folder/gambar manga ke jendela ini, atau klik ikon folder.")
+        try:   # Windows: ikon file .mtproj + buka dengan klik ganda
+            from core import fileassoc
+            fileassoc.register_async()
+        except Exception:
+            pass
         self.updater = UpdateChecker(self)
         QTimer.singleShot(1500, self.updater.check)
         if os.environ.get("REXXA_ROLLED_BACK"):
@@ -213,6 +218,9 @@ class MainWindow(QMainWindow):
         m_open.addAction(icon("open"), "Buka folder chapter…  (Ctrl+O)", self.open_folder)
         m_open.addAction(icon("image"), "Buka gambar…", self.open_images)
         m_open.addAction(icon("project"), "Buka proyek (.mtproj)…", self.open_project)
+        m_open.addSeparator()
+        m_open.addAction(icon("save"), "Simpan proyek  (Ctrl+S)", self.save_project)
+        m_open.addAction(icon("save"), "Simpan sebagai…  (Ctrl+Shift+S)", self.save_project_as)
         b = tool_btn("open", "Buka folder / gambar / proyek")
         b.setMenu(m_open)
         b.setPopupMode(QToolButton.InstantPopup)
@@ -223,6 +231,9 @@ class MainWindow(QMainWindow):
         for b_ in (self.b_save, self.b_undo, self.b_redo):
             b_.setEnabled(False)
             tb.addWidget(b_)
+        self.b_save.setContextMenuPolicy(Qt.CustomContextMenu)   # klik kanan = Simpan sebagai…
+        self.b_save.customContextMenuRequested.connect(
+            lambda pos: self._save_menu(self.b_save.mapToGlobal(pos)))
         self._saved_sig = None
         self._dirty = False
         self.state_timer = QTimer(self, interval=600)       # cek perubahan & status undo/redo
@@ -760,6 +771,7 @@ class MainWindow(QMainWindow):
         handlers = {
             "open": self.open_folder,
             "save": self.save_project,
+            "save_as": self.save_project_as,
             "settings": self.edit_settings,
             "translate_page": lambda: self.run_stages(["detect", "ocr", "translate", "render"]),
             "translate_all": self.run_all,
@@ -963,13 +975,29 @@ class MainWindow(QMainWindow):
         from core import inpaint
         threading.Thread(target=inpaint.warm_up, daemon=True).start()
 
-    def save_project(self) -> bool:
+    def _save_menu(self, gpos):
+        m = QMenu(self)
+        m.addAction(icon("save"), "Simpan  (Ctrl+S)", self.save_project).setEnabled(self._dirty)
+        m.addAction(icon("save"), "Simpan sebagai…  (Ctrl+Shift+S)", self.save_project_as).setEnabled(
+            bool(self.project.pages))
+        m.exec(gpos)
+
+    def save_project_as(self) -> bool:
+        """Simpan ke file proyek BARU (file lama tetap seperti terakhir disimpan)."""
+        return self.save_project(ask_path=True)
+
+    def save_project(self, ask_path: bool = False) -> bool:
         """True bila tersimpan (False = dibatalkan)."""
         if not self.project.pages:
             return False
-        if not self.project.file:
-            default = str(Path(self.project.pages[0].path).parent / "unfiledfiles.mtproj")
-            f, _ = QFileDialog.getSaveFileName(self, "Simpan proyek", default, "Proyek Rexxa Translator (*.mtproj)")
+        if ask_path or not self.project.file:
+            if self.project.file:
+                cur = Path(self.project.file)
+                default = str(cur.with_name(cur.stem + " (salinan).mtproj")) if ask_path else str(cur)
+            else:
+                default = str(Path(self.project.pages[0].path).parent / "unfiledfiles.mtproj")
+            f, _ = QFileDialog.getSaveFileName(self, "Simpan proyek sebagai" if ask_path else "Simpan proyek",
+                                               default, "Proyek Rexxa Translator (*.mtproj)")
             if not f:
                 return False
             if not f.lower().endswith(".mtproj"):
@@ -999,6 +1027,7 @@ class MainWindow(QMainWindow):
     def _mark_saved(self):
         self._saved_sig = self._project_sig()
         self._refresh_state()
+        self._update_title()
 
     def _refresh_state(self):
         has = bool(self.project.pages)

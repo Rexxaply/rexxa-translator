@@ -3,6 +3,10 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.20.0
+- **Ikon file proyek**: file **.mtproj** kini punya ikon Rexxa Translator di Windows Explorer dan bisa dibuka dengan **klik ganda** (didaftarkan otomatis saat aplikasi dibuka, tanpa hak admin).
+- **Simpan sebagai…** (Ctrl+Shift+S, di menu ikon folder): simpan proyek ke file baru, mis. untuk membuat cadangan / versi lain. File lama tetap seperti terakhir disimpan.
+
 ## 1.19.0
 - **Tampilan alert baru** untuk semua pesan aplikasi (simpan, error, peringatan, konfirmasi, update, data, font): kartu gelap membulat, lencana ikon berwarna sesuai jenis pesan, judul tebal di tengah, keterangan redup, dan tombol selebar sama (utama merah muda, bahaya merah lembut, biasa abu-abu).
 - Pesan keluar aplikasi: **"Simpan perubahan sebelum menutup?"** dengan tombol **Simpan .mtproj / Jangan simpan / Batal**.
@@ -23,7 +27,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
   - **Healing brush (J)**: sapukan di atas noda / sisa teks / objek, AI LaMa membuat ulang latarnya. Ukuran kuas di toolbar atau tombol **[ ]**.
   - **V** = kembali ke alat pilih. Semua suntingan tersimpan di proyek dan bisa di-undo (Ctrl+Z).
 - Perbaikan: hasil bersih proyek tersimpan kini benar-benar langsung dipakai saat proyek dibuka (perbaikan 1.16.1 belum aktif).
-
-## 1.16.1
-- **Memperbarui hasil tetap cepat setelah membuka proyek tersimpan**: hasil bersih yang tersimpan langsung dipakai, dan saat balon digeser / diubah / ditambah / dihapus / di-undo, hanya area balon itu yang dibersihkan ulang (bukan seluruh halaman).
-- Model AI hapus teks (LaMa) dimuat di latar belakang begitu proyek / gambar dibuka, jadi proses pertama tidak lagi menunggu model dimuat.
