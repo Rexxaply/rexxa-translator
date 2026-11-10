@@ -151,8 +151,43 @@ def _text_color(img: np.ndarray, b: TextBlock):
     g = ink.mean(axis=1)
     core = ink[g <= np.percentile(g, 50)]               # bagian tengah huruf, bukan tepi antialias
     c = np.median(core, axis=0)
+    hexc = lambda v: "#{:02X}{:02X}{:02X}".format(int(v[2]), int(v[1]), int(v[0]))  # noqa: E731
+    # gradasi atas -> bawah (seluruh blok teks, khas manhwa): bandingkan baris pertama & terakhir;
+    # bila hanya satu baris, bagian atas & bawah hurufnya
+    inkm = gray < bg - 70
+    rows = inkm.mean(axis=1) > 0.02
+    runs, yy = [], 0
+    while yy < len(rows):
+        if rows[yy]:
+            y2 = yy
+            while y2 + 1 < len(rows) and rows[y2 + 1]:
+                y2 += 1
+            if y2 - yy >= 5:
+                runs.append((yy, y2))
+            yy = y2 + 1
+        else:
+            yy += 1
+
+    def core_color(y0, y1):
+        px = crop[y0:y1][inkm[y0:y1]]
+        if len(px) < 15:
+            return None
+        return np.median(px, axis=0)
+
+    ct = cb = None
+    if len(runs) >= 2:
+        ct, cb = core_color(*runs[0]), core_color(*runs[-1])
+    elif len(runs) == 1:
+        y0, y1 = runs[0]
+        k = max(1, (y1 - y0 + 1) // 3)
+        ct, cb = core_color(y0, y0 + k), core_color(y1 - k + 1, y1 + 1)
+    if ct is not None and cb is not None:
+        colorful = max(ct.max() - ct.min(), cb.max() - cb.min()) >= 30
+        if colorful and np.abs(ct.astype(int) - cb.astype(int)).max() >= 35:
+            b.color, b.color2 = hexc(ct), hexc(cb)
+            return
     if c.max() - c.min() >= 45:                         # cukup berwarna (bukan hitam/abu-abu)
-        b.color = "#{:02X}{:02X}{:02X}".format(int(c[2]), int(c[1]), int(c[0]))
+        b.color = hexc(c)
 
 
 def auto_style(img: np.ndarray, b: TextBlock):

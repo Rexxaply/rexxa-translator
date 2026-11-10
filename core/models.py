@@ -20,6 +20,7 @@ class TextBlock:
     font: str = ""            # kosong = pakai font default
     font_size: int = 0        # 0 = otomatis menyesuaikan kotak
     color: str = "#000000"
+    color2: str = ""          # warna bawah untuk teks gradasi (kosong = warna polos)
     stroke_color: str = "#FFFFFF"
     stroke_width: int = 0
     align: str = "center"     # left | center | right

@@ -3,6 +3,10 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.9.1
+- Teks terjemahan kini **di tengah balon**, di posisi teks aslinya. Huruf miring (italic) tidak lagi keluar dari tepi balon di baris atas/bawah.
+- **Teks gradasi**: huruf bergradasi (mis. emas terang ke cokelat di manhwa) dideteksi otomatis dan terjemahannya memakai gradasi yang sama. Bisa diatur manual di panel Tipografi: kotak kedua di sebelah warna teks = warna bawah, tombol × = kembali ke warna polos.
+
 ## 1.9.0
 - **Narasi tidak lagi raksasa**: teks di pojok panel / di atas langit tidak lagi dianggap balon seukuran panel. Ukuran font otomatis kini mengikuti ukuran huruf aslinya.
 - **Balon transparan (manhwa)**: hanya huruf yang dihapus, lalu latar di belakangnya (gradasi, gambar yang tembus) **di-generate ulang**. Tidak ada lagi tempelan warna solid; latar putih hanya diisi bila memang benar-benar polos.
@@ -22,8 +26,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - Perbaikan: aplikasi 1.7.1 gagal dibuka ("QVBoxLayout already deleted").
 - Bila sebuah update membuat jendela gagal dibuka, aplikasi kini otomatis kembali ke versi sebelumnya.
 - Setiap rilis kini diuji dengan benar-benar membuat jendela utama sebelum diterbitkan.
-
-## 1.7.1
-- Teks kini mengikuti **bentuk asli balon** dan ukurannya menyesuaikan balon (lebih besar, tidak lagi kekecilan); posisinya di bagian terdalam balon, jadi ekor balon tidak menggeser teks.
-- Jarak baris default **1.2** seperti lettering manga (bisa diatur di Pengaturan → Teks); kata pendek tidak lagi dipotong-potong (mis. "KATSUKI- / SAN!").
-- Panel **Tipografi** dirapikan: ukuran + preset 1–5, B / I / AA / Aa / aa + rata, jarak baris, jarak huruf, rotasi, tombol geser posisi, warna teks & stroke.

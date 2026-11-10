@@ -559,6 +559,14 @@ class MainWindow(QMainWindow):
         self.p_color.setObjectName("swatch")
         self.p_color.setToolTip("Warna teks")
         self.p_color.clicked.connect(lambda: self._pick_color("color"))
+        # warna kedua = gradasi atas -> bawah (khas manhwa); kosong = warna polos
+        self.p_color2 = QPushButton()
+        self.p_color2.setObjectName("swatch")
+        self.p_color2.setToolTip("Gradasi: warna bagian bawah teks (klik untuk memilih)")
+        self.p_color2.clicked.connect(lambda: self._pick_color("color2"))
+        self.p_color2.setFixedSize(22, 22)
+        self.p_grad_off = mini("×", "Hapus gradasi (warna polos)", checkable=False, w=18)
+        self.p_grad_off.clicked.connect(self._clear_gradient)
         self.p_stroke_color = QPushButton()
         self.p_stroke_color.setObjectName("swatch")
         self.p_stroke_color.setToolTip("Warna stroke (garis tepi huruf)")
@@ -571,6 +579,8 @@ class MainWindow(QMainWindow):
         trow.setSpacing(4)
         trow.addWidget(small_label("Teks"))
         trow.addWidget(self.p_color)
+        trow.addWidget(self.p_color2)
+        trow.addWidget(self.p_grad_off)
         trow.addStretch()
         g.addLayout(trow, 5, 0)
         krow = QHBoxLayout()
@@ -1014,6 +1024,7 @@ class MainWindow(QMainWindow):
             for k, btn in self.p_al.items():
                 btn.setChecked(k == b.align)
             self._color_btn(self.p_color, b.color)
+            self._grad_btn(b)
             self.p_stroke.setValue(b.stroke_width)
             self.p_lsp.setValue(float(b.line_spacing or 0))
             self.p_ls.setValue(float(b.letter_spacing or 0))
@@ -1145,12 +1156,35 @@ class MainWindow(QMainWindow):
         b = self.sel
         if not b:
             return
-        c = QColorDialog.getColor(QColor(getattr(b, attr)), self)
+        c = QColorDialog.getColor(QColor(getattr(b, attr) or b.color), self)
         if c.isValid():
             self._snap()
             setattr(b, attr, c.name())
-            self._color_btn(self.p_color if attr == "color" else self.p_stroke_color, c.name())
+            if attr == "color2":
+                self._grad_btn(b)
+            else:
+                self._color_btn(self.p_color if attr == "color" else self.p_stroke_color, c.name())
             self._schedule_render()
+
+    def _grad_btn(self, b):
+        if b.color2:
+            self._color_btn(self.p_color2, b.color2)
+            self.p_color2.setStyleSheet(
+                f"background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {b.color}, stop:1 {b.color2});"
+                " border:1px solid #4a4d57; border-radius:4px;")
+        else:
+            self.p_color2.setText("")
+            self.p_color2.setStyleSheet("background: transparent; border:1px dashed #4a4d57; border-radius:4px;")
+        self.p_grad_off.setEnabled(bool(b.color2))
+
+    def _clear_gradient(self):
+        b = self.sel
+        if not b or not b.color2:
+            return
+        self._snap()
+        b.color2 = ""
+        self._grad_btn(b)
+        self._schedule_render()
 
     # ================================================================== edit kotak
     def _on_edit_started(self, block):

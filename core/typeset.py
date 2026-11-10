@@ -464,36 +464,60 @@ class _Shape:
         self.cy = int(cy)
         self.cx = (self.x0[cy] + self.x1[cy]) / 2.0 if self.x0[cy] >= 0 else self.w / 2
         self.margin = extra_margin
+        self.ay = None
         self.max_w = int(max(1, (self.x1 - self.x0).max())) if rows.size else self.w
 
-    def half_room(self, y0: float, y1: float) -> float:
-        """Setengah lebar terkecil (dari pusat cx) pada rentang baris y0..y1."""
+    def rooms(self, y0: float, y1: float) -> tuple[float, float]:
+        """Ruang ke kiri & ke kanan dari pusat cx (terkecil pada rentang baris y0..y1)."""
         a, b = int(max(0, np.floor(y0))), int(min(self.h - 1, np.ceil(y1)))
         if a > b:
-            return -1
+            return -1, -1
         x0, x1 = self.x0[a:b + 1], self.x1[a:b + 1]
         if (x0 < 0).any():
-            return -1
-        return float(np.minimum(self.cx - x0, x1 - self.cx).min()) - self.margin
+            return -1, -1
+        return float((self.cx - x0).min()) - self.margin, float((x1 - self.cx).min()) - self.margin
+
+    def half_room(self, y0: float, y1: float) -> float:
+        l, r = self.rooms(y0, y1)
+        return min(l, r)
+
+    def anchor(self, ax: float, ay: float):
+        """Pakai posisi teks asli sebagai pusat (bila berada di dalam area)."""
+        iy = int(round(ay))
+        if 0 <= iy < self.h and self.x0[iy] >= 0 and self.x0[iy] <= ax <= self.x1[iy]:
+            # jangan terlalu menempel ke satu sisi: geser sedikit ke tengah baris
+            mid = (self.x0[iy] + self.x1[iy]) / 2.0
+            self.cx = 0.6 * ax + 0.4 * mid
+            self.ay = float(ay)
 
 
 def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, max_size, min_size=8,
-               fixed: int = 0):
-    """Ukuran font terbesar yang muat di bentuk balon. Mengembalikan (size, lines, top, lh)."""
+               fixed: int = 0, shear: float = 0.0):
+    """Ukuran font terbesar yang muat di bentuk balon. Mengembalikan (size, lines, top, lh).
+    shear: kemiringan italic palsu -- baris atas bergeser ke kanan, baris bawah ke kiri,
+    jadi ruang kiri/kanan tiap baris diperiksa terpisah."""
     def place(lines, f, size):
         lh = size * line_spacing
         total = lh * (len(lines) - 1) + size * 1.05
         widths = [_text_w(draw, l, f, stroke, ls) for l in lines]
-        tops = [shape.cy - total / 2, (shape.ymin + shape.ymax) / 2 - total / 2]
+        tops = []
+        if shape.ay is not None:
+            tops.append(shape.ay - total / 2)           # posisi teks asli
+        tops += [shape.cy - total / 2, (shape.ymin + shape.ymax) / 2 - total / 2]
         tops += [max(shape.ymin, min(t, shape.ymax - total)) for t in list(tops)]
         for top in tops:
             if top < shape.ymin - 1 or top + total > shape.ymax + 1:
                 continue
+            mid = top + total / 2
             ok = True
             for i, wl in enumerate(widths):
                 y0 = top + i * lh + size * 0.12          # bagian huruf yang terlihat
                 y1 = top + i * lh + size * 0.95
-                if wl / 2 > shape.half_room(y0, y1):
+                left, right = shape.rooms(y0, y1)
+                # geser italic: bagian atas huruf ke kanan, bawah ke kiri
+                up = shear * (mid - y0)
+                down = shear * (y1 - mid)
+                if wl / 2 + max(up, -down) > right or wl / 2 + max(down, -up) > left:
                     ok = False
                     break
             if ok:
@@ -517,7 +541,8 @@ def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, m
         f = _font(font_path, fixed)
         lines = wrap_text(draw, text, f, int(shape.max_w * 0.9), stroke, True, ls) or [text]
         lh = fixed * line_spacing
-        return fixed, lines, shape.cy - (lh * (len(lines) - 1) + fixed) / 2, lh
+        cy = shape.ay if shape.ay is not None else shape.cy
+        return fixed, lines, cy - (lh * (len(lines) - 1) + fixed) / 2, lh
 
     results = {}
     for allow_break in (False, True):
@@ -577,15 +602,18 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
         smask, fx, fy = _shape_mask(b, stroke, img_bgr)
         shape = _Shape(smask)
         fh, fw = smask.shape
-        if shear:   # huruf miring butuh sedikit ruang ekstra di kiri-kanan
-            shape.margin = shear * max(8, min(b.w, b.h) * 0.06)
+        if b.text_rect and len(b.text_rect) == 4:     # pusatkan di posisi teks asli
+            tx, ty, tw, th = b.text_rect
+            shape.anchor(tx + tw / 2 - fx, ty + th / 2 - fy)
+        if shear:
+            shape.margin = 1.0
         fixed = b.font_size if b.font_size > 0 else int(default_size or 0)
         cap = max(max_size, int(min(b.w, b.h) * 0.45)) if not fixed else max_size
         if not fixed and b.src_h:
             # jangan jauh lebih besar dari teks aslinya (narasi di panel lebar jadi raksasa)
             cap = min(cap, max(12, int(b.src_h * (1.9 if b.kind == "bubble" else 1.5))))
         size, lines, top, lh = _fit_shape(measure, text, font_path, shape, stroke, ls, lsp,
-                                          min(cap, max(max_size, 8)), fixed=fixed)
+                                          min(cap, max(max_size, 8)), fixed=fixed, shear=shear)
         font = _font(font_path, size)
 
         # gambar di lapisan transparan seukuran balon (+ jarak), lalu miring/putar & geser
@@ -596,6 +624,9 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
         widths = [_text_w(d, l, font, stroke, ls) for l in lines]
         block_w = max(widths) if widths else 0
         cx = pad + shape.cx
+        grad = _gradient_colors(b)
+        fill_mask = Image.new("L", (W, H), 0) if grad else None
+        fm = ImageDraw.Draw(fill_mask) if grad else None
         for i, (line, wl) in enumerate(zip(lines, widths)):
             if b.align == "left":
                 x = cx - block_w / 2
@@ -608,6 +639,10 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
             l0, t0, _, _ = d.textbbox((0, 0), line, font=font, stroke_width=stroke)
             _draw_line(d, (x - l0, y - t0 * 0.5), line, font, b.color, stroke,
                        b.stroke_color if stroke else None, ls, bold, size)
+            if grad:   # isi huruf saja (tanpa stroke) untuk diwarnai gradasi per baris
+                _draw_line(fm, (x - l0, y - t0 * 0.5), line, font, 255, 0, None, ls, bold, size)
+        if grad:
+            layer = _apply_gradient(layer, fill_mask, grad, [pad + top + i * lh for i in range(len(lines))], size)
         if shear:
             cy_l = pad + top + (lh * (len(lines) - 1) + size) / 2
             layer = layer.transform(layer.size, Image.AFFINE, (1, shear, -shear * cy_l, 0, 1, 0),
@@ -618,6 +653,39 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
             layer = layer.rotate(rot, resample=Image.BICUBIC, center=(cx, cy_l))
         _paste_clipped(pil, layer, int(fx - pad + (b.dx or 0)), int(fy - pad + (b.dy or 0)))
     return cv2.cvtColor(np.array(pil.convert("RGB")), cv2.COLOR_RGB2BGR)
+
+
+def _hex_rgb(c: str):
+    c = (c or "").lstrip("#")
+    try:
+        return int(c[0:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+    except (ValueError, IndexError):
+        return None
+
+
+def _gradient_colors(b: TextBlock):
+    if not b.color2:
+        return None
+    a, z = _hex_rgb(b.color), _hex_rgb(b.color2)
+    if a is None or z is None or a == z:
+        return None
+    return a, z
+
+
+def _apply_gradient(layer: Image.Image, fill_mask: Image.Image, grad, line_tops, size) -> Image.Image:
+    """Warnai isi huruf dengan gradasi atas -> bawah sepanjang blok teks (seperti lettering manhwa)."""
+    (r0, g0, b0), (r1, g1, b1) = grad
+    W, H = layer.size
+    y0 = line_tops[0] + size * 0.1
+    y1 = line_tops[-1] + size * 0.95
+    if len(line_tops) == 1:
+        y0, y1 = line_tops[0] + size * 0.15, line_tops[0] + size * 0.9
+    t = np.clip((np.arange(H, dtype=np.float32) - y0) / max(1.0, y1 - y0), 0, 1)
+    rows = np.stack([r0 + (r1 - r0) * t, g0 + (g1 - g0) * t, b0 + (b1 - b0) * t, np.full(H, 255.0)], 1)
+    img = np.repeat(rows[:, None, :], W, axis=1).astype(np.uint8)
+    out = layer.copy()
+    out.paste(Image.fromarray(img, "RGBA"), (0, 0), fill_mask)
+    return out
 
 
 def _draw_line(d, xy, line, font, fill, stroke, stroke_fill, ls, bold, size):
