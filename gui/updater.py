@@ -195,6 +195,11 @@ class UpdateChecker(QObject):
             return
         kind, remote = self._pending
         from pathlib import Path
+        # simpan pekerjaan dulu sebelum aplikasi ditutup untuk update
+        if hasattr(w, "confirm_unsaved") and not w.confirm_unsaved():
+            w.log("Update ditunda: proyek belum disimpan. Klik Cek update lagi kapan saja.")
+            return
+        w._closing_confirmed = True
         try:
             if kind == "app":
                 selfupdate.install_app_update(Path(path))
@@ -209,6 +214,7 @@ class UpdateChecker(QObject):
                                                      "lalu Rexxa Translator terbuka lagi otomatis.")
                 selfupdate.run_detached(bat)
         except Exception as e:
+            w._closing_confirmed = False
             QMessageBox.warning(w, "Update", f"Update gagal dipasang:\n{e}\n\nVersi lama tetap dipakai.")
             return
         QApplication.quit()

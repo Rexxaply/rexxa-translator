@@ -31,6 +31,7 @@ from . import shortcuts as SC
 from .icons import icon
 from .updater import UpdateChecker
 
+UNDO_LIMIT = 5        # langkah undo per halaman (redo menampung langkah yang di-undo)
 APP_NAME = "Rexxa Translator"
 SRC_LANGS = ["ja", "ko", "zh", "zh-tw", "en"]
 TGT_LANGS = ["id", "en", "ms", "vi", "th", "es", "pt", "fr", "de", "ru", "ja", "ko", "zh"]
@@ -215,9 +216,17 @@ class MainWindow(QMainWindow):
         b.setMenu(m_open)
         b.setPopupMode(QToolButton.InstantPopup)
         tb.addWidget(b)
-        tb.addWidget(tool_btn("save", "Simpan proyek (Ctrl+S)", self.save_project))
-        tb.addWidget(tool_btn("undo", "Undo (Ctrl+Z)", self.undo))
-        tb.addWidget(tool_btn("redo", "Redo (Ctrl+Y)", self.redo))
+        self.b_save = tool_btn("save", "Simpan proyek (Ctrl+S)", self.save_project)
+        self.b_undo = tool_btn("undo", "Undo (Ctrl+Z) · maks. 5 langkah", self.undo)
+        self.b_redo = tool_btn("redo", "Redo (Ctrl+Y)", self.redo)
+        for b_ in (self.b_save, self.b_undo, self.b_redo):
+            b_.setEnabled(False)
+            tb.addWidget(b_)
+        self._saved_sig = None
+        self._dirty = False
+        self.state_timer = QTimer(self, interval=600)       # cek perubahan & status undo/redo
+        self.state_timer.timeout.connect(self._refresh_state)
+        self.state_timer.start()
         tb.addWidget(vline())
 
         self.b_box = tool_btn("box", "Tambah kotak teks manual (B)", self.toggle_draw, checkable=True)
@@ -799,7 +808,8 @@ class MainWindow(QMainWindow):
     def _update_title(self):
         p = self.page()
         name = Path(self.project.file).name if self.project.file else (p.name if p else "")
-        self.setWindowTitle(f"{APP_NAME} {__version__}" + (f" — {name}" if name else ""))
+        mark = " •" if getattr(self, "_dirty", False) else ""
+        self.setWindowTitle(f"{APP_NAME} {__version__}" + (f" — {name}{mark}" if name else ""))
 
     def _set_busy(self, busy: bool):
         self.b_go.setEnabled(not busy)
@@ -927,6 +937,8 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, APP_NAME, f"Gagal membuka proyek:\n{e}")
             return
         pipeline.mark_clean_valid(self.project)    # hasil bersih tersimpan langsung dipakai
+        self._history = {}
+        self._saved_sig = None                     # dihitung ulang: proyek yang baru dibuka = tersimpan
         self._warm_up_ai()
         self.src.setCurrentIndex(max(0, self.src.findData(self.project.source_lang)))
         self.tgt.setCurrentIndex(max(0, self.tgt.findData(self.project.target_lang)))
@@ -946,18 +958,62 @@ class MainWindow(QMainWindow):
         from core import inpaint
         threading.Thread(target=inpaint.warm_up, daemon=True).start()
 
-    def save_project(self):
+    def save_project(self) -> bool:
+        """True bila tersimpan (False = dibatalkan)."""
         if not self.project.pages:
-            return
+            return False
         if not self.project.file:
-            default = str(Path(self.project.pages[0].path).parent / "proyek.mtproj")
+            default = str(Path(self.project.pages[0].path).parent / "unfiledfiles.mtproj")
             f, _ = QFileDialog.getSaveFileName(self, "Simpan proyek", default, "Proyek Rexxa Translator (*.mtproj)")
             if not f:
-                return
+                return False
+            if not f.lower().endswith(".mtproj"):
+                f += ".mtproj"
             self.project.file = f
-        self.project.save()
-        self._update_title()
+        try:
+            self.project.save()
+        except Exception as e:
+            QMessageBox.critical(self, APP_NAME, f"Gagal menyimpan proyek:\n{e}")
+            return False
+        self._mark_saved()
         self.log(f"Tersimpan: {self.project.file}")
+        return True
+
+    # ------------------------------------------------------------------ status simpan & undo/redo
+    def _project_sig(self) -> str:
+        """Sidik isi proyek (tanpa path file hasil render) untuk mendeteksi perubahan."""
+        import hashlib
+        import json
+        pr = self.project
+        data = {"src": pr.source_lang, "tgt": pr.target_lang, "glossary": pr.glossary,
+                "title": getattr(pr, "series_title", ""),
+                "pages": [{"path": p.path, "edits": p.edits, "blocks": [b.to_dict() for b in p.blocks]}
+                          for p in pr.pages]}
+        return hashlib.md5(json.dumps(data, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+
+    def _mark_saved(self):
+        self._saved_sig = self._project_sig()
+        self._refresh_state()
+
+    def _refresh_state(self):
+        has = bool(self.project.pages)
+        if self._saved_sig is None and has:
+            self._saved_sig = self._project_sig()      # proyek baru dimuat = belum ada perubahan
+        dirty = has and self._project_sig() != self._saved_sig
+        if dirty != self._dirty:
+            self._dirty = dirty
+            self.b_save.setIcon(icon("save_dirty" if dirty else "save"))
+            self.b_save.setToolTip("Simpan proyek (Ctrl+S) · ada perubahan yang belum disimpan" if dirty
+                                   else "Simpan proyek (Ctrl+S) · semua perubahan sudah tersimpan")
+            self._update_title()
+        self.b_save.setEnabled(dirty and not self.thread)
+        p = self.page()
+        h = self._hist(p) if p else {"undo": [], "redo": []}
+        busy = bool(self.thread)
+        self.b_undo.setEnabled(bool(h["undo"]) and not busy)
+        self.b_redo.setEnabled(bool(h["redo"]) and not busy)
+        self.b_undo.setToolTip(f"Undo (Ctrl+Z) · {len(h['undo'])} dari maks. {UNDO_LIMIT} langkah")
+        self.b_redo.setToolTip(f"Redo (Ctrl+Y) · {len(h['redo'])} langkah")
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls():
@@ -1607,7 +1663,7 @@ class MainWindow(QMainWindow):
         if h["undo"] and h["undo"][-1] == state:
             return
         h["undo"].append(state)
-        del h["undo"][:-150]          # simpan maks. 150 langkah per halaman
+        del h["undo"][:-UNDO_LIMIT]   # simpan maks. 5 langkah per halaman
         h["redo"].clear()
 
     def _snap(self, key=None, page=None):
@@ -1647,8 +1703,10 @@ class MainWindow(QMainWindow):
             self.status_lbl.setText("Tidak ada yang bisa di-undo")
             return
         h["redo"].append(self._state())
+        del h["redo"][:-UNDO_LIMIT]
         self._restore(h["undo"].pop())
         self.status_lbl.setText(f"Undo  ·  {len(h['undo'])} langkah tersisa")
+        self._refresh_state()
 
     def redo(self):
         p = self.page()
@@ -1659,8 +1717,10 @@ class MainWindow(QMainWindow):
             self.status_lbl.setText("Tidak ada yang bisa di-redo")
             return
         h["undo"].append(self._state())
+        del h["undo"][:-UNDO_LIMIT]
         self._restore(h["redo"].pop())
-        self.status_lbl.setText("Redo")
+        self.status_lbl.setText(f"Redo  ·  {len(h['redo'])} langkah tersisa")
+        self._refresh_state()
 
     # ================================================================== render otomatis
     def _schedule_render(self, now: bool = False):
@@ -1904,11 +1964,33 @@ class MainWindow(QMainWindow):
         d = pipeline.output_dir(p, self.settings)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(d)))
 
-    def closeEvent(self, e):
-        if self.project.pages and self.project.file:
-            self.project.save()
-        e.accept()
+    def confirm_unsaved(self) -> bool:
+        """Tanya simpan bila ada perubahan. True = boleh lanjut menutup, False = batal."""
+        self._refresh_state()
+        if not self._dirty:
+            return True
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Simpan perubahan?")
+        name = Path(self.project.file).name if self.project.file else "unfiledfiles.mtproj"
+        box.setText(f"<b>Ada perubahan yang belum disimpan di “{name}”.</b>")
+        box.setInformativeText("Simpan dulu sebelum keluar? Kalau tidak disimpan, perubahan terakhir akan hilang.")
+        b_save = box.addButton("Simpan", QMessageBox.AcceptRole)
+        b_dont = box.addButton("Jangan simpan", QMessageBox.DestructiveRole)
+        b_cancel = box.addButton("Batal", QMessageBox.RejectRole)
+        box.setDefaultButton(b_save)
+        box.setEscapeButton(b_cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is b_save:
+            return self.save_project()       # dialog simpan dibatalkan -> tetap di aplikasi
+        return clicked is b_dont
 
+    def closeEvent(self, e):
+        if getattr(self, "_closing_confirmed", False) or self.confirm_unsaved():
+            e.accept()
+        else:
+            e.ignore()
 
 STYLE = """
 * { font-family: 'Segoe UI', 'Noto Sans', sans-serif; font-size: 9.5pt; color: #d6d8de; }

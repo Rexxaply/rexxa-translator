@@ -3,6 +3,11 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.18.0
+- Tombol **Simpan** kini hanya aktif bila ada perubahan yang belum disimpan (ikon baru, dengan titik merah saat ada perubahan; judul jendela diberi tanda •).
+- Menutup aplikasi dengan perubahan yang belum disimpan memunculkan pertanyaan **Simpan / Jangan simpan / Batal**. Nama default proyek baru: **unfiledfiles.mtproj**. Hal yang sama juga ditanyakan sebelum aplikasi dibuka ulang untuk update.
+- **Undo** dibatasi **5 langkah** per halaman, **Redo** memuat langkah yang di-undo. Tombol Undo / Redo otomatis nonaktif saat sudah mentok.
+
 ## 1.17.0
 - **Alat sunting gambar** di toolbar (bisa dipakai di gambar Asli maupun Hasil):
   - **Pen tool (P)**: klik titik-titik mengelilingi area; klik titik awal / klik kanan / Enter = selesai, Backspace = hapus titik terakhir, Esc = batal.
@@ -30,6 +35,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
   - **Otomatis**: aplikasi mengenali sendiri manga (halaman pendek) atau manhwa/manhua (strip panjang).
   - **Manga**: 1 gambar = 1 halaman PDF, ukuran sesuai gambar.
   - **Manhwa / Manhua**: semua halaman disambung jadi satu strip panjang (lebar disamakan), lalu dibagi ke halaman PDF setinggi mungkin; potongan dicari di celah polos antar panel supaya panel tidak terbelah.
-
-## 1.14.3
-- **Memperbarui hasil jauh lebih cepat**, terutama untuk strip webtoon panjang: hapus teks ±7x lebih cepat (hanya mengolah area di sekitar tiap balon, bukan seluruh halaman), menyusun teks ±2,5x lebih cepat (ukuran kata disimpan di cache), dan file sementara disimpan dengan kompresi ringan.
