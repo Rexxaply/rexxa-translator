@@ -3,6 +3,12 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.15.0
+- **Export PDF semua halaman** (menu Export → Export PDF):
+  - **Otomatis**: aplikasi mengenali sendiri manga (halaman pendek) atau manhwa/manhua (strip panjang).
+  - **Manga**: 1 gambar = 1 halaman PDF, ukuran sesuai gambar.
+  - **Manhwa / Manhua**: semua halaman disambung jadi satu strip panjang (lebar disamakan), lalu dibagi ke halaman PDF setinggi mungkin; potongan dicari di celah polos antar panel supaya panel tidak terbelah.
+
 ## 1.14.3
 - **Memperbarui hasil jauh lebih cepat**, terutama untuk strip webtoon panjang: hapus teks ±7x lebih cepat (hanya mengolah area di sekitar tiap balon, bukan seluruh halaman), menyusun teks ±2,5x lebih cepat (ukuran kata disimpan di cache), dan file sementara disimpan dengan kompresi ringan.
 
@@ -19,9 +25,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - **Google Fonts sebagai cadangan pencocokan font**: bila font di aplikasi & perangkat kurang mirip dengan teks asli (SFX, logo judul, tombol ✦), aplikasi mencoba font dari Google Fonts (komik, kuas, tebal, display), memilih yang paling mirip, lalu memasangnya otomatis. Font yang sudah diunduh disimpan & dipakai ulang. Tanpa API key; bila offline, cukup dilewati.
 - Pengaturan → Font: tombol **Google Fonts…** untuk mencari & memasang font gratis (kategori komik/kuas, tebal, display, tulisan tangan, atau cari nama).
 - Pengaturan → Proses: opsi menyalakan/mematikan pencarian Google Fonts.
-
-## 1.13.0
-- **Deteksi warna teks lebih pintar**: warna isi huruf, **garis tepi** (warna + tebal), dan **gradasi** atas→bawah dibaca langsung dari teks asli, lalu dipakai untuk terjemahan. Bekerja untuk huruf merah/emas bergradasi (manhwa), huruf putih bergaris tepi hitam, huruf berwarna bergaris tepi putih, dll. Huruf hitam yang buram tetap dianggap hitam.
-- Warna dibaca juga saat **OCR** (termasuk kotak yang dibuat manual dan tombol "OCR ulang").
-- Tombol baru **◉** di panel Tipografi: ambil warna dari teks asli untuk balon yang dipilih.
-- Pembersihan latar putih lebih bersih: sisa tepi samar huruf berwarna tidak lagi tertinggal.

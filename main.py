@@ -81,6 +81,12 @@ def _selftest(code):
     import torchvision.ops as ops
     ops.nms(torch.zeros((1, 4)), torch.zeros(1), 0.5)
     out.append("torchvision.ops.nms OK")
+    # export PDF (plugin Pillow ikut terbundel?)
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), "white").save(buf, "PDF")
+    out.append("PDF OK")
     # buat jendela utama sungguhan (tanpa ditampilkan): menangkap error saat membangun tampilan
     from PySide6.QtWidgets import QApplication
     app = QApplication.instance() or QApplication(sys.argv[:1])
@@ -158,6 +164,7 @@ def _bundle_hint():  # pragma: no cover — TIDAK pernah dipanggil
     import cv2, numpy, PIL.Image, PIL.ImageDraw, PIL.ImageFont, requests, deep_translator  # noqa: E401,F401
     import deep_translator.google  # noqa: F401
     import fontTools.ttLib  # noqa: F401  (cek huruf yang tidak dimiliki font)
+    import PIL.PdfImagePlugin, PIL.JpegImagePlugin, PIL.WebPImagePlugin  # noqa: E401,F401  (export PDF)
     # pustaka standar yang dipakai / mungkin dipakai update kode di masa depan
     import argparse, base64, collections, concurrent.futures, contextlib, copy, csv, ctypes  # noqa: E401,F401
     import dataclasses, datetime, difflib, enum, fnmatch, functools, glob, hashlib, html, io  # noqa: E401,F401

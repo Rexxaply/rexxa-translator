@@ -285,6 +285,10 @@ class MainWindow(QMainWindow):
 
         m_exp = QMenu(self)
         m_exp.addAction(icon("export"), "Export ZIP / CBZ…", self.export_zip)
+        m_pdf = m_exp.addMenu(icon("book"), "Export PDF (semua halaman)")
+        m_pdf.addAction("Otomatis (deteksi manga / manhwa)…", lambda: self.export_pdf("auto"))
+        m_pdf.addAction("Manga — 1 gambar = 1 halaman…", lambda: self.export_pdf("manga"))
+        m_pdf.addAction("Manhwa / Manhua — disambung jadi strip panjang…", lambda: self.export_pdf("webtoon"))
         m_exp.addAction(icon("project"), "Export skrip terjemahan (.txt)…", self.export_script)
         m_exp.addAction(icon("folderout"), "Buka folder hasil", self.open_output_folder)
         b = tool_btn("export", "Export hasil")
@@ -1680,6 +1684,29 @@ class MainWindow(QMainWindow):
         if f:
             pipeline.export_zip(self.project, f)
             self.log(f"Diekspor: {f}")
+
+    def export_pdf(self, kind="auto"):
+        if not any(p.output_path and Path(p.output_path).exists() for p in self.project.pages):
+            QMessageBox.information(self, APP_NAME, "Belum ada halaman yang diterjemahkan.")
+            return
+        if self.thread:
+            return
+        default = Path(self.project.pages[0].path).parent.name + "_translated.pdf"
+        out_dir = Path(self.project.pages[0].output_path or self.project.pages[0].path).parent
+        f, _ = QFileDialog.getSaveFileName(self, "Export PDF", str(out_dir / default), "PDF (*.pdf)")
+        if not f:
+            return
+        if not f.lower().endswith(".pdf"):
+            f += ".pdf"
+        proj = self.project
+
+        def job(w: Worker):
+            from core import pdfexport
+            r = pdfexport.export_pdf(proj, f, kind, log=w.log.emit)
+            jenis = "manhwa/manhua (disambung)" if r["kind"] == "webtoon" else "manga"
+            w.log.emit(f"PDF {jenis}: {r['pages_in']} gambar → {r['pages_out']} halaman PDF · {f}")
+
+        self._start(job, "Export PDF")
 
     def export_script(self):
         if not self.project.pages:
