@@ -671,6 +671,7 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
         grad = _gradient_colors(b)
         fill_mask = Image.new("L", (W, H), 0) if grad else None
         fm = ImageDraw.Draw(fill_mask) if grad else None
+        boxes = []
         for i, (line, wl) in enumerate(zip(lines, widths)):
             if b.align == "left":
                 x = cx - block_w / 2
@@ -683,15 +684,17 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
             l0, t0, _, _ = d.textbbox((0, 0), line, font=font, stroke_width=stroke)
             _draw_line(d, (x - l0, y - t0 * 0.5), line, font, b.color, stroke,
                        b.stroke_color if stroke else None, ls, bold, size)
-            if grad:   # isi huruf saja (tanpa stroke) untuk diwarnai gradasi per baris
+            if grad:   # isi huruf saja (tanpa stroke) untuk diwarnai gradasi
                 _draw_line(fm, (x - l0, y - t0 * 0.5), line, font, 255, 0, None, ls, bold, size)
+                sx = shear * size * 0.6
+                boxes.append((x - sx, y + size * 0.08, x + wl + sx, y + size * 0.95))
         line_tops = [pad + top + i * lh for i in range(len(lines))]
         if shear:   # miringkan tiap baris di sekitar titik tengahnya sendiri (tetap rata tengah)
             layer = _shear_lines(layer, line_tops, size, lh, shear)
             if grad:
                 fill_mask = _shear_lines(fill_mask, line_tops, size, lh, shear)
         if grad:
-            layer = _apply_gradient(layer, fill_mask, grad, line_tops, size)
+            layer = _apply_gradient(layer, fill_mask, grad, boxes, b)
         rot = float(b.rotation or 0)
         if rot:
             cy_l = pad + top + (lh * (len(lines) - 1) + size) / 2
@@ -779,19 +782,30 @@ def _gradient_colors(b: TextBlock):
     return a, z
 
 
-def _apply_gradient(layer: Image.Image, fill_mask: Image.Image, grad, line_tops, size) -> Image.Image:
-    """Warnai isi huruf dengan gradasi atas -> bawah sepanjang blok teks (seperti lettering manhwa)."""
-    (r0, g0, b0), (r1, g1, b1) = grad
+def _apply_gradient(layer: Image.Image, fill_mask: Image.Image, grad, boxes, b: TextBlock) -> Image.Image:
+    """Warnai isi huruf dengan gradasi (jenis, arah, posisi, kehalusan seperti Photoshop).
+    boxes = kotak tiap baris [(x0, y0, x1, y1)] di koordinat lapisan."""
+    from . import gradient as G
+    c1, c2 = grad
     W, H = layer.size
-    y0 = line_tops[0] + size * 0.1
-    y1 = line_tops[-1] + size * 0.95
-    if len(line_tops) == 1:
-        y0, y1 = line_tops[0] + size * 0.15, line_tops[0] + size * 0.9
-    t = np.clip((np.arange(H, dtype=np.float32) - y0) / max(1.0, y1 - y0), 0, 1)
-    rows = np.stack([r0 + (r1 - r0) * t, g0 + (g1 - g0) * t, b0 + (b1 - b0) * t, np.full(H, 255.0)], 1)
-    img = np.repeat(rows[:, None, :], W, axis=1).astype(np.uint8)
+    paint = np.zeros((H, W, 4), np.uint8)
+    kind = getattr(b, "grad_type", "linear") or "linear"
+    ang = float(getattr(b, "grad_angle", 90.0) if getattr(b, "grad_angle", None) is not None else 90.0)
+    pos = float(getattr(b, "grad_pos", 0.5) if getattr(b, "grad_pos", None) is not None else 0.5)
+    soft = float(getattr(b, "grad_soft", 1.0) if getattr(b, "grad_soft", None) is not None else 1.0)
+    regions = boxes if getattr(b, "grad_scope", "block") == "line" else [
+        (min(x[0] for x in boxes), min(x[1] for x in boxes), max(x[2] for x in boxes), max(x[3] for x in boxes))]
+    # isi seluruh lapisan dengan warna ujung dulu (bagian huruf di luar kotak tetap berwarna)
+    paint[...] = G.colorize(np.zeros((1, 1), np.float32), c1, c2)[0, 0]
+    for x0, y0, x1, y1 in regions:
+        x0, y0 = max(0, int(x0)), max(0, int(y0))
+        x1, y1 = min(W, int(np.ceil(x1))), min(H, int(np.ceil(y1)))
+        if x1 <= x0 or y1 <= y0:
+            continue
+        t = G.field(x1 - x0, y1 - y0, kind, ang, pos, soft)
+        paint[y0:y1, x0:x1] = G.colorize(t, c1, c2)
     out = layer.copy()
-    out.paste(Image.fromarray(img, "RGBA"), (0, 0), fill_mask)
+    out.paste(Image.fromarray(paint, "RGBA"), (0, 0), fill_mask)
     return out
 
 

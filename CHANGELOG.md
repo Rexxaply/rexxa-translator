@@ -3,6 +3,15 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.16.0
+- **Pengaturan gradasi seperti Photoshop**: tombol gradasi baru di panel Tipografi (di sebelah warna teks) membuka pengaturan:
+  - **Bentuk**: Linear, Cermin (reflected), Oval (radial), **Pisah 2 warna** (batas tegas).
+  - **Arah**: 8 tombol arah cepat (↓ → ↘ dst.) atau putar kenop untuk sudut bebas 0–359°.
+  - **Posisi**: seberapa jauh warna pertama sebelum berganti (mis. pisah di 30%).
+  - **Kehalusan**: dari batas tegas sampai peralihan halus penuh.
+  - **Ulangi tiap baris** atau satu gradasi untuk seluruh teks; tukar warna; reset; hapus gradasi.
+  - Perubahan langsung terlihat di hasil, bisa di-undo.
+
 ## 1.15.0
 - **Export PDF semua halaman** (menu Export → Export PDF):
   - **Otomatis**: aplikasi mengenali sendiri manga (halaman pendek) atau manhwa/manhua (strip panjang).
@@ -20,8 +29,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - Panel **Properti** kini mengikuti lebar sidebar saat digeser: tidak ada lagi bagian yang terpotong di kanan (font, preset, warna, stroke, jenis balon menyempit dengan rapi).
 - Tombol **Posisi** memakai ikon panah yang jelas (kiri, atas, bawah, kanan, kembalikan) dan bisa ditahan untuk menggeser terus. Ikon cocokkan font (tongkat) & ambil warna (pipet) diperbarui.
 - Saat belum ada balon dipilih, kolom angka menampilkan nilai netral (Auto, 1.20, 0, 0°), bukan -180° / -10.
-
-## 1.14.0
-- **Google Fonts sebagai cadangan pencocokan font**: bila font di aplikasi & perangkat kurang mirip dengan teks asli (SFX, logo judul, tombol ✦), aplikasi mencoba font dari Google Fonts (komik, kuas, tebal, display), memilih yang paling mirip, lalu memasangnya otomatis. Font yang sudah diunduh disimpan & dipakai ulang. Tanpa API key; bila offline, cukup dilewati.
-- Pengaturan → Font: tombol **Google Fonts…** untuk mencari & memasang font gratis (kategori komik/kuas, tebal, display, tulisan tangan, atau cari nama).
-- Pengaturan → Proses: opsi menyalakan/mematikan pencarian Google Fonts.

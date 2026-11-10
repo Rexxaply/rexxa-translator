@@ -612,6 +612,9 @@ class MainWindow(QMainWindow):
         self.p_color2 = swatch("Gradasi: warna bagian bawah teks (klik untuk memilih)", lambda: self._pick_color("color2"))
         self.p_grad_off = mini("", "Hapus gradasi (warna polos)", checkable=False, w=22, ico="close")
         self.p_grad_off.clicked.connect(self._clear_gradient)
+        self.p_gradset = mini("", "Atur gradasi: bentuk (linear, cermin, oval, pisah 2), arah, posisi, kehalusan",
+                              checkable=False, w=22, ico="gradient")
+        self.p_gradset.clicked.connect(self._gradient_dialog)
         self.p_pick = mini("", "Ambil warna dari teks asli (isi, garis tepi, gradasi)", checkable=False, w=22,
                            ico="eyedrop")
         self.p_pick.clicked.connect(self._pick_from_source)
@@ -623,6 +626,7 @@ class MainWindow(QMainWindow):
         r5.addWidget(self.p_color, 1)
         r5.addWidget(self.p_color2, 1)
         r5.addWidget(self.p_grad_off)
+        r5.addWidget(self.p_gradset)
         r5.addStretch(0)
         r5.addWidget(self.p_pick)
         s2.lay.addLayout(r5)
@@ -1342,12 +1346,31 @@ class MainWindow(QMainWindow):
             self.status_lbl.setText(f"Warna diambil: {desc}")
             self._schedule_render()
 
+    def _gradient_dialog(self):
+        b = self.sel
+        if not b:
+            return
+        from .gradient_dialog import GradientDialog
+        self._snap()
+
+        def changed():
+            self._grad_btn(b)
+            self._color_btn(self.p_color, b.color)
+            self._schedule_render()
+        d = GradientDialog(b, changed, self)
+        d.finished.connect(lambda *_: changed())
+        changed()
+        d.show()
+        self._grad_dlg = d          # simpan referensi (dialog non-modal)
+
     def _grad_btn(self, b):
         if b.color2:
+            from core.gradient import css_preview
             self._color_btn(self.p_color2, b.color2)
-            self.p_color2.setStyleSheet(
-                f"background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {b.color}, stop:1 {b.color2});"
-                " border:1px solid #4a4d57; border-radius:4px;")
+            css = css_preview(b.grad_type or "linear", b.grad_angle if b.grad_angle is not None else 90,
+                              b.color, b.color2, b.grad_pos if b.grad_pos is not None else 0.5,
+                              b.grad_soft if b.grad_soft is not None else 1.0)
+            self.p_color2.setStyleSheet(f"background: {css}; border:1px solid #4a4d57; border-radius:4px;")
         else:
             self.p_color2.setText("")
             self.p_color2.setStyleSheet("background: transparent; border:1px dashed #4a4d57; border-radius:4px;")

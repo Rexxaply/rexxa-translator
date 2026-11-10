@@ -47,6 +47,7 @@ ICONS = {
     "mv_reset": '<circle cx="12" cy="12" r="2.2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>',
     "eyedrop": '<path d="M14 4l6 6M17 7l-9.5 9.5L5 19l-1 1M7.5 16.5L6 18"/><path d="M12.5 6.5l5 5"/>',
     "wand": '<path d="M4 20L15 9"/><path d="M15 4v3M13.5 5.5h3M19 9v2M18 10h2M11 3v1.5M10.25 3.75h1.5"/>',
+    "gradient": '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 20L20 4M4 14l10-10M10 20l10-10"/>',
     "close": '<path d="M7 7l10 10M17 7L7 17"/>',
     "al_left": '<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>',
     "al_center": '<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>',

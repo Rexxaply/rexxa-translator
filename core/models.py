@@ -22,7 +22,12 @@ class TextBlock:
     font_size: int = 0        # 0 = otomatis menyesuaikan kotak
     fit_size: int = 0         # ukuran hasil "Auto" pada render terakhir (info untuk panel)
     color: str = "#000000"
-    color2: str = ""          # warna bawah untuk teks gradasi (kosong = warna polos)
+    color2: str = ""          # warna kedua untuk teks gradasi (kosong = warna polos)
+    grad_type: str = "linear"  # linear | reflected | radial | split  (lihat core/gradient.py)
+    grad_angle: float = 90.0  # arah gradasi (derajat): 90 = atas->bawah, 0 = kiri->kanan
+    grad_pos: float = 0.5     # titik tengah peralihan warna (0..1)
+    grad_soft: float = 1.0    # kehalusan peralihan (0 = tegas, 1 = halus penuh)
+    grad_scope: str = "block"  # block = satu gradasi untuk seluruh teks | line = tiap baris
     stroke_color: str = "#FFFFFF"
     stroke_width: int = 0
     align: str = "center"     # left | center | right
