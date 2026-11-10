@@ -149,9 +149,8 @@ class WelcomeView(QWidget):
     files_dropped = Signal(list)
     open_recent = Signal(str)
     remove_recent = Signal(str)
-    open_recent = Signal(str)
-    remove_recent = Signal(str)
     clear_recent = Signal()
+    MAX_SHOWN = 3              # layar awal: 3 proyek terbaru (semua riwayat ada di menu ikon folder)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -248,9 +247,15 @@ class WelcomeView(QWidget):
             it = self.grid.takeAt(0)
             if it.widget():
                 it.widget().deleteLater()
-        infos = [i for i in (project_info(p) for p in paths[:12]) if i]
+        infos = []
+        for p in paths:
+            i = project_info(p)
+            if i:
+                infos.append(i)
+            if len(infos) >= self.MAX_SHOWN:
+                break
         self._recent = infos
-        cols = 2 if self.width() >= 700 else 1
+        cols = self._cols_for(self.width(), len(infos))
         for n, info in enumerate(infos):
             c = RecentCard(info)
             c.clicked.connect(self.open_recent.emit)
@@ -258,12 +263,16 @@ class WelcomeView(QWidget):
             self.grid.addWidget(c, n // cols, n % cols)
         self.recent_box.setVisible(bool(infos))
         rows = (len(infos) + cols - 1) // cols
-        self.scroll.setMinimumHeight(min(rows, 2) * 114)
+        self.scroll.setMinimumHeight(min(rows, 3) * 114)
         self._cols = cols
+
+    @staticmethod
+    def _cols_for(width, n):
+        return max(1, min(n, 3 if width >= 1000 else 1))
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        cols = 2 if self.width() >= 700 else 1
+        cols = self._cols_for(self.width(), len(self._recent))
         if self._recent and cols != getattr(self, "_cols", cols):
             self.set_recent([i["path"] for i in self._recent])
 

@@ -221,12 +221,8 @@ class MainWindow(QMainWindow):
         self.addToolBar(tb)
 
         m_open = QMenu(self)
-        m_open.addAction(icon("open"), "Buka folder chapter…  (Ctrl+O)", self.open_folder)
-        m_open.addAction(icon("image"), "Buka gambar…", self.open_images)
-        m_open.addAction(icon("project"), "Buka proyek (.mtproj)…", self.open_project)
-        m_open.addSeparator()
-        m_open.addAction(icon("save"), "Simpan proyek  (Ctrl+S)", self.save_project)
-        m_open.addAction(icon("save"), "Simpan sebagai…  (Ctrl+Shift+S)", self.save_project_as)
+        m_open.aboutToShow.connect(lambda: self._fill_open_menu(m_open))
+        self._fill_open_menu(m_open)
         b = tool_btn("open", "Buka folder / gambar / proyek")
         b.setMenu(m_open)
         b.setPopupMode(QToolButton.InstantPopup)
@@ -538,6 +534,7 @@ class MainWindow(QMainWindow):
         self.welcome.files_dropped.connect(self._load_paths)
         self.welcome.open_recent.connect(self._open_recent)
         self.welcome.remove_recent.connect(self._remove_recent)
+        self.welcome.clear_recent.connect(self._clear_recent)
         self.welcome.set_recent(self.settings.get("recent_projects") or [])
         self.center_stack = QStackedWidget()
         self.center_stack.addWidget(self.welcome)
@@ -1124,6 +1121,69 @@ class MainWindow(QMainWindow):
                           for p in pr.pages]}
         return hashlib.md5(json.dumps(data, sort_keys=True, default=str).encode("utf-8")).hexdigest()
 
+    def _fill_open_menu(self, m):
+        """Menu ikon folder (diisi ulang setiap dibuka supaya riwayat proyek selalu terbaru)."""
+        m.clear()
+        m.addAction(icon("open"), "Buka folder chapter…  (Ctrl+O)", self.open_folder)
+        m.addAction(icon("image"), "Buka gambar…", self.open_images)
+        m.addAction(icon("project"), "Buka proyek (.mtproj)…", self.open_project)
+        rec = m.addMenu(icon("project"), "Proyek terakhir")
+        items = [p for p in (self.settings.get("recent_projects") or []) if Path(p).exists()][:10]
+        cur = os.path.normcase(os.path.abspath(self.project.file)) if self.project.file else ""
+        for n, f in enumerate(items, 1):
+            a = rec.addAction(f"{n}.  {Path(f).stem}", lambda f=f: self._open_recent(f))
+            a.setToolTip(f)
+            a.setStatusTip(f)
+            if os.path.normcase(os.path.abspath(f)) == cur:
+                a.setText(a.text() + "   (sedang dibuka)")
+                a.setEnabled(False)
+        if not items:
+            rec.addAction("Belum ada proyek").setEnabled(False)
+        else:
+            rec.setToolTipsVisible(True)
+            rec.addSeparator()
+            rec.addAction(icon("close"), "Hapus riwayat", self._clear_recent)
+        m.addSeparator()
+        m.addAction(icon("save"), "Simpan proyek  (Ctrl+S)", self.save_project).setEnabled(bool(self.project.pages))
+        m.addAction(icon("save"), "Simpan sebagai…  (Ctrl+Shift+S)", self.save_project_as).setEnabled(
+            bool(self.project.pages))
+        m.addSeparator()
+        m.addAction(icon("home"), "Kembali ke layar awal", self.go_home).setEnabled(bool(self.project.pages))
+
+    def go_home(self):
+        """Tutup proyek yang sedang dibuka (tanya simpan dulu) dan kembali ke layar awal."""
+        if self.thread:
+            QMessageBox.information(self, APP_NAME, "Tunggu proses yang sedang berjalan selesai, "
+                                    "atau tekan Stop dulu.")
+            return
+        if not self.confirm_unsaved():
+            return
+        self.project = Project(source_lang=self.project.source_lang, target_lang=self.project.target_lang)
+        self.cur = -1
+        self.sel = None
+        self._history = {}
+        self._saved_sig = None
+        self._dirty = False
+        self.need_clean.clear()
+        for cv in (self.cv_src, self.cv_out):
+            cv.clear_draft()
+            cv.set_page(None, [])
+        self._refresh_page_list()
+        self.b_save.setIcon(icon("save"))
+        try:
+            self._load_props(None)
+        except Exception:
+            pass
+        self.welcome.set_recent(self.settings.get("recent_projects") or [])
+        self._refresh_state()
+        self._update_title()
+        self.log("Kembali ke layar awal.")
+
+    def _clear_recent(self):
+        self.settings["recent_projects"] = []
+        pipeline.save_settings(self.settings)
+        self.welcome.set_recent([])
+
     # ------------------------------------------------------------------ proyek terakhir (layar awal)
     def _add_recent(self, f):
         if not f:
@@ -1145,6 +1205,8 @@ class MainWindow(QMainWindow):
         if not Path(f).exists():
             QMessageBox.warning(self, APP_NAME, f"File proyek tidak ditemukan:\n{f}")
             self._remove_recent(f)
+            return
+        if self.project.pages and not self.confirm_unsaved():
             return
         self._load_project(f)
 
