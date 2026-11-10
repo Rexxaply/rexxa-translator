@@ -247,7 +247,7 @@ def _absorb_single(groups, cands):
         return groups
     out = []
     for g in groups:
-        if g["vertical"] or g["n"] < 4:
+        if g["vertical"] or g["n"] < 3 or g["cv"] > 0.25:
             out.append(g)
             continue
         lines = list(g["line_list"])

@@ -412,9 +412,15 @@ def _halo(img: np.ndarray, tm: np.ndarray, lh: float) -> np.ndarray:
     return cv2.dilate(halo, np.ones((3, 3), np.uint8))
 
 
-def _flat_background(img: np.ndarray, mask: np.ndarray):
-    """Warna latar bila sekitar teks polos (mis. putih balon); None bila bertekstur/bergambar."""
+def _flat_background(img: np.ndarray, mask: np.ndarray, inside: np.ndarray | None = None):
+    """Warna latar bila sekitar teks polos (mis. putih balon); None bila bertekstur/bergambar.
+    inside: bagian dalam balon -- garis balon & raster DI LUAR balon tidak ikut dinilai (teks yang
+    rapat ke tepi balon tetap dianggap di latar polos)."""
     ring = cv2.dilate(mask, np.ones((7, 7), np.uint8), iterations=2) & ~mask
+    if inside is not None:
+        r2 = ring & inside
+        if (r2 > 0).sum() >= 30:
+            ring = r2
     vals = img[ring > 0]
     if vals.size < 30:
         return None
@@ -425,6 +431,30 @@ def _flat_background(img: np.ndarray, mask: np.ndarray):
     if med > 150 and (np.abs(gray - med) <= 6).mean() >= 0.9 and np.percentile(gray, 95) - np.percentile(gray, 30) < 12:
         return np.median(vals[np.abs(gray - med) <= 6], axis=0).astype(np.uint8)
     return None
+
+
+def _grain_sample(img: np.ndarray, mask: np.ndarray, inside: np.ndarray | None = None, loose: bool = False):
+    """Piksel latar di sekitar teks bila latarnya berbintik (std > 3); None bila benar-benar polos.
+    loose=True: untuk balon terang bertekstur -- None bila latarnya ternyata gambar (bukan butiran)."""
+    ring = cv2.dilate(mask, np.ones((9, 9), np.uint8), iterations=2) & ~cv2.dilate(mask, np.ones((3, 3), np.uint8))
+    if inside is not None:
+        r2 = ring & inside
+        if (r2 > 0).sum() >= 60:
+            ring = r2
+    vals = img[ring > 0]
+    if len(vals) < 60:
+        return None
+    g = vals.mean(axis=1)
+    med = float(np.median(g))
+    keep = vals[np.abs(g - med) <= 40]          # tanpa garis balon / huruf yang tersisa
+    if loose:
+        # butiran halus: latar terang dan hampir semua piksel dekat dengan nilai tengahnya
+        if med < 175 or len(keep) < 0.85 * len(vals):
+            return None
+        return keep if len(keep) >= 60 else None
+    if len(keep) < 60 or float(keep.mean(axis=1).std()) <= 3.0:
+        return None
+    return keep
 
 
 def _fill_bubble(img, b):
@@ -564,14 +594,43 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", b
         rx0, ry0 = max(0, int(b.x) - e), max(0, int(b.y) - e)
         rx1, ry1 = min(W_, int(b.x + b.w) + e), min(H_, int(b.y + b.h) + e)
         sub, stm = img[ry0:ry1, rx0:rx1], tm[ry0:ry1, rx0:rx1]
-        color = _flat_background(sub, stm) if method in ("auto", "fill") else None
+        inside = None
+        if b.kind == "bubble" and b.mask_poly:
+            sh = max(2, int(min(b.w, b.h) * 0.012))
+            inside = block_region_mask(img.shape, b, shrink=sh)[ry0:ry1, rx0:rx1]
+        color = _flat_background(sub, stm, inside) if method in ("auto", "fill") else None
+        if color is None and inside is not None and method in ("auto", "fill"):
+            grain = _grain_sample(sub, stm, inside, loose=True)
+            if grain is not None:
+                # balon terang berbintik (tekstur kertas / raster tipis): isi dengan butiran latarnya
+                fillm = (cv2.dilate(stm, np.ones((3, 3), np.uint8)) > 0) & (inside > 0)
+                rng = np.random.default_rng(int(b.x) * 7919 + int(b.y))
+                out[ry0:ry1, rx0:rx1][fillm] = grain[rng.integers(0, len(grain), int(fillm.sum()))]
+                rest = (stm > 0) & ~fillm
+                if rest.any():
+                    ai_mask[ry0:ry1, rx0:rx1] |= rest.astype(np.uint8) * 255
+                continue
         if color is not None:
             # sisa tepi samar (antialias / JPEG) di sekitar huruf ikut diratakan
             r2 = max(3, int(round(_lh * 0.3)))
             band = cv2.dilate(stm, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r2 + 1,) * 2)) & ~stm
             diff = np.abs(sub.astype(np.int16) - np.asarray(color, np.int16)).max(axis=2)
             halo = (band > 0) & (diff > 5) & (diff < 90)
-            out[ry0:ry1, rx0:rx1][(stm > 0) | halo] = color         # latar polos: isi warna latar
+            fillm = (stm > 0) | halo
+            if inside is not None:
+                fillm &= inside > 0                                  # jangan menimpa garis balon
+            grain = _grain_sample(sub, stm, inside)
+            if grain is not None:
+                # latar berbintik halus (kertas / raster sangat tipis): isi dengan butiran yang sama,
+                # bukan warna rata -> bekas teks tidak terlihat sebagai tambalan polos
+                rng = np.random.default_rng(int(b.x) * 7919 + int(b.y))
+                k = int(fillm.sum())
+                out[ry0:ry1, rx0:rx1][fillm] = grain[rng.integers(0, len(grain), k)]
+            else:
+                out[ry0:ry1, rx0:rx1][fillm] = color         # latar polos: isi warna latar
+            rest = (stm > 0) & ~fillm                                # bagian huruf di luar balon
+            if rest.any():
+                ai_mask[ry0:ry1, rx0:rx1] |= rest.astype(np.uint8) * 255
         else:
             ai_mask[ry0:ry1, rx0:rx1] |= stm | _halo(sub, stm, _lh)   # latar bergambar: generate ulang (AI)
 

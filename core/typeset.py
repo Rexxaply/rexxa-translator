@@ -841,8 +841,11 @@ def _render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str 
             # bentuk balon yang terdeteksi terlalu sempit (mis. hanya cahaya putih di sekitar teks):
             # pakai seluruh kotak supaya huruf tidak jauh lebih kecil dari teks aslinya
             rect = np.zeros_like(smask)
-            mh, mw = max(1, int(fh * 0.04)), max(1, int(fw * 0.04))
-            rect[mh:fh - mh, mw:fw - mw] = 255
+            # hanya di dalam kotak blok (bingkai area terang bisa lebih besar dari kotaknya)
+            rx0, ry0 = max(0, b.x - fx), max(0, b.y - fy)
+            rx1, ry1 = min(fw, b.x + b.w - fx), min(fh, b.y + b.h - fy)
+            mh, mw = max(1, int((ry1 - ry0) * 0.05)), max(1, int((rx1 - rx0) * 0.06))
+            rect[ry0 + mh:max(ry0 + mh + 1, ry1 - mh), rx0 + mw:max(rx0 + mw + 1, rx1 - mw)] = 255
             shape2 = _Shape(rect)
             if b.text_rect and len(b.text_rect) == 4:
                 tx, ty, tw, th = b.text_rect
