@@ -226,6 +226,11 @@ def step_ocr(page: Page, project: Project, settings: dict, progress=None):
     img = detector.load_image(page.path)
     ocr.ocr_page(img, [b for b in page.blocks if b.kind != "title"], settings["ocr_engine"],
                  project.source_lang, settings["gpu"], progress)
+    # kotak yang dibuat manual / belum diberi gaya: baca warna teks aslinya
+    from . import textstyle
+    for b in page.blocks:
+        if b.kind != "title" and not b.preset and not b.color2 and (b.color or "#000000").upper() == "#000000":
+            textstyle.apply(img, b)
     # SFX yang tidak terbaca sebagai kata (mis. SFX Jepang saat sumbernya Inggris) dibiarkan apa adanya
     page.blocks = [b for b in page.blocks
                    if not getattr(b, "sfx", False) or sfx_text_ok(b.source, project.source_lang)]

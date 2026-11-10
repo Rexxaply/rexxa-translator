@@ -3,6 +3,12 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 1.13.0
+- **Deteksi warna teks lebih pintar**: warna isi huruf, **garis tepi** (warna + tebal), dan **gradasi** atas→bawah dibaca langsung dari teks asli, lalu dipakai untuk terjemahan. Bekerja untuk huruf merah/emas bergradasi (manhwa), huruf putih bergaris tepi hitam, huruf berwarna bergaris tepi putih, dll. Huruf hitam yang buram tetap dianggap hitam.
+- Warna dibaca juga saat **OCR** (termasuk kotak yang dibuat manual dan tombol "OCR ulang").
+- Tombol baru **◉** di panel Tipografi: ambil warna dari teks asli untuk balon yang dipilih.
+- Pembersihan latar putih lebih bersih: sisa tepi samar huruf berwarna tidak lagi tertinggal.
+
 ## 1.12.1
 - Logo judul di **latar terang** (mis. judul Korea bergradasi emas-biru): huruf diberi garis tepi gelap agar terbaca, tekstur warna asli tetap dipakai.
 - Pencocokan font tidak lagi memilih font simbol / tanpa huruf latin (huruf jadi kotak-kotak); logo judul mengutamakan font tebal.
@@ -23,6 +29,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - **Webtoon / strip panjang (manhwa & manhua)**: gambar yang jauh lebih tinggi dari lebarnya (.webp/.jpg/.png) kini terdeteksi dengan benar. Ukuran huruf diukur dari lebar strip, bukan tingginya (sebelumnya teks di strip panjang sama sekali tidak terdeteksi).
 - Gambar beresolusi rendah (lebar < 700 px) otomatis diperbesar 2x saat deteksi, jadi teks kecil tetap tertangkap.
 - Strip panjang ditampilkan **pas lebar** dan mulai dari atas; tampilan Asli & Hasil tetap bergulir bersamaan.
-
-## 1.9.4
-- Perbaikan: kotak **ukuran font, jarak baris, jarak huruf, rotasi, dan tebal stroke** di panel Tipografi kini benar-benar menampilkan angkanya (kolom angka baru). Bisa diketik lalu Enter, atau diubah dengan panah ↑/↓ dan roda mouse (Shift = langkah ×10).

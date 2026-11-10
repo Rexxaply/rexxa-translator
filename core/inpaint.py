@@ -191,8 +191,17 @@ def _text_color(img: np.ndarray, b: TextBlock):
 
 
 def auto_style(img: np.ndarray, b: TextBlock):
-    """Teks bebas berhuruf putih (di atas gambar) -> terjemahan putih bergaris tepi hitam."""
-    _text_color(img, b)
+    """Warna terjemahan mengikuti teks asli: isi huruf, garis tepi, gradasi (core.textstyle).
+    Bila gaya tidak terbaca, pakai aturan lama (teks putih di gambar -> putih bergaris hitam)."""
+    from . import textstyle
+    default_sw = b.stroke_width
+    if b.kind != "title" and textstyle.apply(img, b):
+        if not b.stroke_width:
+            b.stroke_width = default_sw if b.color.upper() in ("#000000",) else 0
+        if not getattr(b, "sfx", False):
+            return
+    else:
+        _text_color(img, b)
     if getattr(b, "sfx", False):
         try:   # SFX bergaris tepi putih di atas gambar -> terjemahan juga diberi garis tepi putih
             from .sfx import sfx_mask
@@ -496,7 +505,12 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto") -
             continue
         color = _flat_background(img, tm) if method in ("auto", "fill") else None
         if color is not None:
-            out[tm > 0] = color                                      # latar polos: isi warna latar
+            # sisa tepi samar (antialias / JPEG) di sekitar huruf ikut diratakan
+            r2 = max(3, int(round(_lh * 0.3)))
+            band = cv2.dilate(tm, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r2 + 1,) * 2)) & ~tm
+            diff = np.abs(img.astype(np.int16) - np.asarray(color, np.int16)).max(axis=2)
+            halo = (band > 0) & (diff > 5) & (diff < 90)
+            out[(tm > 0) | halo] = color                             # latar polos: isi warna latar
         else:
             ai_mask |= tm | _halo(img, tm, _lh)                      # latar bergambar: generate ulang (AI)
 

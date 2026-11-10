@@ -567,6 +567,8 @@ class MainWindow(QMainWindow):
         self.p_color2.setFixedSize(22, 22)
         self.p_grad_off = mini("×", "Hapus gradasi (warna polos)", checkable=False, w=18)
         self.p_grad_off.clicked.connect(self._clear_gradient)
+        self.p_pick = mini("◉", "Ambil warna dari teks asli (isi, garis tepi, gradasi)", checkable=False, w=22)
+        self.p_pick.clicked.connect(self._pick_from_source)
         self.p_stroke_color = QPushButton()
         self.p_stroke_color.setObjectName("swatch")
         self.p_stroke_color.setToolTip("Warna stroke (garis tepi huruf)")
@@ -581,6 +583,7 @@ class MainWindow(QMainWindow):
         trow.addWidget(self.p_color)
         trow.addWidget(self.p_color2)
         trow.addWidget(self.p_grad_off)
+        trow.addWidget(self.p_pick)
         trow.addStretch()
         g.addLayout(trow, 5, 0)
         krow = QHBoxLayout()
@@ -1259,6 +1262,29 @@ class MainWindow(QMainWindow):
                 self._color_btn(self.p_color if attr == "color" else self.p_stroke_color, c.name())
             self._schedule_render()
 
+    def _pick_from_source(self):
+        b, p = self.sel, self.page()
+        if not b or not p:
+            return
+        from core import detector, textstyle
+        try:
+            img = detector.load_image(p.path)
+        except Exception as e:
+            self.log(f"Gagal membaca gambar: {e}")
+            return
+        self._snap()
+        old = (b.color, b.color2, b.stroke_color, b.stroke_width)
+        if not textstyle.apply(img, b):
+            self.status_lbl.setText("Warna teks asli tidak terbaca di kotak ini")
+            return
+        self._load_props(b)
+        if (b.color, b.color2, b.stroke_color, b.stroke_width) != old:
+            desc = b.color + (f" → {b.color2}" if b.color2 else "")
+            if b.stroke_width:
+                desc += f" · tepi {b.stroke_color} {b.stroke_width}px"
+            self.status_lbl.setText(f"Warna diambil: {desc}")
+            self._schedule_render()
+
     def _grad_btn(self, b):
         if b.color2:
             self._color_btn(self.p_color2, b.color2)
@@ -1545,6 +1571,9 @@ class MainWindow(QMainWindow):
             if kind == "ocr":
                 img = detector.load_image(p.path)
                 b.source = ocr.ocr_block(img, b, st["ocr_engine"], proj.source_lang, st["gpu"])
+                if not b.preset and not b.color2 and (b.color or "#000000").upper() == "#000000":
+                    from core import textstyle
+                    textstyle.apply(img, b)          # warna ikut teks aslinya
             if b.source.strip():
                 # "Terjemah ulang" = minta terjemahan baru (lewati cache); OCR ulang boleh pakai cache
                 b.translation = translator.translate([b.source], proj.source_lang, proj.target_lang,
