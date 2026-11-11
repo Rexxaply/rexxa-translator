@@ -8,6 +8,15 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.1.0 · Minor update
+
+- Menu Skill baru: Memori cerita — AI mengingat tokoh, gender, panggilan (aku/kamu, gue/lo, kak…) & gaya bicara; disimpan per seri, bisa "Pelajari dari chapter ini (AI)"
+- Gaya bahasa terjemahan (santai, gaul, baku, kocak, dramatis) + honorifik dipertahankan / diganti (kak, bang, pak)
+- Proofread: cek lokal (belum diterjemahkan, kata dobel, tanda tanya, teks kepanjangan, nama tokoh) + cek AI dengan saran perbaikan
+- Kotak judul: buat logo judul dari teks, tempel judul buatan sendiri (Ctrl+V), atau generate dengan AI gambar (API kompatibel OpenAI)
+- Export PSD berlapis (Raw · Bersih · tiap balon teks) dan halaman kredit tim + watermark saat export
+- Logo judul otomatis lebih rapi: isi huruf gradasi warna logo asli + garis tepi, jumlah baris mengikuti bentuk kotak
+
 ## 2.0.8 · Patch update
 
 - Jenis update kini tertulis jelas: Major / Minor / Patch update (badge berwarna di jendela "Update tersedia", juga di catatan rilis & changelog)
@@ -35,13 +44,3 @@ Penomoran MAJOR.MINOR.PATCH:
 - Patch Tool: perapian otomatis area yang kurang mulus + alat Patch manual (K) seperti di Photoshop
 - Sambung otomatis tepi balon yang terputus saat teks dihapus (garis objek seperti tembok/rambut dibiarkan)
 - Font hiasan aneh (Goudy Stout, Algerian, dll.) tidak dipakai lagi untuk dialog & narasi
-
-## 2.0.4 · Patch update
-
-- Edit teks jauh lebih cepat (±3×): hanya balon yang diubah yang dihitung & digambar ulang, geser teks langsung tampil
-- Hasil render langsung tampil dari memori (tanpa membaca ulang file), jeda render otomatis lebih singkat
-- Scan balon lebih cepat (±35%) dengan hasil yang sama persis
-- OCR lebih cepat & akurat: baca per baris memakai posisi baris dari deteksi (tanpa tahap deteksi teks yang berat), hasil OCR disimpan agar tidak dibaca dua kali
-- OCR lebih pintar: memilih hasil baca terbaik (kamus + jumlah huruf), varian bersih-bintik, menyambung kata ber-tanda hubung ("FOL- LOWING"), kapital seragam, I'M / I'VE
-- Hapus teks di halaman webtoon panjang lebih hemat memori
-- Mode hemat: memori sementara lebih kecil; batas thread juga berlaku saat edit & render
