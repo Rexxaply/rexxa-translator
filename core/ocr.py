@@ -284,7 +284,23 @@ def _fast_lines(reader, img: np.ndarray, b: TextBlock, lang: str):
     boxes = []
     for x, y, w, h in lines:
         px, py = int(h * 0.6) + 2, int(h * 0.3) + 2
-        boxes.append((max(0, x - px), max(0, y - py), min(W, x + w + px), min(H, y + h + py)))
+        # titik-titik di ujung baris ("TALK...") sering di luar kotak baris: lebarkan ke kanan
+        # sampai tinta kecil terakhir yang masih sejajar baris
+        x1 = min(W, x + w + px)
+        strip = img[max(0, y + h // 3):min(H, y + h + py), x + w:min(W, x + w + int(h * 1.6))]
+        if strip.size:
+            gs = cv2.cvtColor(strip, cv2.COLOR_BGR2GRAY) if strip.ndim == 3 else strip
+            n_, _l, st_, _ = cv2.connectedComponentsWithStats((gs < 110).astype(np.uint8), connectivity=8)
+            end = 0
+            for cx_, cy_, cw_, ch_, ca_ in sorted(st_[1:].tolist()):
+                if cx_ - end > h * 0.7:
+                    break                                  # celah terlalu jauh: bukan titik baris ini
+                if max(cw_, ch_) > h * 0.4 or ca_ < 2:
+                    break                                  # coretan besar (ekor / garis balon): berhenti
+                end = cx_ + cw_
+            if end:
+                x1 = max(x1, min(W, x + w + end + 3))
+        boxes.append((max(0, x - px), max(0, y - py), x1, min(H, y + h + py)))
     X0, Y0 = min(r[0] for r in boxes), min(r[1] for r in boxes)
     X1, Y1 = max(r[2] for r in boxes), max(r[3] for r in boxes)
     piece = img[Y0:Y1, X0:X1]
