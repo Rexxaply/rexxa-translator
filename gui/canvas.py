@@ -86,7 +86,7 @@ class BoxItem(QGraphicsRectItem):
         if self.label and not self.ghost:
             z = self.canvas.zoom() or 1
             painter.fillRect(QRectF(0, 0, 20 / z, 17 / z), self.color())
-        if self.selected:  # 8 pegangan
+        if self.selected and self.block is self.canvas.selected:  # 8 pegangan (balon utama)
             s = self.handle_size()
             painter.setPen(QPen(QColor("#181d29"), 0))
             painter.setBrush(QBrush(QColor("white")))
@@ -145,6 +145,11 @@ class BoxItem(QGraphicsRectItem):
     def mousePressEvent(self, e):
         if e.button() != Qt.LeftButton or self.canvas.draw_mode:
             e.ignore()
+            return
+        if e.modifiers() & Qt.ControlModifier:     # Ctrl+klik = pilih lebih dari 1
+            self._mode = None
+            self.canvas.block_toggled.emit(self.block)
+            e.accept()
             return
         self._mode = self.zone(e.pos()) or "move"
         self._press_scene = e.scenePos()
@@ -217,6 +222,7 @@ class BoxItem(QGraphicsRectItem):
 
 class PageCanvas(QGraphicsView):
     block_selected = Signal(object)          # TextBlock atau None
+    block_toggled = Signal(object)           # Ctrl+klik: tambah / lepas balon dari pilihan ganda
     edit_started = Signal(object)            # sebelum kotak digeser/diubah (untuk undo)
     block_moving = Signal(object)            # selama digeser
     block_geometry_changed = Signal(object)  # setelah dilepas
@@ -249,6 +255,7 @@ class PageCanvas(QGraphicsView):
         self.show_boxes = True
         self.draw_mode = False
         self.selected = None
+        self.multi = []                          # pilihan ganda (Ctrl+klik), termasuk self.selected
         self._draw_start = None
         self._draw_rect = None
         self._pan = None
@@ -312,7 +319,7 @@ class PageCanvas(QGraphicsView):
             return
         for i, blk in enumerate(blocks, 1):
             item = BoxItem(blk, i, self, ghost=self.ghost)
-            item.selected = blk is self.selected
+            item.selected = blk is self.selected or any(blk is m for m in self.multi)
             item.refresh_style()
             item.setVisible(self.show_boxes)
             if self.tool != "select":
@@ -329,16 +336,17 @@ class PageCanvas(QGraphicsView):
         for b in self.boxes:
             b.setVisible(v)
 
-    def select_block(self, block, ensure_visible=True):
+    def select_block(self, block, ensure_visible=True, multi=None):
         self.selected = block
+        self.multi = list(multi or [])
         for b in self.boxes:
-            b.selected = b.block is block
+            b.selected = b.block is block or any(b.block is m for m in self.multi)
             b.refresh_style()
             if b.selected and ensure_visible:
                 self.ensureVisible(b, 40, 40)
 
     def request_select(self, block):
-        if block is not self.selected:
+        if block is not self.selected or self.multi:
             self.select_block(block, ensure_visible=False)
             self.block_selected.emit(block)
 
