@@ -13,7 +13,7 @@ from core import pipeline, translator, typeset
 from . import shortcuts as SC
 from .alert import Alert, MessageBox as QMessageBox  # noqa: E402,F811  (semua alert bergaya Rexxa)
 
-DIM = "color:#8a8e9a;"
+DIM = "color:#8b93ab;"
 
 
 def _scroll(inner: QWidget) -> QScrollArea:
@@ -57,7 +57,7 @@ class TextPanel(QWidget):
         g.setVerticalSpacing(8)
         self.rows = []
         for n, p in enumerate(pipeline.presets(settings), 1):
-            lbl = QLabel(f"Preset {n}" + ("  <span style='color:#ff4d6d'>default</span>" if n == 1 else ""))
+            lbl = QLabel(f"Preset {n}" + ("  <span style='color:#7c6cff'>default</span>" if n == 1 else ""))
             font = QComboBox()
             _font_items(font, p["font"])
             b = self._toggle("B", "Tebal", p["bold"])
@@ -158,7 +158,7 @@ class ShortcutPanel(QWidget):
                 box = QGridLayout(card)
                 box.setColumnStretch(0, 1)
                 title = QLabel(grp.upper())
-                title.setStyleSheet("font-weight:600; font-size:8.5pt; color:#c9ccd4;")
+                title.setStyleSheet("font-weight:600; font-size:8.5pt; color:#c8cede;")
                 box.addWidget(title, 0, 0, 1, 3)
                 v.addWidget(card)
             r = box.rowCount()

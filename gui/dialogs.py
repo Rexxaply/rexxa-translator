@@ -61,11 +61,11 @@ class GoogleFontsDialog(QDialog):
         self.lst.setSelectionMode(QAbstractItemView.ExtendedSelection)
         v.addWidget(self.lst, 1)
         self.info = QLabel("Memuat katalog…")
-        self.info.setStyleSheet("color:#8a8e9a;")
+        self.info.setStyleSheet("color:#8b93ab;")
         v.addWidget(self.info)
         row = QHBoxLayout()
         self.b_inst = QPushButton("Pasang yang dipilih")
-        self.b_inst.setStyleSheet("QPushButton { background:#ff4d6d; color:white; font-weight:600; border:none; }")
+        self.b_inst.setStyleSheet("QPushButton { background:#7c6cff; color:white; font-weight:600; border:none; }")
         self.b_inst.clicked.connect(self._install)
         close = QPushButton("Tutup")
         close.clicked.connect(self.accept)
@@ -143,11 +143,11 @@ class FontPanel(QWidget):
         v.addWidget(QLabel("<b>Font default</b> diatur di tab <b>Teks</b> → Preset 1."))
         self.auto_hint = QLabel()
         self.auto_hint.setWordWrap(True)
-        self.auto_hint.setStyleSheet("color:#8a8e9a;")
+        self.auto_hint.setStyleSheet("color:#8b93ab;")
         v.addWidget(self.auto_hint)
 
         v.addSpacing(6)
-        v.addWidget(QLabel("<b>Font yang kamu instal</b>  <span style='color:#8a8e9a'>"
+        v.addWidget(QLabel("<b>Font yang kamu instal</b>  <span style='color:#8b93ab'>"
                            "— seret file font ke sini, atau klik Instal font</span>"))
         self.list = QListWidget()
         self.list.setMinimumHeight(170)
@@ -157,8 +157,8 @@ class FontPanel(QWidget):
 
         row = QHBoxLayout()
         b_add = QPushButton("+  Instal font…")
-        b_add.setStyleSheet("QPushButton { background:#ff4d6d; color:white; font-weight:600; border:none; }"
-                            "QPushButton:hover { background:#ff6680; }")
+        b_add.setStyleSheet("QPushButton { background:#7c6cff; color:white; font-weight:600; border:none; }"
+                            "QPushButton:hover { background:#9182ff; }")
         b_add.clicked.connect(self._install_dialog)
         self.b_def = QPushButton("Jadikan default")
         self.b_def.clicked.connect(self._make_default)
@@ -175,7 +175,7 @@ class FontPanel(QWidget):
         row.addWidget(b_dir)
         v.addLayout(row)
         note = QLabel("Font disimpan di folder data pribadimu dan tidak pernah diunggah ke mana pun.")
-        note.setStyleSheet("color:#8a8e9a; font-size:8.5pt;")
+        note.setStyleSheet("color:#8b93ab; font-size:8.5pt;")
         v.addWidget(note)
 
         self.list.itemSelectionChanged.connect(self._update_buttons)

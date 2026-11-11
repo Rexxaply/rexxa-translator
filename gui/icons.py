@@ -16,7 +16,7 @@ ICONS = {
             '<path d="M10 15.5h4M10 18h2.5"/>',
     "save_dirty": '<path d="M4 6a2 2 0 0 1 2-2h10.2L20 7.8V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>'
                   '<path d="M8 4v4.5h7V4"/><path d="M13 5.5v1.5"/><rect x="7.5" y="12.5" width="9" height="7.5" rx="1"/>'
-                  '<circle cx="19.5" cy="4.5" r="3" fill="#ff4d6d" stroke="#16171b" stroke-width="1.5"/>',
+                  '<circle cx="19.5" cy="4.5" r="3" fill="#ff9a62" stroke="#131722" stroke-width="1.5"/>',
     "export": '<path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
     "settings": '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3'
                 'M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
@@ -74,11 +74,11 @@ ICONS = {
 }
 
 
-def svg(name: str, color: str = "#d6d8de") -> str:
+def svg(name: str, color: str = "#d5dbea") -> str:
     return _S.format(c=color, body=ICONS[name])
 
 
-DISABLED = "#3e4049"      # warna ikon saat tombol nonaktif (redup, hampir menyatu dengan latar)
+DISABLED = "#3e4558"      # warna ikon saat tombol nonaktif (redup, hampir menyatu dengan latar)
 
 
 def _render(name: str, color: str, size: int, dim: bool = False):
@@ -99,7 +99,7 @@ def _render(name: str, color: str, size: int, dim: bool = False):
 
 
 @lru_cache(maxsize=None)
-def icon(name: str, color: str = "#d6d8de", size: int = 40):
+def icon(name: str, color: str = "#d5dbea", size: int = 40):
     """QIcon dari SVG (butuh QtSvg — sudah termasuk di PySide6). Punya gambar khusus untuk keadaan
     nonaktif (redup), jadi tombol yang tidak bisa ditekan benar-benar terlihat mati."""
     from PySide6.QtGui import QIcon

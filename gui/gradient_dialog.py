@@ -152,7 +152,7 @@ class GradientDialog(QDialog):
     def _refresh(self):
         b = self.b
         for btn, c in ((self.c1, b.color), (self.c2, b.color2)):
-            btn.setStyleSheet(f"background:{c}; border:1px solid #4a4d57; border-radius:4px;")
+            btn.setStyleSheet(f"background:{c}; border:1px solid #4b5470; border-radius:4px;")
         self.ang_lbl.setText(f"{int(round(b.grad_angle)) % 360}°")
         self.pos_lbl.setText(f"{self.pos.value()}%")
         self.soft_lbl.setText(f"{self.soft.value()}%")

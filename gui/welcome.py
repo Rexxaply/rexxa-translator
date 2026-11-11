@@ -14,25 +14,25 @@ from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QMenu, 
 from .icons import icon
 
 STYLE = """
-QWidget#welcome { background: #141519; }
-QLabel#wTitle { color: #e9eaee; font-size: 17pt; font-weight: 700; background: transparent; }
-QLabel#wSub { color: #7d818d; font-size: 10pt; background: transparent; }
-QLabel#wHint { color: #555966; font-size: 8.5pt; background: transparent; }
-QPushButton#wBtn { background: #22242b; color: #d6d8de; border: 1px solid #30333c; border-radius: 9px;
+QWidget#welcome { background: #11141c; }
+QLabel#wTitle { color: #e9edf6; font-size: 17pt; font-weight: 700; background: transparent; }
+QLabel#wSub { color: #7c84a0; font-size: 10pt; background: transparent; }
+QLabel#wHint { color: #56607a; font-size: 8.5pt; background: transparent; }
+QPushButton#wBtn { background: #1f2534; color: #d5dbea; border: 1px solid #313849; border-radius: 9px;
                    padding: 0 16px; min-height: 38px; font-weight: 600; }
-QPushButton#wBtn:hover { background: #2a2d35; border-color: #3d414c; }
-QPushButton#wMain { background: #ff4d6d; color: white; border: none; border-radius: 9px;
+QPushButton#wBtn:hover { background: #2a3142; border-color: #3d4559; }
+QPushButton#wMain { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f86ff, stop:1 #8a63f0); color: white; border: none; border-radius: 9px;
                     padding: 0 18px; min-height: 38px; font-weight: 700; }
-QPushButton#wMain:hover { background: #ff6b85; }
-QLabel#wSection { color: #8f93a0; font-size: 8pt; font-weight: 700; letter-spacing: 1px; background: transparent; }
-QToolButton#wClear { color: #6f7380; background: transparent; border: none; font-size: 8.5pt; }
-QToolButton#wClear:hover { color: #ff8a9b; }
-QFrame#recentCard { background: #1b1c22; border: 1px solid #272930; border-radius: 10px; }
-QFrame#recentCard:hover { background: #22242b; border-color: #ff4d6d; }
-QLabel#rName { color: #e9eaee; font-weight: 700; font-size: 9.5pt; background: transparent; }
-QLabel#rMeta { color: #7d818d; font-size: 8pt; background: transparent; }
-QLabel#rWhen { color: #ff8a9b; font-size: 8pt; font-weight: 600; background: transparent; }
-QLabel#rThumb { background: #111214; border-radius: 6px; }
+QPushButton#wMain:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6596ff, stop:1 #9b78f5); }
+QLabel#wSection { color: #9098b0; font-size: 8pt; font-weight: 700; letter-spacing: 1px; background: transparent; }
+QToolButton#wClear { color: #6e7690; background: transparent; border: none; font-size: 8.5pt; }
+QToolButton#wClear:hover { color: #a598ff; }
+QFrame#recentCard { background: #181d29; border: 1px solid #262c3c; border-radius: 10px; }
+QFrame#recentCard:hover { background: #1f2534; border-color: #7c6cff; }
+QLabel#rName { color: #e9edf6; font-weight: 700; font-size: 9.5pt; background: transparent; }
+QLabel#rMeta { color: #7c84a0; font-size: 8pt; background: transparent; }
+QLabel#rWhen { color: #a598ff; font-size: 8pt; font-weight: 600; background: transparent; }
+QLabel#rThumb { background: #0e1118; border-radius: 6px; }
 QScrollArea#recentScroll, QWidget#recentInner { background: transparent; border: none; }
 """
 
@@ -85,7 +85,7 @@ def project_info(path: str, opened: float | None = None) -> dict | None:
 
 def _thumb(path: str, w: int = 64, h: int = 84) -> QPixmap:
     pm = QPixmap(w, h)
-    pm.fill(QColor("#111214"))
+    pm.fill(QColor("#0e1118"))
     if not path:
         return pm
     r = QImageReader(path)
@@ -191,7 +191,7 @@ class WelcomeView(QWidget):
         app_icon = code_dir() / "assets" / "icon.png"
         pm = QPixmap(str(app_icon)) if app_icon.exists() else QPixmap()
         if pm.isNull():
-            logo.setPixmap(icon("image", "#6f7380", 96).pixmap(QSize(56, 56)))
+            logo.setPixmap(icon("image", "#6e7690", 96).pixmap(QSize(56, 56)))
         else:
             logo.setPixmap(pm.scaled(88, 88, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         logo.setStyleSheet("background: transparent;")
@@ -214,7 +214,7 @@ class WelcomeView(QWidget):
                                    ("Buka proyek", "project", self.open_project, "wBtn")):
             b = QPushButton("  " + text)
             b.setObjectName(obj)
-            b.setIcon(icon(ic, "#ffffff" if obj == "wMain" else "#d6d8de"))
+            b.setIcon(icon(ic, "#ffffff" if obj == "wMain" else "#d5dbea"))
             b.setIconSize(QSize(18, 18))
             b.setCursor(Qt.PointingHandCursor)
             b.clicked.connect(sig.emit)
@@ -324,8 +324,8 @@ class WelcomeView(QWidget):
         if r.width() < 100 or r.height() < 100:
             return
         if self._hover:
-            p.fillRect(r, QColor(255, 77, 109, 18))
-        pen = QPen(QColor("#ff4d6d" if self._hover else "#2c2f37"), 1.6, Qt.DashLine)
+            p.fillRect(r, QColor(124, 108, 255, 22))
+        pen = QPen(QColor("#7c6cff" if self._hover else "#2d3446"), 1.6, Qt.DashLine)
         pen.setDashPattern([6, 5])
         p.setPen(pen)
         p.drawRoundedRect(r, 16, 16)
