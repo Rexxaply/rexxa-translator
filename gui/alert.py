@@ -94,6 +94,7 @@ class Alert(GlassDialog):
             d.setAlignment(Qt.AlignLeft if long_text else Qt.AlignCenter)
             self.body.addWidget(d)
         self.body.addSpacing(8)
+        self.body.addStretch(1)                  # ruang sisa di bawah, bukan di antara judul & keterangan
 
         self._btns = []
         for i, (label, style, value) in enumerate(buttons):
