@@ -90,7 +90,7 @@ def main(out):
                       "wm_text": "Rexxa Scans"}, "export_opts": {"fmt": "cbz", "kind": "manga",
                                                                  "credit_page": True, "watermark": True}}
 
-    def snap(name, dlg, w=1100, h=700):
+    def snap(name, dlg, w=1100, h=700, after=None):
         dlg.resize(w, h)
         dlg.show()
         for _ in range(3000):
@@ -103,6 +103,13 @@ def main(out):
         if hasattr(dlg, "_preview"):
             dlg._preview()
             app.processEvents()
+        if after:
+            after(dlg)
+            for _ in range(3000):
+                app.processEvents()
+                ld = getattr(dlg, "_loader", None)
+                if not (ld and ld.isActive()):
+                    break
         dlg.grab().save(str(out / f"{name}.png"))
         print(name, "ok", flush=True)
         dlg.close()
@@ -115,7 +122,8 @@ def main(out):
     snap("2_proofread", ProofreadDialog(pm, dict(st), 0), 1080, 560)
     snap("3_kredit", CreditsDialog(dict(st), pm.export_meta, manga[0]), 1000, 680)
     d = ExportDialog(pm, 0, dict(st))
-    snap("4_export_kredit", d, 1180, 800)
+    snap("4_export_kredit", d, 1180, 800, after=lambda x: x._go(len(x.view) - 1))
+    snap("4b_export_wm", ExportDialog(pm, 0, dict(st)), 1180, 800)
     st2 = dict(st, export_opts={"fmt": "psd"})
     snap("5_export_psd", ExportDialog(pm, 0, st2), 1180, 760)
     sys.stdout.flush()

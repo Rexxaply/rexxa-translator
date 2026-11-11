@@ -72,6 +72,7 @@ class ExportDialog(QDialog):
         self.out_path = ""
         self.credits_changed = False
         self.files: list[tuple[int, str]] = []
+        self.view: list[tuple[int, str]] = []
         self.view_i = 0
         self._strip_labels: list[QLabel] = []
         self._load_q: list = []
@@ -286,8 +287,8 @@ class ExportDialog(QDialog):
         self.kind.currentIndexChanged.connect(lambda _i: self._refresh())
         self.img.currentIndexChanged.connect(lambda _i: self._update_ui())
         self.mihon.toggled.connect(lambda _b: self._update_ui())
-        self.c_credit.toggled.connect(lambda _b: self._update_ui())
-        self.c_wm.toggled.connect(lambda _b: self._update_ui())
+        self.c_credit.toggled.connect(lambda _b: (self._update_ui(), self._build_preview()))
+        self.c_wm.toggled.connect(lambda _b: (self._update_ui(), self._build_preview()))
         self._loader = QTimer(self, interval=0, timeout=self._load_step)
         self._resize_t = QTimer(self, singleShot=True, interval=150, timeout=self._relayout)
         self._update_ui()
@@ -390,15 +391,73 @@ class ExportDialog(QDialog):
                 t += " · + " + " & ".join(plus)
         self.summary.setText(t)
 
+    # ---------------------------------------------------------------- kredit & watermark di pratinjau
+    def _extras_on(self):
+        fmt = self.fmt.currentData()
+        return fmt != "psd" and self.c_credit.isChecked(), fmt != "psd" and self.c_wm.isChecked()
+
+    def _preview_files(self):
+        view = list(self.files)
+        page_on, _wm = self._extras_on()
+        if page_on and view:
+            from core import skills
+            import hashlib
+            import json
+            import tempfile
+            cfg = skills.credits_cfg(self.settings)
+            kind = self._kind()
+            from PIL import Image
+            with Image.open(view[0][1]) as im:
+                W, H = im.size
+            if kind != "manga" or H > W * 2.2:
+                H = int(W * 1.4)
+            key = hashlib.md5(json.dumps([cfg, self.meta(), W, H], sort_keys=True, default=str).encode()).hexdigest()
+            f = Path(tempfile.gettempdir()) / f"rexxa_kredit_{key[:12]}.png"
+            if not f.exists():
+                skills.credit_page(cfg, (W, H), self.meta()).save(f)
+            pos = cfg.get("position", "end")
+            if pos in ("start", "both"):
+                view = [(-1, str(f))] + view
+            if pos in ("end", "both"):
+                view = view + [(-1, str(f))]
+        return view
+
+    def _pm(self, k, w, h):
+        i, f = self.view[k]
+        _page, wm = self._extras_on()
+        if not wm or i < 0:
+            return _load(f, w, h)
+        from core import skills
+        cfg = skills.credits_cfg(self.settings)
+        key = ("wm", f, w, h, repr(sorted((a, str(b)) for a, b in cfg.items() if a.startswith("wm") or a == "team")))
+        pm = _PIX.get(key)
+        if pm is None:
+            from PIL import Image
+            try:
+                with Image.open(f) as im:
+                    im = im.convert("RGB")
+                    sc = min(w / im.width if w else 9e9, h / im.height if h else 9e9, 1.0)
+                    if sc < 1.0:
+                        im = im.resize((max(1, int(im.width * sc)), max(1, int(im.height * sc))))
+                    im = skills.watermark(im, cfg)
+                data = im.tobytes("raw", "RGB")
+                from PySide6.QtGui import QImage
+                pm = QPixmap.fromImage(QImage(data, im.width, im.height, im.width * 3, QImage.Format_RGB888).copy())
+            except Exception:
+                pm = _load(f, w, h)
+            _PIX[key] = pm
+        return pm
+
     def _build_preview(self):
         self._loader.stop()
+        self.view = self._preview_files()
         kind = self._kind()
         strip = kind in ("manhwa", "manhua")
         self.stack.setCurrentIndex(1 if strip else 0)
         self.thumbs.blockSignals(True)
         self.thumbs.clear()
-        for k, (i, f) in enumerate(self.files):
-            it = QListWidgetItem(str(i + 1))
+        for k, (i, f) in enumerate(self.view):
+            it = QListWidgetItem(str(i + 1) if i >= 0 else "Kredit")
             it.setTextAlignment(Qt.AlignHCenter)
             it.setSizeHint(QSize(76, 116))
             self.thumbs.addItem(it)
@@ -411,7 +470,7 @@ class ExportDialog(QDialog):
         self._strip_labels = []
         if strip:
             W = self._strip_width()
-            for _i, f in self.files:
+            for _i, f in self.view:
                 lb = QLabel()
                 lb.setAlignment(Qt.AlignCenter)
                 r = QImageReader(f)
@@ -420,13 +479,13 @@ class ExportDialog(QDialog):
                 lb.setFixedSize(W, max(1, hh))
                 self.strip_v.addWidget(lb)
                 self._strip_labels.append(lb)
-        self._load_q = [("t", k) for k in range(len(self.files))]
+        self._load_q = [("t", k) for k in range(len(self.view))]
         if strip:
-            self._load_q = [("s", k) for k in range(len(self.files))] + self._load_q
-        self.view_i = 0 if not (0 <= self.view_i < len(self.files)) else self.view_i
-        if not strip and self.files:
+            self._load_q = [("s", k) for k in range(len(self.view))] + self._load_q
+        self.view_i = 0 if not (0 <= self.view_i < len(self.view)) else self.view_i
+        if not strip and self.view:
             # mulai dari halaman saat ini bila ikut terpilih
-            for k, (i, _f) in enumerate(self.files):
+            for k, (i, _f) in enumerate(self.view):
                 if i == self.cur:
                     self.view_i = k
                     break
@@ -441,19 +500,19 @@ class ExportDialog(QDialog):
             self._loader.stop()
             return
         what, k = self._load_q.pop(0)
-        if k >= len(self.files):
+        if k >= len(self.view):
             return
-        f = self.files[k][1]
+        f = self.view[k][1]
         if what == "t":
             it = self.thumbs.item(k)
             if it is not None:
-                it.setIcon(QIcon(_load(f, 64, 92)))
+                it.setIcon(QIcon(self._pm(k, 64, 92)))
         elif k < len(self._strip_labels):
             lb = self._strip_labels[k]
-            lb.setPixmap(_load(f, lb.width(), 0))
+            lb.setPixmap(self._pm(k, lb.width(), 0))
 
     def _go(self, k: int):
-        n = len(self.files)
+        n = len(self.view)
         if not n:
             self.single_lbl.setPixmap(QPixmap())
             self.single_lbl.setText("Tidak ada halaman")
@@ -470,10 +529,11 @@ class ExportDialog(QDialog):
         self.thumbs.setCurrentRow(k)
         self.thumbs.blockSignals(False)
         if self.stack.currentIndex() == 0:
-            self.prev_lbl.setText(f"Pratinjau · halaman asli #{self.files[k][0] + 1}")
+            i = self.view[k][0]
+            self.prev_lbl.setText(f"Pratinjau · halaman asli #{i + 1}" if i >= 0 else "Pratinjau · halaman kredit")
             vp = self.single.viewport().size()
             self.single_lbl.setText("")
-            self.single_lbl.setPixmap(_load(self.files[k][1], max(100, vp.width() - 16), max(100, vp.height() - 16)))
+            self.single_lbl.setPixmap(self._pm(k, max(100, vp.width() - 16), max(100, vp.height() - 16)))
         else:
             self.prev_lbl.setText("Pratinjau · strip disambung (gulir)")
             if k < len(self._strip_labels):
@@ -487,9 +547,9 @@ class ExportDialog(QDialog):
             if lb.y() + lb.height() > y:
                 if k != self.view_i:
                     self.view_i = k
-                    self.pos_lbl.setText(f"{k + 1} / {len(self.files)}")
+                    self.pos_lbl.setText(f"{k + 1} / {len(self.view)}")
                     self.b_prev.setEnabled(k > 0)
-                    self.b_next.setEnabled(k < len(self.files) - 1)
+                    self.b_next.setEnabled(k < len(self.view) - 1)
                     self.thumbs.blockSignals(True)
                     self.thumbs.setCurrentRow(k)
                     self.thumbs.blockSignals(False)
@@ -552,6 +612,7 @@ class ExportDialog(QDialog):
         if d.exec():
             self.credits_changed = True
             self._update_ui()
+            self._build_preview()
 
     def _do_export(self):
         if not self.files:

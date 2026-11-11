@@ -2794,7 +2794,9 @@ class MainWindow(QMainWindow):
     def edit_story(self):
         from .skillsdlg import StoryDialog
         d = StoryDialog(self.project, self.settings, self)
-        if d.exec():
+        ok = d.exec()
+        d.deleteLater()
+        if ok:
             pipeline.save_settings(self.settings)
             self._refresh_state()
             from core import skills
@@ -2820,6 +2822,7 @@ class MainWindow(QMainWindow):
         d = ProofreadDialog(self.project, self.settings, self.cur, self)
         d.jump.connect(self._jump_block)
         d.exec()
+        d.deleteLater()
         if d.changed:
             self._snap()
             self._render_pages(sorted(d.changed))
@@ -2851,7 +2854,9 @@ class MainWindow(QMainWindow):
         sample = p.output_path if p and p.output_path and Path(p.output_path).exists() else (p.path if p else None)
         d = CreditsDialog(self.settings, self.project.export_meta or {"series": self.project.series_title},
                           sample, self)
-        if d.exec():
+        ok = d.exec()
+        d.deleteLater()
+        if ok:
             pipeline.save_settings(self.settings)
             self.log("Kredit & watermark disimpan (centang di Export As untuk menambahkannya).")
 
@@ -2867,7 +2872,9 @@ class MainWindow(QMainWindow):
             self.settings.setdefault("export_opts", {})
             self.settings["export_opts"] = dict(self.settings.get("export_opts") or {}, fmt=fmt)
         d = ExportDialog(self.project, self.cur, self.settings, self)
-        if not d.exec():
+        ok = d.exec()
+        d.deleteLater()
+        if not ok:
             return
         cfg = d.config()
         self.settings["export_opts"] = d.options()
