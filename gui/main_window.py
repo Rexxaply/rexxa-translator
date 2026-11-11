@@ -3457,8 +3457,8 @@ QComboBox::drop-down { border: none; width: 22px; }
 QComboBox { combobox-popup: 0; }   /* daftar pilihan bisa digulir (tidak memanjang setinggi layar) */
 /* --- daftar pilihan (dropdown): panel kaca membulat, pilihan berbentuk pil --- */
 QComboBoxPrivateContainer { background: transparent; border: none; }
-QComboBox QAbstractItemView { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #262b3f, stop:1 #1c2030);
-  border: 1px solid rgba(255,255,255,0.13); border-radius: 12px; padding: 5px; outline: 0; color: #e3e7f3; }
+QComboBox QAbstractItemView { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(44,50,74,0.62), stop:1 rgba(26,29,44,0.70));
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 12px; padding: 5px; outline: 0; color: #e3e7f3; }
 QComboBox QAbstractItemView::item { min-height: 30px; padding: 2px 10px; border-radius: 8px; margin: 1px 0; }
 QComboBox QAbstractItemView::item:hover { background: rgba(255,255,255,0.07); }
 QComboBox QAbstractItemView::item:selected { color: white;
@@ -3531,8 +3531,8 @@ QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0
 QSplitter::handle { background: #252b3b; width: 1px; }
 QSplitter#viewsSplit::handle { background: #252b3b; }
 QSplitter#viewsSplit::handle:hover { background: #7c6cff; }
-QMenu { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #262b3f, stop:1 #1c2030);
-  border: 1px solid rgba(255,255,255,0.13); border-radius: 12px; padding: 6px; }
+QMenu { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(44,50,74,0.62), stop:1 rgba(26,29,44,0.70));
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 12px; padding: 6px; }
 QMenu::item { padding: 7px 20px 7px 12px; border-radius: 8px; margin: 1px 0; color: #e3e7f3; }
 QMenu::item:selected { color: white;
   background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(111,143,232,0.62), stop:1 rgba(143,120,224,0.62)); }

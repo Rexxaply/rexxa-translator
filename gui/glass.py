@@ -23,14 +23,14 @@ GLASS_STYLE = """
 QWidget { background: transparent; }
 QScrollArea { border: none; }
 QComboBoxPrivateContainer { background: transparent; border: none; }
-QComboBox QAbstractItemView { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #262b3f, stop:1 #1c2030);
-    border: 1px solid rgba(255,255,255,0.13); border-radius: 12px; padding: 5px; outline: 0; color: #e3e7f3; }
+QComboBox QAbstractItemView { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(44,50,74,0.62), stop:1 rgba(26,29,44,0.70));
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 12px; padding: 5px; outline: 0; color: #e3e7f3; }
 QComboBox QAbstractItemView::item { min-height: 30px; padding: 2px 10px; border-radius: 8px; margin: 1px 0; }
 QComboBox QAbstractItemView::item:hover { background: rgba(255,255,255,0.07); }
 QComboBox QAbstractItemView::item:selected { color: white;
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(111,143,232,0.62), stop:1 rgba(143,120,224,0.62)); }
-QMenu { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #262b3f, stop:1 #1c2030);
-    border: 1px solid rgba(255,255,255,0.13); border-radius: 12px; padding: 6px; }
+QMenu { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(44,50,74,0.62), stop:1 rgba(26,29,44,0.70));
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 12px; padding: 6px; }
 QMenu::item { padding: 7px 20px 7px 12px; border-radius: 8px; color: #e3e7f3; }
 QMenu::item:selected { color: white; background: rgba(140,130,230,0.55); }
 QListWidget, QTableWidget, QTreeWidget { background: rgba(0,0,0,0.18); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; }
@@ -55,6 +55,39 @@ def _spring(u: float) -> float:
     if u >= 1.0:
         return 1.0
     return 1 - math.exp(-6.5 * u) * math.cos(7.5 * u)
+
+
+def frosted(host, rect=None, sigma: float = 7.0):
+    """Ambil gambar `host` (seluruhnya atau area `rect` dalam koordinat host), buramkan & hidupkan warnanya.
+    -> (QPixmap | None, titik kiri-atas global). Dipakai latar kaca dialog, menu & dropdown."""
+    try:
+        import cv2
+        import numpy as np
+        from PySide6.QtCore import QRect
+        from PySide6.QtGui import QImage, QPixmap
+        if rect is None:
+            rect = host.rect()
+        rect = QRect(rect).intersected(host.rect())
+        if rect.width() < 4 or rect.height() < 4:
+            return None, QPoint()
+        shot = host.grab(rect)
+        dpr = shot.devicePixelRatio()
+        img = shot.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+        w, h = img.width(), img.height()
+        arr = np.frombuffer(img.constBits(), np.uint8).reshape(h, img.bytesPerLine())[:, :w * 4].reshape(h, w, 4)
+        sw, sh = max(1, w // 4), max(1, h // 4)
+        small = cv2.resize(arr[:, :, :3], (sw, sh), interpolation=cv2.INTER_AREA)
+        small = cv2.GaussianBlur(small, (0, 0), sigma)
+        hsv = cv2.cvtColor(small, cv2.COLOR_RGB2HSV).astype(np.float32)
+        hsv[:, :, 1] = np.clip(hsv[:, :, 1] * 1.35, 0, 255)       # warna sedikit lebih hidup, khas Liquid Glass
+        small = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2RGB)
+        big = np.ascontiguousarray(cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR))
+        q = QImage(big.data, w, h, big.strides[0], QImage.Format.Format_RGB888).copy()
+        pm = QPixmap.fromImage(q)
+        pm.setDevicePixelRatio(dpr)
+        return pm, host.mapToGlobal(rect.topLeft())
+    except Exception:
+        return None, QPoint()
 
 
 class _Dim(QWidget):
@@ -307,31 +340,7 @@ class GlassDialog(QDialog):
 
     def _grab_backdrop(self, host):
         """Foto jendela di belakang lalu diburamkan (efek kaca frosted). Gagal = kaca biasa."""
-        try:
-            import cv2
-            import numpy as np
-            from PySide6.QtGui import QImage, QPixmap
-            shot = host.grab()
-            dpr = shot.devicePixelRatio()
-            img = shot.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
-            w, h = img.width(), img.height()
-            if w < 4 or h < 4:
-                return
-            arr = np.frombuffer(img.constBits(), np.uint8).reshape(h, img.bytesPerLine())[:, :w * 4].reshape(h, w, 4)
-            sw, sh = max(1, w // 4), max(1, h // 4)
-            small = cv2.resize(arr[:, :, :3], (sw, sh), interpolation=cv2.INTER_AREA)
-            small = cv2.GaussianBlur(small, (0, 0), 7)
-            hsv = cv2.cvtColor(small, cv2.COLOR_RGB2HSV).astype(np.float32)
-            hsv[:, :, 1] = np.clip(hsv[:, :, 1] * 1.35, 0, 255)       # warna sedikit lebih hidup, khas Liquid Glass
-            small = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2RGB)
-            big = np.ascontiguousarray(cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR))
-            q = QImage(big.data, w, h, big.strides[0], QImage.Format.Format_RGB888).copy()
-            pm = QPixmap.fromImage(q)
-            pm.setDevicePixelRatio(dpr)
-            self._bd = pm
-            self._bd_origin = host.mapToGlobal(QPoint(0, 0))
-        except Exception:
-            self._bd = None
+        self._bd, self._bd_origin = frosted(host)
 
     def moveEvent(self, e):
         super().moveEvent(e)
@@ -460,8 +469,45 @@ class _PopupFx(QObject):
                     if obj.inherits("QComboBoxPrivateContainer"):
                         obj.setContentsMargins(0, 0, 0, 0)
         elif t == QEvent.Show and obj.isWidgetType() and obj.property("_rexxa_fx"):
+            self._backdrop(obj)
             QTimer.singleShot(0, lambda w=obj: self._appear(w))
+        elif t == QEvent.Paint and obj.isWidgetType() and obj.property("_rexxa_fx"):
+            self._paint_backdrop(obj)             # latar kaca frosted, lalu menu menggambar isinya di atasnya
         return False
+
+    @staticmethod
+    def _host_of(w):
+        from PySide6.QtWidgets import QApplication
+        par = w.parentWidget()
+        host = par.window() if par is not None else None
+        if host is None or host is w or not host.isVisible():
+            host = QApplication.activeWindow()
+        return host if host is not None and host is not w and host.isVisible() else None
+
+    def _backdrop(self, w):
+        host = self._host_of(w)
+        w._fx_bd, w._fx_origin = None, QPoint()
+        if host is None:
+            return
+        g = w.geometry()
+        tl = host.mapFromGlobal(g.topLeft())
+        from PySide6.QtCore import QRect
+        w._fx_bd, w._fx_origin = frosted(host, QRect(tl.x() - 24, tl.y() - 24, g.width() + 48, g.height() + 48), 5.0)
+
+    @staticmethod
+    def _paint_backdrop(w):
+        p = QPainter(w)
+        p.setRenderHint(QPainter.Antialiasing)
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(w.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
+        p.setClipPath(path)
+        bd = getattr(w, "_fx_bd", None)
+        if bd is not None:
+            p.fillPath(path, QColor(22, 25, 37))
+            p.drawPixmap(w.mapFromGlobal(w._fx_origin), bd)
+        else:                                     # tidak ada jendela di belakang: kaca gelap pekat
+            p.fillPath(path, QColor(28, 31, 46))
+        p.end()
 
     @staticmethod
     def _appear(w):
