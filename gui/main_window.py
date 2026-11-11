@@ -1361,29 +1361,34 @@ class MainWindow(QMainWindow):
     #   putaran akhir: melambat halus sampai berhenti tepat tegak (ease-out)
     #   penutup    : ikon "mengembang" sedikit lalu warnanya memudar kembali normal
     # Kecepatan di tiap sambungan sama persis -> tidak terlihat patah. Minimal 2 putaran.
-    SAVE_IN_MS = 400                     # putaran pertama (ease-in kuadrat)
-    SAVE_LIN_MS = 200                    # satu putaran di kecepatan penuh  (360/200 = 2*360/400)
-    SAVE_OUT_MS = 600                    # putaran terakhir (ease-out kubik: 3*360/600 = kecepatan penuh)
-    SAVE_SETTLE_MS = 300                 # mengembang + warna kembali normal
+    SAVE_TURN_MS = 480                   # satu putaran di kecepatan penuh (tempo santai, mirip Translator++)
+    SAVE_ACCEL_DEG = 180.0               # setengah putaran pertama: mulai lembut lalu makin cepat
+    SAVE_DECEL_DEG = 270.0               # ¾ putaran terakhir: melambat panjang & halus (ease-out ala iOS)
+    SAVE_SETTLE_MS = 380                 # mengembang lembut + warna kembali normal
 
     def _save_angle(self, t: float):
-        """Sudut ikon pada waktu t (ms) -> (sudut, selesai_putaran)."""
-        tin, tlin, tout = self.SAVE_IN_MS, self.SAVE_LIN_MS, self.SAVE_OUT_MS
+        """Sudut ikon pada waktu t (ms) -> (sudut, selesai_putaran). Kecepatan menyambung di semua fase."""
+        w = 360.0 / self.SAVE_TURN_MS                      # derajat per ms
+        A, D = self.SAVE_ACCEL_DEG, self.SAVE_DECEL_DEG
+        ta = 2 * A / w                                     # durasi fase awal (ease-in kuadrat)
+        tout = 3 * D / w                                   # durasi fase akhir (ease-out kubik)
+
+        def run(tt):                                       # sudut tanpa fase akhir
+            return A * (tt / ta) ** 2 if tt <= ta else A + (tt - ta) * w
         st = self._save_state
         if st["final_at"] is None and self._save_done:
-            # putaran terakhir dimulai di batas putaran penuh berikutnya (minimal setelah putaran 1)
-            if t <= tin:
-                st["final_at"], st["final_from"] = tin, 360.0
-            else:
-                k = int((t - tin) // tlin) + 1
-                st["final_at"], st["final_from"] = tin + k * tlin, 360.0 * (k + 1)
+            # fase akhir dimulai di sudut yang membuat ikon berhenti TEPAT tegak, minimal 2 putaran total
+            now = run(t)
+            end = 720.0
+            while end - D < max(now, A):
+                end += 360.0
+            start = end - D
+            st["final_at"], st["final_from"] = ta + (start - A) / w, start
         fa = st["final_at"]
         if fa is not None and t >= fa:
             u = min(1.0, (t - fa) / tout)
-            return st["final_from"] + 360.0 * (1 - (1 - u) ** 3), u >= 1.0
-        if t <= tin:
-            return 360.0 * (t / tin) ** 2, False
-        return 360.0 + (t - tin) * 360.0 / tlin, False
+            return st["final_from"] + D * (1 - (1 - u) ** 3), u >= 1.0
+        return run(t), False
 
     def _spin_save_start(self):
         """Ikon simpan berputar halus selama menyimpan (minimal 2 putaran), lalu kembali normal."""
@@ -1446,8 +1451,9 @@ class MainWindow(QMainWindow):
             self._save_src["norm"] = icon("save_dirty" if self._dirty else "save").pixmap(self._save_hi, mode)
         u = min(1.0, (t - st["settle_at"]) / self.SAVE_SETTLE_MS)
         import math
-        scale = 1.0 + 0.12 * math.sin(math.pi * u)          # mengembang sedikit lalu kembali
-        mix = u * u * (3 - 2 * u)                            # warna memudar halus ke normal
+        e = 1 - (1 - u) ** 3                                  # ease-out
+        scale = 1.0 + 0.09 * math.sin(math.pi * e)           # mengembang lembut lalu kembali
+        mix = e * e * (3 - 2 * e)                            # warna memudar halus ke normal
         self.b_save.setIcon(self._save_frame(0.0, scale, mix))
         if u >= 1.0:
             self._spin_save_stop()
