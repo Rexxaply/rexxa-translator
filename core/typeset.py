@@ -785,7 +785,7 @@ def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, m
 def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str = "id",
                 default_font_path: str = "", uppercase: bool = True, max_size: int = 64,
                 italic: bool = True, line_spacing: float = LINE_SPACING, default_size: int = 0,
-                default_bold: bool = False, harmonize: bool = True) -> np.ndarray:
+                default_bold: bool = False, harmonize: bool = True, collect: list | None = None) -> np.ndarray:
     """harmonize: ukuran huruf otomatis diseragamkan antar balon di halaman yang sama -- balon
     yang teks aslinya seukuran tidak boleh jauh lebih besar dari balon lainnya (lebih rapi)."""
     args = (img_bgr, blocks, target_lang, default_font_path, uppercase, max_size, italic, line_spacing,
@@ -802,7 +802,7 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
             if len(peers) >= 2:
                 ref = float(np.median(peers))
                 b._cap = int(max(ref * 1.06, min(b.fit_size, b.src_h * 1.05)))
-    return _render_page(*args, dry=False)
+    return _render_page(*args, dry=False, collect=collect)
 
 
 _LAYOUT_CACHE: "OrderedDict" = None
@@ -914,7 +914,7 @@ def _layout(measure, b, text, font_path, stroke, ls, lsp, cap, max_size, fixed, 
 def _render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str = "id",
                  default_font_path: str = "", uppercase: bool = True, max_size: int = 64,
                  italic: bool = True, line_spacing: float = LINE_SPACING, default_size: int = 0,
-                 default_bold: bool = False, dry: bool = False) -> np.ndarray | None:
+                 default_bold: bool = False, dry: bool = False, collect: list | None = None) -> np.ndarray | None:
     """Cepat saat menyunting: tata letak (ukuran font + baris) dan gambar teks tiap balon disimpan
     di cache -- balon yang tidak berubah tidak dihitung / digambar ulang, dan menggeser teks (dx/dy)
     hanya menempel ulang. Teks ditempel langsung ke gambar (tanpa konversi seluruh halaman)."""
@@ -986,7 +986,11 @@ def _render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str 
             _layer_put(ckey, layer, pad)
         else:
             layer, pad = got
-        _paste_np(out, layer, int(fx - pad + (b.dx or 0)), int(fy - pad + (b.dy or 0)))
+        px, py = int(fx - pad + (b.dx or 0)), int(fy - pad + (b.dy or 0))
+        _paste_np(out, layer, px, py)
+        if collect is not None:          # lapisan teks per balon (export PSD)
+            ox, oy = getattr(layer, "_off", (0, 0))
+            collect.append((b, layer, px + ox, py + oy))
     return out
 
 

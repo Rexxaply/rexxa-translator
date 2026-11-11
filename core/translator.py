@@ -79,10 +79,10 @@ def translate_deepl(texts, src, tgt, glossary, api_key):
 
 
 # Prompt dibuat ringkas: dikirim di SETIAP permintaan, jadi tiap kata = token yang dibayar.
-SYSTEM_PROMPT = ("Translate manga speech bubbles {src}->{tgt}. Natural, concise dialogue; keep tone, "
-                 "character voice & honorifics; short SFX. Items are one page in reading order (use as "
+SYSTEM_PROMPT = ("Translate manga speech bubbles {src}->{tgt}. Natural, concise dialogue; keep tone & "
+                 "character voice; short SFX. Items are one page in reading order (use as "
                  "context). Source text comes from OCR and may contain misread letters (e.g. G/C, I/l/!, 0/O); "
-                 "silently fix obvious OCR mistakes before translating. {glossary}{extra}Reply JSON only: {{\"id\":\"translation\"}}")
+                 "silently fix obvious OCR mistakes before translating. {glossary}{context}{extra}Reply JSON only: {{\"id\":\"translation\"}}")
 
 
 def _glossary_for(texts, glossary):
@@ -92,33 +92,48 @@ def _glossary_for(texts, glossary):
     return ("Glossary: " + "; ".join(f"{k}={v}" for k, v in used.items()) + ". ") if used else ""
 
 
-def translate_llm(texts, src, tgt, glossary, base_url, api_key, model, extra_prompt="", temperature=0.3):
+def _chat(base_url, api_key, model, system, user, temperature=0.3, timeout=180) -> str:
     if not base_url:
-        raise TranslateError("Base URL LLM belum diisi.")
-    items = [t for t in texts if t.strip()]
-    if not items:
-        return ["" for _ in texts]
-    sys = SYSTEM_PROMPT.format(src=LANG_NAMES.get(src, src), tgt=LANG_NAMES.get(tgt, tgt),
-                               glossary=_glossary_for(items, glossary),
-                               extra=(extra_prompt.strip().rstrip(".") + ". ") if extra_prompt.strip() else "")
-    numbered = {str(i + 1): t for i, t in enumerate(texts) if t.strip()}
-    user = json.dumps(numbered, ensure_ascii=False, separators=(",", ":"))   # JSON padat, tanpa spasi
-
+        raise TranslateError("Base URL LLM belum diisi (Pengaturan → Terjemahan → LLM).")
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     body = {"model": model, "temperature": temperature,
-            "messages": [{"role": "system", "content": sys}, {"role": "user", "content": user}]}
-    r = requests.post(base_url.rstrip("/") + "/chat/completions", json=body, headers=headers, timeout=180)
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+    r = requests.post(base_url.rstrip("/") + "/chat/completions", json=body, headers=headers, timeout=timeout)
     if r.status_code != 200:
         raise TranslateError(f"LLM error {r.status_code}: {r.text[:300]}")
     js = r.json()
     usage = js.get("usage") or {}
     STATS["tokens_in"] += int(usage.get("prompt_tokens") or 0)
     STATS["tokens_out"] += int(usage.get("completion_tokens") or 0)
-    content = js["choices"][0]["message"]["content"]
+    return js["choices"][0]["message"]["content"] or ""
+
+
+def llm_chat(settings: dict, system: str, user: str, temperature: float = 0.3) -> str:
+    """Satu permintaan ke LLM yang diatur di Pengaturan (dipakai skill: memori, proofread)."""
+    return _chat(settings.get("llm_base_url", ""), settings.get("llm_api_key", ""), settings.get("llm_model", ""),
+                 system, user, temperature)
+
+
+def translate_llm(texts, src, tgt, glossary, base_url, api_key, model, extra_prompt="", temperature=0.3,
+                  context=""):
+    items = [t for t in texts if t.strip()]
+    if not items:
+        return ["" for _ in texts]
+    sys = SYSTEM_PROMPT.format(src=LANG_NAMES.get(src, src), tgt=LANG_NAMES.get(tgt, tgt),
+                               glossary=_glossary_for(items, glossary),
+                               context=(context.strip() + " ") if context.strip() else "",
+                               extra=(extra_prompt.strip().rstrip(".") + ". ") if extra_prompt.strip() else "")
+    numbered = {str(i + 1): t for i, t in enumerate(texts) if t.strip()}
+    user = json.dumps(numbered, ensure_ascii=False, separators=(",", ":"))   # JSON padat, tanpa spasi
+    content = _chat(base_url, api_key, model, sys, user, temperature)
     data = _parse_json(content)
     return [str(data.get(str(i + 1), "")) if texts[i].strip() else "" for i in range(len(texts))]
+
+
+def parse_json(content: str) -> dict:
+    return _parse_json(content)
 
 
 def _parse_json(content: str) -> dict:
@@ -182,9 +197,11 @@ def cache_info() -> tuple[int, int]:
     return len(_load_cache()), (p.stat().st_size if p.exists() else 0)
 
 
-def _key(engine, settings, src, tgt, glossary, text):
+def _key(engine, settings, src, tgt, glossary, text, ctx_key=""):
     model = settings.get("llm_model", "") if engine == "llm" else ""
     extra = settings.get("llm_extra_prompt", "") if engine == "llm" else ""
+    if ctx_key:      # gaya bahasa / memori cerita ikut menentukan hasil LLM
+        extra += "\x1e" + ctx_key
     gl = json.dumps(sorted((k, v) for k, v in (glossary or {}).items() if k in text), ensure_ascii=False)
     raw = "\x1f".join([engine, model, extra, src, tgt, gl, text])
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
@@ -200,7 +217,7 @@ def reset_stats():
         STATS[k] = 0
 
 
-def _raw_translate(texts, src, tgt, engine, settings, glossary):
+def _raw_translate(texts, src, tgt, engine, settings, glossary, context=""):
     if engine == "google":
         return translate_google(texts, src, tgt, glossary)
     if engine == "deepl":
@@ -209,12 +226,12 @@ def _raw_translate(texts, src, tgt, engine, settings, glossary):
         return translate_llm(texts, src, tgt, glossary,
                              settings.get("llm_base_url", ""), settings.get("llm_api_key", ""),
                              settings.get("llm_model", ""), settings.get("llm_extra_prompt", ""),
-                             float(settings.get("llm_temperature", 0.3)))
+                             float(settings.get("llm_temperature", 0.3)), context=context)
     raise TranslateError(f"Engine terjemahan tidak dikenal: {engine}")
 
 
 def translate(texts: list[str], src: str, tgt: str, engine: str, settings: dict, glossary: dict | None = None,
-              use_cache: bool = True):
+              use_cache: bool = True, context: str = "", ctx_key: str = ""):
     """Terjemahkan daftar teks dengan hemat:
     - teks kosong / hanya tanda baca tidak dikirim (disalin apa adanya),
     - teks yang sama di satu halaman dikirim sekali,
@@ -232,7 +249,7 @@ def translate(texts: list[str], src: str, tgt: str, engine: str, settings: dict,
             STATS["skipped"] += 1
             continue
         if cache is not None:
-            hit = cache.get(_key(engine, settings, src, tgt, glossary, t))
+            hit = cache.get(_key(engine, settings, src, tgt, glossary, t, ctx_key))
             if hit is not None:
                 out[i] = hit
                 STATS["cached"] += 1
@@ -242,7 +259,7 @@ def translate(texts: list[str], src: str, tgt: str, engine: str, settings: dict,
         todo.setdefault(t, []).append(i)
     if todo:
         uniq = list(todo)
-        res = _raw_translate(uniq, src, tgt, engine, settings, glossary)
+        res = _raw_translate(uniq, src, tgt, engine, settings, glossary, context)
         STATS["sent"] += len(uniq)
         store = settings.get("translation_cache", True)
         with _lock:
@@ -251,7 +268,7 @@ def translate(texts: list[str], src: str, tgt: str, engine: str, settings: dict,
                 for i in todo[t]:
                     out[i] = tr
                 if store and tr:
-                    c[_key(engine, settings, src, tgt, glossary, t)] = tr
+                    c[_key(engine, settings, src, tgt, glossary, t, ctx_key)] = tr
         if store:
             try:
                 _save_cache()

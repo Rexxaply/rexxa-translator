@@ -20,7 +20,8 @@ from core import exporter
 
 from .icons import icon
 
-FORMATS = [("PDF", "pdf"), ("CBZ + ComicInfo.xml (Mihon)", "cbz"), ("ZIP gambar saja", "zip")]
+FORMATS = [("PDF", "pdf"), ("CBZ + ComicInfo.xml (Mihon)", "cbz"), ("ZIP gambar saja", "zip"),
+           ("PSD berlapis (Photoshop)", "psd")]
 KINDS = [("Otomatis (deteksi)", "auto"), ("Manga — per halaman", "manga"),
          ("Manhwa — strip disambung", "manhwa"), ("Manhua — strip disambung", "manhua")]
 IMG = [("Asli (tanpa kompres ulang)", "asli"), ("JPG (lebih kecil)", "jpg"), ("WebP (paling kecil)", "webp")]
@@ -69,6 +70,7 @@ class ExportDialog(QDialog):
         self.setWindowTitle("Export As")
         self.project, self.cur, self.settings = project, max(0, cur), settings
         self.out_path = ""
+        self.credits_changed = False
         self.files: list[tuple[int, str]] = []
         self.view_i = 0
         self._strip_labels: list[QLabel] = []
@@ -234,6 +236,18 @@ class ExportDialog(QDialog):
                               "lalu buka Browse → Local source.")
         v.addWidget(self.mihon)
         pv.addWidget(self.meta_card)
+
+        self.extra_card, v = _card("Tambahan")
+        self.c_credit = QCheckBox("Halaman kredit tim")
+        self.c_credit.setChecked(bool(opts.get("credit_page", False)))
+        self.c_wm = QCheckBox("Watermark di setiap halaman")
+        self.c_wm.setChecked(bool(opts.get("watermark", False)))
+        b_cr = QPushButton("Atur kredit & watermark…")
+        b_cr.clicked.connect(self._edit_credits)
+        v.addWidget(self.c_credit)
+        v.addWidget(self.c_wm)
+        v.addWidget(b_cr)
+        pv.addWidget(self.extra_card)
         pv.addStretch(1)
 
         sc = QScrollArea()
@@ -272,6 +286,8 @@ class ExportDialog(QDialog):
         self.kind.currentIndexChanged.connect(lambda _i: self._refresh())
         self.img.currentIndexChanged.connect(lambda _i: self._update_ui())
         self.mihon.toggled.connect(lambda _b: self._update_ui())
+        self.c_credit.toggled.connect(lambda _b: self._update_ui())
+        self.c_wm.toggled.connect(lambda _b: self._update_ui())
         self._loader = QTimer(self, interval=0, timeout=self._load_step)
         self._resize_t = QTimer(self, singleShot=True, interval=150, timeout=self._relayout)
         self._update_ui()
@@ -305,15 +321,24 @@ class ExportDialog(QDialog):
     # ---------------------------------------------------------------- tampilan
     def _update_ui(self):
         fmt = self.fmt.currentData()
-        self.meta_card.setVisible(fmt == "cbz")
-        self.img.setEnabled(fmt != "pdf")
-        self.q.setEnabled(fmt == "pdf" or self.img.currentData() != "asli")
+        psd = fmt == "psd"
+        self.extra_card.setVisible(not psd)
+        self.meta_card.setVisible(fmt == "cbz" or (self.c_credit.isChecked() and not psd))
+        self.mihon.setVisible(fmt == "cbz")
+        self.img.setEnabled(fmt not in ("pdf", "psd"))
+        self.kind.setEnabled(not psd)
+        self.use_orig.setEnabled(not psd)
+        self.q.setEnabled(fmt == "pdf" or (not psd and self.img.currentData() != "asli"))
         info = {
             "pdf": "Satu file .pdf. Manga = 1 gambar per halaman; manhwa/manhua = semua halaman disambung "
                    "lalu dipotong di celah antar panel supaya panel tidak terbelah.",
             "cbz": "Arsip komik standar: gambar 001, 002, … + ComicInfo.xml (judul, chapter, arah baca). "
                    "Bisa dibaca Mihon (Local source), Komga, Kavita, CDisplayEx, dll.",
             "zip": "Hanya gambar bernomor urut, tanpa info tambahan.",
+            "psd": "Satu .psd per halaman (lebih dari 1 halaman → dibungkus .zip). Lapisan: Raw (asli, "
+                   "disembunyikan) · Bersih (tanpa teks) · satu lapisan per balon teks (bisa digeser / "
+                   "diwarnai ulang, tapi berupa gambar, bukan teks yang bisa diketik ulang). "
+                   "Bisa dibuka Photoshop, Photopea, GIMP, Krita.",
         }[fmt]
         if fmt == "cbz" and self.mihon.isChecked():
             info += "\nPaket Mihon: ekstrak .zip ke Mihon/local/ di HP → Browse → Local source."
@@ -354,8 +379,15 @@ class ExportDialog(QDialog):
             t = f"<b>{n} gambar → ±{out} halaman PDF</b> · {nama}"
         elif fmt == "cbz":
             t = f"<b>{n} gambar → 1 file {'.zip (paket Mihon)' if self.mihon.isChecked() else '.cbz'}</b> · {nama}"
+        elif fmt == "psd":
+            t = f"<b>{n} halaman → {'1 file .psd' if n == 1 else f'{n} file .psd (dalam .zip)'}</b>"
         else:
             t = f"<b>{n} gambar → 1 file .zip</b>"
+        if fmt != "psd":
+            plus = [x for x, on in (("halaman kredit", self.c_credit.isChecked()),
+                                    ("watermark", self.c_wm.isChecked())) if on]
+            if plus:
+                t += " · + " + " & ".join(plus)
         self.summary.setText(t)
 
     def _build_preview(self):
@@ -503,13 +535,23 @@ class ExportDialog(QDialog):
         return {"scope": scope, "range": self.rng.text().strip(), "use_original": self.use_orig.isChecked(),
                 "fmt": self.fmt.currentData(), "kind": self.kind.currentData(),
                 "img_fmt": self.img.currentData(), "quality": self.q.value(),
-                "mihon_pack": self.mihon.isChecked()}
+                "mihon_pack": self.mihon.isChecked(), "credit_page": self.c_credit.isChecked(),
+                "watermark": self.c_wm.isChecked()}
 
     def config(self) -> dict:
         o = self.options()
         return dict(out=self.out_path, fmt=o["fmt"], kind=o["kind"], indices=[i for i, _ in self.files],
                     use_original=o["use_original"], img_fmt=o["img_fmt"], quality=o["quality"],
-                    meta=self.meta(), mihon_pack=o["mihon_pack"] and o["fmt"] == "cbz")
+                    meta=self.meta(), mihon_pack=o["mihon_pack"] and o["fmt"] == "cbz",
+                    credit_page=o["credit_page"] and o["fmt"] != "psd", watermark=o["watermark"] and o["fmt"] != "psd")
+
+    def _edit_credits(self):
+        from .skillsdlg import CreditsDialog
+        sample = self.files[0][1] if self.files else None
+        d = CreditsDialog(self.settings, self.meta(), sample, self)
+        if d.exec():
+            self.credits_changed = True
+            self._update_ui()
 
     def _do_export(self):
         if not self.files:
@@ -527,6 +569,11 @@ class ExportDialog(QDialog):
             ext, flt = ".zip", "Paket Mihon (*.zip)"
         elif fmt == "cbz":
             ext, flt = ".cbz", "Arsip komik (*.cbz)"
+        elif fmt == "psd" and len(self.files) == 1:
+            ext, flt = ".psd", "Photoshop (*.psd)"
+            base = exporter.safe_name(f"{base} hal {self.files[0][0] + 1}")
+        elif fmt == "psd":
+            ext, flt = ".zip", "ZIP berisi PSD (*.zip)"
         else:
             ext, flt = ".zip", "ZIP (*.zip)"
         p0 = self.project.pages[self.files[0][0]]
