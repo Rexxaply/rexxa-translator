@@ -71,7 +71,7 @@ def _no_os_animation(w):
         pass
 
 
-def frosted(host, rect=None, sigma: float = 7.0):
+def frosted(host, rect=None, sigma: float = 10.0):
     """Ambil gambar `host` (seluruhnya atau area `rect` dalam koordinat host), buramkan & hidupkan warnanya.
     -> (QPixmap | None, titik kiri-atas global). Dipakai latar kaca dialog, menu & dropdown."""
     try:
@@ -93,7 +93,7 @@ def frosted(host, rect=None, sigma: float = 7.0):
         small = cv2.resize(arr[:, :, :3], (sw, sh), interpolation=cv2.INTER_AREA)
         small = cv2.GaussianBlur(small, (0, 0), sigma)
         hsv = cv2.cvtColor(small, cv2.COLOR_RGB2HSV).astype(np.float32)
-        hsv[:, :, 1] = np.clip(hsv[:, :, 1] * 1.35, 0, 255)       # warna sedikit lebih hidup, khas Liquid Glass
+        hsv[:, :, 1] = np.clip(hsv[:, :, 1] * 1.15, 0, 255)       # warna sedikit lebih hidup, khas Liquid Glass
         small = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2RGB)
         big = np.ascontiguousarray(cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR))
         q = QImage(big.data, w, h, big.strides[0], QImage.Format.Format_RGB888).copy()
@@ -136,7 +136,7 @@ class _Dim(QWidget):
 
 class GlassDialog(QDialog):
     POP_IN_MS = 420
-    POP_OUT_MS = 190
+    POP_OUT_MS = 150
 
     def __init__(self, parent=None, title: str = "", subtitle: str = "", size=(760, 560), resizable=True,
                  header: bool = True):
@@ -234,7 +234,7 @@ class GlassDialog(QDialog):
             p.setClipPath(dev)
             p.drawPixmap(self.mapFromGlobal(self._bd_origin), self._bd)
             p.restore()
-        a0, a1 = (196, 206) if frosted else (251, 252)
+        a0, a1 = (214, 224) if frosted else (251, 252)
         g = QLinearGradient(r.topLeft(), r.bottomRight())
         g.setColorAt(0.0, QColor(34, 38, 58, a0))
         g.setColorAt(0.55, QColor(22, 25, 38, a1))
@@ -274,18 +274,23 @@ class GlassDialog(QDialog):
             return
         u = min(1.0, (self._clock.elapsed() - a["t0"]) / (self.POP_IN_MS if a["dir"] > 0 else self.POP_OUT_MS))
         if a["dir"] > 0:
+            # kaca & isi langsung pekat (±90 ms) supaya halaman di belakang tidak sempat "tembus" ke isi dialog;
+            # gerak mengembang ala pegas tetap berjalan penuh
             scale = 0.92 + 0.08 * _spring(u)
-            op = 1 - (1 - min(1.0, u / 0.55)) ** 3
+            g = min(1.0, u / 0.22)
+            op_glass = g * g * (3 - 2 * g)
+            c_ = min(1.0, u / 0.28)
+            op_content = 1 - (1 - c_) ** 2
         else:
-            e = u * u
-            scale = 1.0 - 0.05 * e
-            op = 1 - e
+            scale = 1.0 - 0.04 * u
+            op_glass = op_content = (1 - u) ** 2        # hilang cepat, tanpa bayangan ganda yang lama
         c = r.center()
         p.translate(c)
         p.scale(scale, scale)
         p.translate(-c)
-        p.setOpacity(op)
+        p.setOpacity(op_glass)
         self._paint_glass(p, r)
+        p.setOpacity(op_content)
         p.drawPixmap(a["rect"].topLeft(), a["pix"])
 
     # ------------------------------------------------------------ animasi
@@ -308,7 +313,7 @@ class GlassDialog(QDialog):
         dur = self.POP_IN_MS if a["dir"] > 0 else self.POP_OUT_MS
         u = min(1.0, self._clock.elapsed() / dur)
         if self._dim is not None:
-            self._dim.alpha = min(1.0, u * 1.6) if a["dir"] > 0 else 1 - u
+            self._dim.alpha = min(1.0, u * 2.5) if a["dir"] > 0 else (1 - u) ** 2
             self._dim.update()
         self.update()
         if u >= 1.0:
@@ -490,7 +495,7 @@ def _key(w) -> int:
 
 class _PopupFx(QObject):
     """Semua daftar pilihan (QComboBox) & menu: latar jendela transparan supaya sudut membulat terlihat bersih,
-    tanpa bayangan kotak Windows, dan muncul dengan memudar + turun sedikit (±140 ms)."""
+    tanpa bayangan kotak Windows, dan muncul dengan turun halus sedikit (±130 ms)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -571,20 +576,13 @@ class _PopupFx(QObject):
             if not w.isVisible():
                 return
             end = w.pos()
-            fade = QPropertyAnimation(w, b"windowOpacity", w)
-            fade.setDuration(140)
-            fade.setStartValue(0.0)
-            fade.setEndValue(1.0)
-            fade.setEasingCurve(QEasingCurve.OutCubic)
+            # tanpa memudar (memudar membuat isi aplikasi di belakang tembus tajam): cukup turun halus 5 px
             slide = QPropertyAnimation(w, b"pos", w)
-            slide.setDuration(170)
-            slide.setStartValue(end - QPoint(0, 6))
+            slide.setDuration(130)
+            slide.setStartValue(end - QPoint(0, 5))
             slide.setEndValue(end)
             slide.setEasingCurve(QEasingCurve.OutCubic)
-            w.setWindowOpacity(0.0)
-            fade.start(QPropertyAnimation.DeleteWhenStopped)
             slide.start(QPropertyAnimation.DeleteWhenStopped)
-            QTimer.singleShot(320, lambda: w.setWindowOpacity(1.0) if w.isVisible() else None)   # pengaman
         except Exception:
             try:
                 w.setWindowOpacity(1.0)
