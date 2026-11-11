@@ -284,6 +284,8 @@ def export(project: Project, out_path: str, *, fmt: str, kind: str, indices: lis
     meta = dict(meta or {})
     meta.setdefault("series", project.series_title)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    if fmt == "img":
+        Path(out_path).mkdir(parents=True, exist_ok=True)
     if fmt == "psd":
         return export_psd(project, out_path, indices, settings or {}, progress, stop, log)
     files = collect(project, indices, use_original)
@@ -306,6 +308,17 @@ def export(project: Project, out_path: str, *, fmt: str, kind: str, indices: lis
         r = pdfexport.export_files(files, out_path, "manga" if kind == "manga" else "webtoon",
                                    quality=quality, jpeg=(img_fmt != "asli"), title=meta.get("series", ""))
         return {"files": len(files), "kind": kind, "out": out_path, "pages_out": r["pages_out"]}
+
+    if fmt == "img":                    # gambar lepas ke folder pilihan
+        pad = max(3, len(str(len(files))))
+        for i, f in enumerate(files, 1):
+            if stop and stop():
+                raise RuntimeError("Dibatalkan.")
+            data, ext = encode(f, img_fmt, quality)
+            (Path(out_path) / f"{i:0{pad}d}.{ext}").write_bytes(data)
+            if progress:
+                progress(i, len(files))
+        return {"files": len(files), "kind": kind, "out": out_path, "pages_out": len(files)}
 
     if fmt == "zip":
         pad = max(3, len(str(len(files))))

@@ -56,7 +56,7 @@ def cache_paths(project=None, settings: dict | None = None) -> list[Path]:
         seen = set()
         for pg in project.pages:
             try:
-                d = Path(settings.get("output_dir") or (Path(pg.path).parent / "translated")) / ".cache"
+                d = paths.work_dir(pg.path, (settings or {}).get("output_dir") or "", create=False) / ".cache"
             except Exception:
                 continue
             if d not in seen and d.exists():

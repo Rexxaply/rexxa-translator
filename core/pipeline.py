@@ -54,7 +54,7 @@ DEFAULT_SETTINGS = {
     "recent_opened": {},            # {path proyek: waktu terakhir dibuka}          # proyek terakhir (layar awal), terbaru dulu
     "box_mode": "box",              # kotak manual baru: box (kotak saja) | ocr (+ baca teks) | ocr_tr (+ terjemah)
     "output_format": "png",         # png | jpg | webp
-    "output_dir": "",               # kosong = <folder gambar>/translated
+    "output_dir": "",               # kosong = folder kerja tersembunyi (data aplikasi)
     "last_source_lang": "ja",       # bahasa terakhir dipilih di toolbar
     "last_target_lang": "id",
     "update_last_check": "",        # tanggal ISO, cek maks. sekali sehari
@@ -151,9 +151,8 @@ def save_settings(s: dict):
 
 
 def output_dir(page: Page, settings: dict) -> Path:
-    d = Path(settings.get("output_dir") or (Path(page.path).parent / "translated"))
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    from .paths import work_dir
+    return work_dir(page.path, settings.get("output_dir") or "")
 
 
 # ---------------------------------------------------------------- tahap per halaman

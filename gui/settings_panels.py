@@ -285,7 +285,7 @@ class DataPanel(QWidget):
             self.refresh()
 
     def _clear_cache(self):
-        if self._ask("Hapus cache gambar & data proses?\nHasil terjemahan (folder translated) tidak dihapus."):
+        if self._ask("Hapus cache gambar & data proses?\nHasil terjemahan di folder kerja tidak dihapus."):
             self._done(DS.clear_cache(self.project, self.settings), "cache")
 
     def _clear_models(self):

@@ -408,7 +408,7 @@ class MainWindow(QMainWindow):
         m_exp = QMenu(self)
         self.a_export_as = m_exp.addAction(icon("export"), "Export As…  (pratinjau, PDF / CBZ / ZIP)", self.export_as)
         m_exp.addAction(icon("project"), "Export skrip terjemahan (.txt)…", self.export_script)
-        m_exp.addAction(icon("folderout"), "Buka folder hasil", self.open_output_folder)
+        m_exp.addAction(icon("folderout"), "Buka folder kerja (hasil sementara)", self.open_output_folder)
         b = tool_btn("export", "Export hasil (Ctrl+E = Export As…)")
         b.setMenu(m_exp)
         b.setPopupMode(QToolButton.InstantPopup)
@@ -3240,7 +3240,7 @@ class MainWindow(QMainWindow):
             return
         cfg = d.config()
         self.settings["export_opts"] = d.options()
-        self.settings["export_dir"] = str(Path(cfg["out"]).parent)
+        self.settings["export_dir"] = str(Path(cfg["out"]) if cfg["fmt"] == "img" else Path(cfg["out"]).parent)
         if cfg["meta"].get("translator"):
             self.settings["export_translator"] = cfg["meta"]["translator"]
         pipeline.save_settings(self.settings)
@@ -3262,6 +3262,8 @@ class MainWindow(QMainWindow):
                 w.log.emit(f"CBZ {jenis}{extra}: {r['files']} gambar · {out}")
             elif cfg["fmt"] == "psd":
                 w.log.emit(f"PSD berlapis: {r['files']} halaman · {out}")
+            elif cfg["fmt"] == "img":
+                w.log.emit(f"Gambar: {r['files']} file → {out}")
             else:
                 w.log.emit(f"ZIP: {r['files']} gambar · {out}")
 

@@ -394,10 +394,12 @@ class SettingsDialog(QDialog):
         self.fmt = QComboBox(); self.fmt.addItems(["png", "jpg", "webp"]); self.fmt.setCurrentText(self.s["output_format"])
         f.addRow("Format output", self.fmt)
         row2 = QHBoxLayout()
-        self.outdir = QLineEdit(self.s["output_dir"]); self.outdir.setPlaceholderText("kosong = <folder gambar>/translated")
+        self.outdir = QLineEdit(self.s["output_dir"]); self.outdir.setPlaceholderText("kosong = folder tersembunyi aplikasi (disarankan)")
+        self.outdir.setToolTip("Tempat hasil kerja sementara (gambar jadi & gambar bersih). Gambar akhir untuk dibagikan "
+                               "dibuat lewat Export (Ctrl+E) → 'Gambar (ke folder)'.")
         b2 = QPushButton("…"); b2.setFixedWidth(30); b2.clicked.connect(self._pick_out)
         row2.addWidget(self.outdir, 1); row2.addWidget(b2)
-        f.addRow("Folder output", row2)
+        f.addRow("Folder hasil kerja", row2)
         tabs.addTab(w, "Typeset & Output")
 
         # --- Teks (preset 1–5, ukuran font, penamaan file)

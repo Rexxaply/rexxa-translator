@@ -20,7 +20,8 @@ from core import exporter
 
 from .icons import icon
 
-FORMATS = [("PDF", "pdf"), ("CBZ + ComicInfo.xml (Mihon)", "cbz"), ("ZIP gambar saja", "zip"),
+FORMATS = [("PDF", "pdf"), ("CBZ + ComicInfo.xml (Mihon)", "cbz"), ("Gambar (ke folder)", "img"),
+           ("ZIP gambar saja", "zip"),
            ("PSD berlapis (Photoshop)", "psd")]
 KINDS = [("Otomatis (deteksi)", "auto"), ("Manga — per halaman", "manga"),
          ("Manhwa — strip disambung", "manhwa"), ("Manhua — strip disambung", "manhua")]
@@ -337,6 +338,8 @@ class ExportDialog(QDialog):
             "cbz": "Arsip komik standar: gambar 001, 002, … + ComicInfo.xml (judul, chapter, arah baca). "
                    "Bisa dibaca Mihon (Local source), Komga, Kavita, CDisplayEx, dll.",
             "zip": "Hanya gambar bernomor urut, tanpa info tambahan.",
+            "img": "Gambar hasil terjemahan (001, 002, …) disalin ke folder yang kamu pilih. "
+                   "Hanya di sinilah gambar jadi keluar ke folder chapter / folder pilihanmu.",
             "psd": "Satu .psd per halaman (lebih dari 1 halaman → dibungkus .zip). Lapisan: Raw (asli, "
                    "disembunyikan) · Bersih (tanpa teks) · satu lapisan per balon teks (bisa digeser / "
                    "diwarnai ulang, tapi berupa gambar, bukan teks yang bisa diketik ulang). "
@@ -383,6 +386,8 @@ class ExportDialog(QDialog):
             t = f"<b>{n} gambar → 1 file {'.zip (paket Mihon)' if self.mihon.isChecked() else '.cbz'}</b> · {nama}"
         elif fmt == "psd":
             t = f"<b>{n} halaman → {'1 file .psd' if n == 1 else f'{n} file .psd (dalam .zip)'}</b>"
+        elif fmt == "img":
+            t = f"<b>{n} gambar → folder pilihan</b>"
         else:
             t = f"<b>{n} gambar → 1 file .zip</b>"
         if fmt != "psd":
@@ -639,7 +644,14 @@ class ExportDialog(QDialog):
         else:
             ext, flt = ".zip", "ZIP (*.zip)"
         p0 = self.project.pages[self.files[0][0]]
-        out_dir = self.settings.get("export_dir") or str(Path(p0.output_path or p0.path).parent)
+        out_dir = self.settings.get("export_dir") or str(Path(p0.path).parent)
+        if fmt == "img":
+            d = QFileDialog.getExistingDirectory(self, "Export gambar ke folder", out_dir)
+            if not d:
+                return
+            self.out_path = d
+            self.accept()
+            return
         f, _ = QFileDialog.getSaveFileName(self, "Export As", str(Path(out_dir) / (base + ext)), flt)
         if not f:
             return
