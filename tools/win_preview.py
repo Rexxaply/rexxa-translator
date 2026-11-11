@@ -75,15 +75,43 @@ def main(out):
     pump(app, 1.5)
     from gui.dialogs import SettingsDialog
     dlg = SettingsDialog(w.settings, w, project=w.project)
+    from PySide6.QtCore import QEvent, QObject
+    T0 = [0.0]
+    log = []
+
+    class Spy(QObject):
+        def eventFilter(self, o, e):
+            if o is dlg and e.type() in (QEvent.Paint, QEvent.Show, QEvent.Expose):
+                a = dlg._anim
+                u = None
+                if a is not None:
+                    u = round(dlg._clock.elapsed() / dlg.POP_IN_MS, 2)
+                log.append((round((time.time() - T0[0]) * 1000), str(e.type()).split(".")[-1], u,
+                            dlg.sheet.isVisible(), dlg.testAttribute(Qt.WA_DontShowOnScreen)))
+            return False
+    spy = Spy()
+    app.installEventFilter(spy)
     g = w.frameGeometry()
     box = (g.left(), g.top(), g.right(), g.bottom())
     shots = []
     t0 = time.time()
+    T0[0] = t0
     dlg.show()
+    print("show() selesai dalam", round((time.time() - t0) * 1000), "ms", flush=True)
+    if dlg._anim is not None:
+        pm = dlg._anim["pix"]
+        img = pm.toImage()
+        import numpy as np
+        q = img.convertToFormat(img.Format.Format_RGBA8888)
+        a = np.frombuffer(q.constBits(), np.uint8).reshape(q.height(), q.bytesPerLine())[:, :q.width() * 4]
+        print("foto isi: ukuran", pm.size(), "| rata-rata alfa", round(float(a[:, 3::4].mean()), 1),
+              "| rata-rata terang", round(float(a[:, 0::4].mean()), 1), flush=True)
     while time.time() - t0 < 0.6:
         app.processEvents()
         shots.append((round((time.time() - t0) * 1000), ImageGrab.grab(bbox=box, all_screens=True)))
     print("foto selama membuka:", len(shots), [s_[0] for s_ in shots][:20], flush=True)
+    for row in log[:40]:
+        print("  ev", row, flush=True)
     pick = [shots[i] for i in sorted({min(len(shots) - 1, k) for k in (0, 1, 2, 3, 4, 6, 9, len(shots) - 1)})]
     sw, sh = 550, 360
     sheet = Image.new("RGB", (sw * 4, sh * 2), "black")
