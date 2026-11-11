@@ -407,6 +407,7 @@ class MainWindow(QMainWindow):
         self.m_style = m_sk.addMenu(icon("translate"), "Gaya bahasa")
         self.m_style.aboutToShow.connect(self._fill_style_menu)
         m_sk.addAction(icon("scan"), "Proofread terjemahan…", self.proofread)
+        m_sk.addAction(icon("box"), "Kotak judul (buat / tempel logo judul)…", self.title_box)
         m_sk.addSeparator()
         m_sk.addAction(icon("export"), "Halaman kredit & watermark…", self.edit_credits)
         m_sk.addAction(icon("image"), "Export PSD berlapis…", lambda: self.export_as(fmt="psd"))
@@ -841,6 +842,12 @@ class MainWindow(QMainWindow):
         self.b_del.setObjectName("danger")
         self.b_del.clicked.connect(self.delete_selected)
         s3.lay.addWidget(self.p_kind)
+        self.b_title = QPushButton(icon("wand"), " Pembuat judul / tempel judul…")
+        self.b_title.setToolTip("Buat logo judul dari teks (gaya mirip aslinya) atau tempel judul buatan sendiri "
+                                "(Ctrl+V saat kotak judul dipilih)")
+        self.b_title.clicked.connect(lambda: self.edit_title())
+        self.b_title.setVisible(False)
+        s3.lay.addWidget(self.b_title)
         s3.lay.addWidget(self.p_clean)
         s3.lay.addWidget(self.b_del)
         self.p_kind.currentIndexChanged.connect(self._on_prop_change)
@@ -906,6 +913,7 @@ class MainWindow(QMainWindow):
             "save_as": self.save_project_as,
             "settings": self.edit_settings,
             "export": self.export_as,
+            "paste_title": self.paste_title,
             "translate_page": self.translate_page,
             "translate_all": self.run_all,
             "detect_all": self.detect_all,
@@ -1646,6 +1654,7 @@ class MainWindow(QMainWindow):
             self._color_btn(self.p_stroke_color, b.stroke_color)
             self.p_kind.setCurrentIndex(max(0, self.p_kind.findData(b.kind)))
             self.p_clean.setChecked(b.clean)
+            self.b_title.setVisible(b.kind == "title")
         else:
             self.sections[0].btn.setText("  TERJEMAHAN")
             self.e_src.clear()
@@ -1817,6 +1826,10 @@ class MainWindow(QMainWindow):
         b.max_lines = int(self.p_lines.value())
         b.kind = self.p_kind.currentData()
         b.clean = self.p_clean.isChecked()
+        self.b_title.setVisible(b.kind == "title")
+        if b.kind == "title" and old[1] != "title":       # baru dijadikan kotak judul -> buka pembuat judul
+            b.source = b.source or "[logo judul]"
+            QTimer.singleShot(0, lambda b=b: self.edit_title(b))
         if (b.clean, b.kind) != old:
             self.need_clean.add(self.page().path)
             for cv in (self.cv_src, self.cv_out):
@@ -1986,6 +1999,18 @@ class MainWindow(QMainWindow):
             return
         b = TextBlock(x=int(rect.x()), y=int(rect.y()), w=int(rect.width()), h=int(rect.height()),
                       kind="free", stroke_width=int(self.settings.get("default_stroke", 0)))
+        if getattr(self, "_title_box", False):          # Skill -> Kotak judul
+            self._title_box = False
+            self._snap()
+            b.kind, b.source, b.text_rect = "title", "[logo judul]", [b.x, b.y, b.w, b.h]
+            p.blocks.append(b)
+            self.b_box.setChecked(False)
+            self.cv_src.set_draw_mode(False)
+            self.sel = b
+            self._show_current()
+            self.tabs.setCurrentIndex(0)
+            QTimer.singleShot(0, lambda: self.edit_title(b))
+            return
         self._snap()
         try:
             from core import detector, inpaint
@@ -2847,6 +2872,76 @@ class MainWindow(QMainWindow):
                 w.progress.emit(k, len(idxs))
 
         self._start(job, f"Render ulang {len(idxs)} halaman")
+
+    def title_box(self):
+        """Seret kotak di atas logo judul -> pembuat judul terbuka. Bila kotak judul sudah dipilih: langsung buka."""
+        if not self.page() or self.thread:
+            return
+        if self.sel is not None and self.sel.kind == "title":
+            self.edit_title(self.sel)
+            return
+        self._title_box = True
+        if getattr(self, "tool", "select") != "select":
+            self.set_tool("select")
+        self.b_box.setChecked(True)
+        self.cv_src.set_draw_mode(True)
+        self.status_lbl.setText("Seret kotak di atas logo judul pada gambar ASLI…")
+        self.log("Kotak judul: seret kotak di atas logo / tulisan judul pada gambar asli.")
+
+    def edit_title(self, b=None):
+        b = b or self.sel
+        p = self.page()
+        if not p or b is None or b not in p.blocks or self.thread:
+            return
+        from .titledlg import TitleDialog
+        self._snap()
+        if b.kind != "title":
+            b.kind = "title"
+        d = TitleDialog(self.project, p, b, self.settings, self)
+        ok = d.exec()
+        d.deleteLater()
+        if ok:
+            try:
+                pipeline.save_settings(self.settings)
+            except Exception:
+                pass
+            self._load_props(b)
+            for cv in (self.cv_src, self.cv_out):
+                cv.reload_boxes()
+            self.need_clean.add(p.path)
+            self.render_current()
+            self.log("Judul: gambar buatan sendiri ditempel." if b.title_image else f"Judul: {b.translation}")
+
+    def paste_title(self):
+        """Ctrl+V saat kotak judul dipilih: tempel gambar judul dari clipboard."""
+        b, p = self.sel, self.page()
+        if not p or b is None or b.kind != "title" or self.thread:
+            return
+        cb = QApplication.clipboard()
+        md = cb.mimeData()
+        data = None
+        if md is not None and md.hasImage() and not cb.image().isNull():
+            from PySide6.QtCore import QBuffer, QIODevice
+            buf = QBuffer()
+            buf.open(QIODevice.WriteOnly)
+            cb.image().save(buf, "PNG")
+            data = bytes(buf.data())
+        elif md is not None and md.hasUrls():
+            data = next((u.toLocalFile() for u in md.urls() if u.isLocalFile()), None)
+        if not data:
+            self.log("Clipboard tidak berisi gambar judul.")
+            return
+        from core import titlelogo
+        try:
+            path = titlelogo.store_image(data)
+        except Exception as e:
+            self.log(f"Gambar judul tidak bisa dibaca: {e}")
+            return
+        self._snap()
+        b.title_image = path
+        self.need_clean.add(p.path)
+        self.render_current()
+        self.log("Judul buatan sendiri ditempel ke kotak judul (atur ukurannya lewat 'Pembuat judul').")
 
     def edit_credits(self):
         from .skillsdlg import CreditsDialog

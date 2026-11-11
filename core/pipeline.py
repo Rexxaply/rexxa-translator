@@ -514,13 +514,25 @@ def _saved(path, img):
             pass
 
 
+def _title_image(b) -> str:
+    f = getattr(b, "title_image", "") or ""
+    return f if f and Path(f).exists() else ""
+
+
 def _apply_titles(page: Page, project: Project, settings: dict, final):
-    titles = [b for b in page.blocks if b.kind == "title" and (b.translation or project.series_title).strip()]
+    titles = [b for b in page.blocks if b.kind == "title"
+              and (_title_image(b) or (b.translation or project.series_title).strip())]
     if titles:
         from . import titlelogo
         src = detector.load_image(page.path)
         for b in titles:
             rect = [b.x, b.y, b.w, b.h]
+            img_f = _title_image(b)
+            if img_f:              # judul buatan sendiri (gambar ditempel)
+                final = titlelogo.paste_title(src, img_f, rect, titlelogo.mask_in_rect(src, rect),
+                                              fit=b.title_fit or "contain", scale=float(b.title_scale or 1.0),
+                                              clean=not b.title_keep_bg, onto=final)
+                continue
             final = titlelogo.render_title(src, (b.translation or project.series_title).strip(), rect,
                                            titlelogo.mask_in_rect(src, rect),
                                            b.font or settings.get("font", "") or typeset.default_font(project.target_lang),

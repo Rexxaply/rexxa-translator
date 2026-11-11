@@ -46,6 +46,10 @@ class TextBlock:
     text_rect: list = field(default_factory=list)  # [x,y,w,h] teks asli hasil deteksi (untuk OCR)
     src_h: int = 0            # tinggi huruf teks asli (px); batas ukuran font otomatis
     font_cat: str = ""        # golongan gaya huruf asli (dialog / dialog-miring / narasi ...) untuk memori font
+    title_image: str = ""     # kotak judul: gambar judul buatan sendiri (kosong = dibuat dari teks)
+    title_fit: str = "contain"  # contain (muat utuh) | cover (penuhi, terpotong) | stretch (regangkan)
+    title_scale: float = 1.0  # skala gambar judul di dalam kotak
+    title_keep_bg: bool = False  # True = logo asli TIDAK dihapus sebelum gambar ditempel
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
 
     @property

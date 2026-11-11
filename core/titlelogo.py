@@ -296,3 +296,62 @@ def render_title(img, title: str, rect, mask, font_path: str, upper: bool = True
     region = region * (1 - A[..., None]) + t * A[..., None]
     out[Y0:Y1, X0:X1] = np.clip(region, 0, 255).astype(np.uint8)
     return out
+
+
+# ---------------------------------------------------------------- 4. judul buatan sendiri (gambar)
+
+def paste_title(img, image_path: str, rect, mask, fit: str = "contain", scale: float = 1.0,
+                clean: bool = True, onto=None) -> np.ndarray:
+    """Tempel gambar judul buatan sendiri (PNG transparan / JPG) ke kotak judul.
+    clean: logo asli di kotak dihapus dulu (latar dibuat ulang)."""
+    x, y, w, h = (int(v) for v in rect)
+    base = img if onto is None else onto
+    out = clean_title(base, [x, y, w, h], mask) if clean else base.copy()
+    im = Image.open(image_path).convert("RGBA")
+    iw, ih = im.size
+    if fit == "stretch":
+        nw, nh = w, h
+    else:
+        s = (max if fit == "cover" else min)(w / iw, h / ih)
+        nw, nh = iw * s, ih * s
+    nw, nh = max(1, int(nw * scale)), max(1, int(nh * scale))
+    im = im.resize((nw, nh), Image.LANCZOS)
+    ox, oy = x + (w - nw) // 2, y + (h - nh) // 2
+    if fit == "cover":           # jangan keluar dari kotak
+        cx0, cy0 = max(0, x - ox), max(0, y - oy)
+        im = im.crop((cx0, cy0, min(nw, cx0 + w), min(nh, cy0 + h)))
+        ox, oy = ox + cx0, oy + cy0
+        nw, nh = im.size
+    H, W = out.shape[:2]
+    X0, Y0, X1, Y1 = max(0, ox), max(0, oy), min(W, ox + nw), min(H, oy + nh)
+    if X1 <= X0 or Y1 <= Y0:
+        return out
+    arr = np.asarray(im)[Y0 - oy:Y1 - oy, X0 - ox:X1 - ox].astype(np.float32)
+    a = arr[..., 3:4] / 255.0
+    region = out[Y0:Y1, X0:X1].astype(np.float32)
+    out[Y0:Y1, X0:X1] = np.clip(region * (1 - a) + arr[..., 2::-1] * a, 0, 255).astype(np.uint8)
+    return out
+
+
+def store_image(src) -> str:
+    """Simpan gambar judul (path file / QImage-bytes PNG / PIL Image) ke folder data aplikasi,
+    nama = sidik isi (gambar yang sama tidak disimpan dua kali). Mengembalikan path."""
+    import hashlib
+    import io
+    from .paths import data_dir
+    if isinstance(src, (bytes, bytearray)):
+        im = Image.open(io.BytesIO(src))
+    elif isinstance(src, Image.Image):
+        im = src
+    else:
+        im = Image.open(src)
+    im = im.convert("RGBA")
+    buf = io.BytesIO()
+    im.save(buf, "PNG")
+    data = buf.getvalue()
+    d = data_dir() / "titles"
+    d.mkdir(parents=True, exist_ok=True)
+    f = d / (hashlib.sha1(data).hexdigest()[:16] + ".png")
+    if not f.exists():
+        f.write_bytes(data)
+    return str(f)
