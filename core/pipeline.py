@@ -54,7 +54,8 @@ DEFAULT_SETTINGS = {
     "recent_opened": {},            # {path proyek: waktu terakhir dibuka}          # proyek terakhir (layar awal), terbaru dulu
     "box_mode": "box",              # kotak manual baru: box (kotak saja) | ocr (+ baca teks) | ocr_tr (+ terjemah)
     "output_format": "png",         # png | jpg | webp
-    "output_dir": "",               # kosong = <folder gambar>/translated
+    "output_dir": "",               # kosong = folder kerja tersembunyi (data aplikasi)
+    "work_keep_days": 30,           # folder kerja yang tidak dibuka sekian hari dihapus otomatis (0 = jangan)
     "last_source_lang": "ja",       # bahasa terakhir dipilih di toolbar
     "last_target_lang": "id",
     "update_last_check": "",        # tanggal ISO, cek maks. sekali sehari
@@ -143,7 +144,61 @@ def load_settings() -> dict:
                     case="upper" if s.get("uppercase", True) else "none")
         s["text_presets"] = p
     sync_default_style(s)
+    ensure_engine_presets(s)
     return s
+
+
+# ---------------------------------------------------------------- preset engine terjemahan
+# Satu preset = engine + kunci/alamat/model yang dipakai. Beberapa preset bisa disimpan (mis. "Gemini" dan
+# "OpenRouter"); kalau satu sedang gangguan tinggal pindah preset. Nilai preset aktif juga ditulis ke kunci
+# biasa (translate_engine, llm_model, …) supaya bagian lain aplikasi tidak perlu berubah.
+ENGINE_KEYS = ("translate_engine", "deepl_key", "llm_preset", "llm_base_url", "llm_model", "llm_api_key",
+               "llm_temperature")
+
+
+def engine_values(s: dict) -> dict:
+    return {k: s.get(k, DEFAULT_SETTINGS.get(k)) for k in ENGINE_KEYS}
+
+
+def ensure_engine_presets(s: dict):
+    """Pastikan ada daftar preset; pertama kali dibuat satu preset "Default" dari pengaturan sekarang."""
+    lst = [p for p in (s.get("engine_presets") or []) if isinstance(p, dict) and str(p.get("name", "")).strip()]
+    if not lst:
+        lst = [dict(engine_values(s), name="Default")]
+    s["engine_presets"] = lst
+    if s.get("engine_preset") not in [p["name"] for p in lst]:
+        s["engine_preset"] = lst[0]["name"]
+    return lst
+
+
+def find_engine_preset(s: dict, name: str):
+    for p in s.get("engine_presets") or []:
+        if p.get("name") == name:
+            return p
+    return None
+
+
+def apply_engine_preset(s: dict, name: str) -> bool:
+    """Jadikan preset `name` aktif: nilainya disalin ke pengaturan yang dipakai saat menerjemahkan."""
+    p = find_engine_preset(s, name)
+    if p is None:
+        return False
+    for k in ENGINE_KEYS:
+        if k in p:
+            s[k] = p[k]
+    s["engine_preset"] = name
+    return True
+
+
+def store_engine_preset(s: dict, name: str | None = None):
+    """Simpan nilai engine yang sedang berlaku ke preset (bawaan: preset aktif)."""
+    name = name or s.get("engine_preset") or "Default"
+    p = find_engine_preset(s, name)
+    if p is None:
+        p = {"name": name}
+        s.setdefault("engine_presets", []).append(p)
+    p.update(engine_values(s))
+    return p
 
 
 def save_settings(s: dict):
@@ -151,9 +206,8 @@ def save_settings(s: dict):
 
 
 def output_dir(page: Page, settings: dict) -> Path:
-    d = Path(settings.get("output_dir") or (Path(page.path).parent / "translated"))
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    from .paths import work_dir
+    return work_dir(page.path, settings.get("output_dir") or "")
 
 
 # ---------------------------------------------------------------- tahap per halaman
@@ -506,10 +560,10 @@ def step_clean(page: Page, settings: dict, incremental: bool = True):
 ON_SAVED = None        # diisi tampilan: dipanggil (path, gambar) setelah hasil disimpan
 
 
-def _saved(path, img):
+def _saved(path, img, pending=False):
     if ON_SAVED is not None:
         try:
-            ON_SAVED(path, img)
+            ON_SAVED(path, img, pending) if pending else ON_SAVED(path, img)
         except Exception:
             pass
 
@@ -601,10 +655,15 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
                                 default_bold=bool(settings.get("default_bold", False)),
                                 line_spacing=float(settings.get("line_spacing", 1.2) or 1.2))
     final = _apply_titles(page, project, settings, final)
-    p = output_dir(page, settings) / output_name(page, project, settings)
-    detector.save_image(str(p), final)
-    page.output_path = str(p)
-    _saved(str(p), final)
+    p = str(output_dir(page, settings) / output_name(page, project, settings))
+    page.output_path = p
+    if Path(p).exists():
+        # tampilkan dari memori sekarang, file ditulis di belakang layar (bagian terlama render)
+        _saved(p, final, pending=True)
+        detector.save_image_later(p, final)
+    else:
+        detector.save_image(p, final)
+        _saved(p, final)
     page.status = "selesai"
     return final
 

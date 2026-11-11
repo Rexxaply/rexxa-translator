@@ -6,7 +6,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QGridLayout, QHBoxLayout, QKeySequenceEdit, QLabel,
-                               QMessageBox, QPushButton, QScrollArea, QToolButton, QVBoxLayout, QWidget)
+                               QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QSpinBox,
+                               QToolButton, QVBoxLayout, QWidget)
 
 from core import datastore as DS
 from core import pipeline, translator, typeset
@@ -217,6 +218,7 @@ class DataPanel(QWidget):
         self._card("cache", "Cache gambar & data proses",
                    "Gambar bersih sementara proyek yang terbuka, unduhan update, dan log. Dibuat ulang otomatis.",
                    "Hapus", self._clear_cache)
+        self._work_card()
         self._card("models", "Model AI yang diunduh",
                    "Model OCR & hapus teks. Akan diunduh lagi saat dipakai berikutnya.", "Hapus", self._clear_models)
         self._card("shortcuts", "Shortcut keyboard", "Kembalikan semua pintasan ke default.", "Reset",
@@ -227,6 +229,130 @@ class DataPanel(QWidget):
         self.v.addStretch()
         outer.addWidget(_scroll(inner))
         self.refresh()
+
+    # ---------------------------------------------------------------- folder kerja per chapter
+    def _work_card(self):
+        card = QFrame()
+        card.setObjectName("card")
+        v = QVBoxLayout(card)
+        top = QHBoxLayout()
+        t = QLabel("Hasil kerja per chapter")
+        t.setStyleSheet("font-weight:600;")
+        self.work_total = QLabel("")
+        self.work_total.setStyleSheet("font-weight:600;")
+        top.addWidget(t, 1)
+        top.addWidget(self.work_total)
+        v.addLayout(top)
+        d = QLabel("Gambar jadi & gambar bersih tiap chapter (folder tersembunyi aplikasi). Dipakai saat proyek "
+                   "dibuka lagi untuk diedit / di-export ulang. Kalau dihapus, halaman chapter itu perlu diproses "
+                   "ulang. Gambar yang sudah kamu export tidak ikut terhapus.")
+        d.setWordWrap(True)
+        d.setStyleSheet(DIM + "font-size:8.5pt;")
+        v.addWidget(d)
+        self.work_list = QListWidget()
+        self.work_list.setMinimumHeight(150)
+        self.work_list.setStyleSheet(
+            "QListWidget::indicator { width:14px; height:14px; border:1.5px solid #8a93b3; border-radius:4px; "
+            "background:#1c2130; } QListWidget::indicator:checked { background:#7c6cff; border-color:#9182ff; }")
+        self.work_list.itemChanged.connect(lambda *_: self._work_sel_changed())
+        v.addWidget(self.work_list)
+        row = QHBoxLayout()
+        self.work_all = QPushButton("Centang semua")
+        self.work_all.clicked.connect(self._work_toggle_all)
+        self.work_del = QPushButton("Hapus yang dicentang")
+        self.work_del.setStyleSheet("QPushButton:enabled { background:#e5383b; color:white; border:none; "
+                                    "font-weight:600; } QPushButton:enabled:hover { background:#f25c5f; }")
+        self.work_del.clicked.connect(self._work_delete)
+        row.addWidget(self.work_all)
+        row.addStretch()
+        row.addWidget(self.work_del)
+        v.addLayout(row)
+        auto = QHBoxLayout()
+        auto.addWidget(QLabel("Hapus otomatis bila tidak dibuka lebih dari"))
+        self.work_days = QSpinBox()
+        self.work_days.setRange(0, 365)
+        self.work_days.setSpecialValueText("tidak pernah")
+        self.work_days.setSuffix(" hari")
+        self.work_days.setValue(int(self.settings.get("work_keep_days", 30) or 0))
+        self.work_days.valueChanged.connect(lambda n: self.settings.__setitem__("work_keep_days", int(n)))
+        auto.addWidget(self.work_days)
+        auto.addStretch()
+        v.addLayout(auto)
+        n = QLabel("Dicek setiap aplikasi dibuka. Chapter yang sedang terbuka tidak pernah dihapus otomatis.")
+        n.setWordWrap(True)
+        n.setStyleSheet(DIM + "font-size:8.5pt;")
+        v.addWidget(n)
+        self.v.addWidget(card)
+
+    def _fill_work(self):
+        import time
+        self.work_list.blockSignals(True)
+        self.work_list.clear()
+        cur = DS.project_work_dirs(self.project, self.settings)
+        items = DS.work_dirs()
+        total = 0
+        for w in items:
+            total += w["bytes"]
+            days = int((time.time() - w["used"]) // 86400) if w["used"] else 0
+            when = "hari ini" if days <= 0 else ("kemarin" if days == 1 else f"{days} hari lalu")
+            open_now = Path(w["path"]).resolve() in cur
+            label = (f"{w['series'] + ' › ' if w['series'] else ''}{w['name']}\n"
+                     f"{DS.human(w['bytes'])} · {w['files']} file · dibuka {when}"
+                     + ("  · sedang terbuka" if open_now else ""))
+            it = QListWidgetItem(label)
+            it.setData(Qt.UserRole, str(w["path"]))
+            it.setToolTip(w["source"] or str(w["path"]))
+            it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+            it.setCheckState(Qt.Unchecked)
+            self.work_list.addItem(it)
+        if not items:
+            it = QListWidgetItem("Belum ada hasil kerja tersimpan.")
+            it.setFlags(Qt.NoItemFlags)
+            self.work_list.addItem(it)
+        self.work_list.blockSignals(False)
+        self.work_total.setText(f"{DS.human(total)} · {len(items)} chapter" if items else "Kosong")
+        self._work_sel_changed()
+
+    def _work_checked(self):
+        return [self.work_list.item(i) for i in range(self.work_list.count())
+                if self.work_list.item(i).data(Qt.UserRole) and
+                self.work_list.item(i).checkState() == Qt.Checked]
+
+    def _work_sel_changed(self):
+        n = len(self._work_checked())
+        self.work_del.setEnabled(n > 0)
+        self.work_del.setText(f"Hapus {n} chapter" if n else "Hapus yang dicentang")
+        anyitems = any(self.work_list.item(i).data(Qt.UserRole) for i in range(self.work_list.count()))
+        self.work_all.setEnabled(anyitems)
+
+    def _work_toggle_all(self):
+        rows = [self.work_list.item(i) for i in range(self.work_list.count()) if self.work_list.item(i).data(Qt.UserRole)]
+        on = not all(r.checkState() == Qt.Checked for r in rows)
+        self.work_list.blockSignals(True)
+        for r in rows:
+            r.setCheckState(Qt.Checked if on else Qt.Unchecked)
+        self.work_list.blockSignals(False)
+        self.work_all.setText("Hapus centang" if on else "Centang semua")
+        self._work_sel_changed()
+
+    def _work_delete(self):
+        sel = self._work_checked()
+        if not sel:
+            return
+        cur = DS.project_work_dirs(self.project, self.settings)
+        busy = [s for s in sel if Path(s.data(Qt.UserRole)).resolve() in cur]
+        msg = f"Hapus hasil kerja {len(sel)} chapter?\nHalaman chapter itu perlu diproses ulang bila dibuka lagi."
+        if busy:
+            msg += "\n\nTermasuk chapter yang sedang terbuka — halamannya akan diproses ulang saat dirender."
+        if not self._ask(msg):
+            return
+        failed = DS.delete_work([s.data(Qt.UserRole) for s in sel])
+        if busy and self.project is not None:
+            for pg in self.project.pages:
+                for attr in ("cleaned_path", "output_path"):
+                    if getattr(pg, attr, "") and not Path(getattr(pg, attr)).exists():
+                        setattr(pg, attr, "")
+        self._done(failed, "hasil kerja")
 
     def _card(self, key, title, desc, btn_text, slot, danger=False):
         card = QFrame()
@@ -261,6 +387,7 @@ class DataPanel(QWidget):
         tot = [DS.size_of(p) for p in cp]
         b, c = sum(x[0] for x in tot), sum(x[1] for x in tot)
         self.cards["cache"].setText(f"{DS.human(b)} ({c} file)" if c else "Kosong")
+        self._fill_work()
         mp = DS.model_paths()
         tot = [DS.size_of(p) for _, p in mp]
         b, c = sum(x[0] for x in tot), sum(x[1] for x in tot)
@@ -285,7 +412,7 @@ class DataPanel(QWidget):
             self.refresh()
 
     def _clear_cache(self):
-        if self._ask("Hapus cache gambar & data proses?\nHasil terjemahan (folder translated) tidak dihapus."):
+        if self._ask("Hapus cache gambar & data proses?\nHasil terjemahan di folder kerja tidak dihapus."):
             self._done(DS.clear_cache(self.project, self.settings), "cache")
 
     def _clear_models(self):

@@ -1,8 +1,8 @@
 """Kotak pesan bergaya Rexxa (dipakai untuk SEMUA alert aplikasi).
 
-Tampilan: kartu gelap, lencana ikon bulat berwarna sesuai jenis pesan, judul tebal di tengah,
-keterangan redup di bawahnya, lalu tombol-tombol selebar sama (utama = merah muda penuh,
-bahaya = merah lembut, biasa = abu-abu gelap).
+Tampilan Liquid Glass (lihat gui/glass.py): panel kaca frosted dengan animasi pop-up, lencana ikon bulat
+berwarna sesuai jenis pesan, judul tebal di tengah, keterangan redup, lalu tombol kapsul selebar sama
+(utama = gradasi biru-ungu, bahaya = merah lembut, biasa = kaca).
 
 `MessageBox` adalah pengganti langsung QMessageBox untuk fungsi statis information / warning /
 critical / question, jadi modul lain cukup mengimpor `MessageBox as QMessageBox`.
@@ -10,79 +10,116 @@ critical / question, jadi modul lain cukup mengimpor `MessageBox as QMessageBox`
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QSizePolicy, QVBoxLayout,
-                               QWidget)
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QSizePolicy, QWidget
+
+from .glass import MARGIN, GlassDialog
 
 ACCENT = "#7c6cff"
-KINDS = {   # warna lencana, simbol
-    "info": ("#4f86ff", "i"),
-    "success": ("#06d6a0", "✓"),
-    "warn": ("#ffb020", "!"),
-    "error": ("#ff6e7d", "×"),
-    "question": ("#8e5cf6", "?"),
-    "save": ("#ff9a62", "●"),
+KINDS = {   # warna lencana (atas, bawah), ikon
+    "info": (("#7aa6ff", "#4a74e8"), "info"),
+    "success": (("#5fe3b0", "#16b886"), "check"),
+    "warn": (("#ffd36b", "#f5a524"), "alert"),
+    "error": (("#ff9aa5", "#ec5466"), "close"),
+    "question": (("#b39bff", "#7c5ce6"), "help"),
+    "save": (("#ffc08f", "#f58a4b"), "save"),
 }
 
-STYLE = f"""
-QDialog#rexxaAlert {{ background: #141824; }}
-QWidget#card {{ background: #1a1f2c; border: 1px solid #2b3243; border-radius: 12px; }}
-QLabel#badge {{ border-radius: 20px; font-size: 17pt; font-weight: 800; color: #111; }}
-QLabel#heading {{ font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; color: #f1f4fa; font-size: 11.5pt; font-weight: 700; background: transparent; }}
-QLabel#detail {{ color: #9098b0; font-size: 9pt; background: transparent; }}
-QPushButton {{ min-height: 34px; border-radius: 8px; padding: 0 18px; font-weight: 600; font-size: 9.5pt; }}
-QPushButton#primary {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f86ff, stop:1 #8a63f0); color: white; border: none; }}
-QPushButton#primary:hover {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6596ff, stop:1 #9b78f5); }}
-QPushButton#primary:pressed {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4274e6, stop:1 #7752d8); }}
-QPushButton#danger {{ background: rgba(255, 110, 125, 0.12); color: #ff8a95; border: 1px solid rgba(255, 110, 125, 0.45); }}
-QPushButton#danger:hover {{ background: rgba(255, 110, 125, 0.22); color: #ffb8bf; }}
-QPushButton#neutral {{ background: #2a3142; color: #d5dbea; border: 1px solid #363e52; }}
-QPushButton#neutral:hover {{ background: #343c50; }}
-QPushButton:focus {{ outline: none; }}
+
+class _Badge(QWidget):
+    """Lencana bulat bergaya kaca: gradasi warna, kilau di atas, pendar lembut, ikon putih di tengah."""
+
+    SIZE = 56
+
+    def __init__(self, kind: str):
+        super().__init__()
+        (self.c1, self.c2), name = KINDS.get(kind, KINDS["info"])
+        from .icons import icon
+        self.pix = icon(name, "#ffffff").pixmap(64, 64)
+        self.setFixedSize(self.SIZE, self.SIZE)
+
+    def paintEvent(self, _e):
+        from PySide6.QtCore import QPointF, QRectF
+        from PySide6.QtGui import QBrush, QLinearGradient, QPainter, QPen, QRadialGradient
+        p = QPainter(self)
+        p.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        s = float(self.SIZE)
+        c1, c2 = QColor(self.c1), QColor(self.c2)
+        glow = QRadialGradient(QPointF(s / 2, s / 2 + 2), s / 2)
+        g0 = QColor(c2)
+        g0.setAlpha(110)
+        glow.setColorAt(0.62, g0)
+        glow.setColorAt(1.0, QColor(0, 0, 0, 0))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(glow))
+        p.drawEllipse(QRectF(0, 0, s, s))
+        r = QRectF(7, 6, s - 14, s - 14)
+        g = QLinearGradient(r.topLeft(), r.bottomLeft())
+        g.setColorAt(0, c1)
+        g.setColorAt(1, c2)
+        p.setBrush(QBrush(g))
+        p.setPen(QPen(QColor(255, 255, 255, 120), 1))
+        p.drawEllipse(r)
+        hl = QLinearGradient(r.topLeft(), QPointF(r.left(), r.center().y()))
+        hl.setColorAt(0, QColor(255, 255, 255, 95))
+        hl.setColorAt(1, QColor(255, 255, 255, 0))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(hl))
+        p.drawEllipse(r.adjusted(4, 2, -4, -r.height() * 0.45))
+        ir = QRectF(0, 0, 22, 22)
+        ir.moveCenter(r.center())
+        p.drawPixmap(ir, self.pix, QRectF(self.pix.rect()))
+
+STYLE = """
+QLabel#heading { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; color: #f3f5fb; font-size: 12pt;
+    font-weight: 800; }
+QLabel#detail { color: rgba(228,232,245,0.66); font-size: 9.2pt; }
+QPushButton { min-height: 36px; border-radius: 18px; padding: 0 18px; font-weight: 700; font-size: 9.5pt; }
+QPushButton#primary { color: white; border: 1px solid rgba(255,255,255,0.22);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(111,143,232,0.95), stop:1 rgba(143,120,224,0.95)); }
+QPushButton#primary:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #7d9cf0, stop:1 #9d86ea); }
+QPushButton#primary:pressed { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #5f7fd8, stop:1 #7f68d2); }
+QPushButton#danger { color: #ffb3ba; border: 1px solid rgba(255,120,135,0.40); background: rgba(255,110,125,0.14); }
+QPushButton#danger:hover { background: rgba(255,110,125,0.26); color: #ffd0d5; }
+QPushButton#neutral { color: #e6e9f4; border: 1px solid rgba(255,255,255,0.14);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.14), stop:1 rgba(255,255,255,0.05)); }
+QPushButton#neutral:hover { background: rgba(255,255,255,0.18); }
+QPushButton:focus { outline: none; }
 """
 
 
-class Alert(QDialog):
-    """buttons: [(teks, gaya 'primary'|'danger'|'neutral', nilai_kembali)]. exec_value() -> nilai."""
+class Alert(GlassDialog):
+    """Kotak pesan Liquid Glass. buttons: [(teks, gaya 'primary'|'danger'|'neutral', nilai_kembali)].
+    exec_value() -> nilai tombol yang ditekan (Esc / tutup = escape_value)."""
+
+    POP_IN_MS = 380
 
     def __init__(self, parent, title: str, heading: str, detail: str = "", kind: str = "info",
                  buttons=None, default_index: int = 0, escape_value=None):
-        super().__init__(parent)
+        buttons = buttons or [("OK", "primary", True)]
+        width = 400 if len(buttons) < 3 else 470
+        super().__init__(parent, title or "Rexxa Translator", "", size=(width, 120), resizable=False, header=False)
         self.setObjectName("rexxaAlert")
-        self.setWindowTitle(title or "Rexxa Translator")
-        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
-        self.setStyleSheet(STYLE)
+        self.setStyleSheet(self.styleSheet() + STYLE)
         self.setModal(True)
         self._value = escape_value
         self._escape = escape_value
-        buttons = buttons or [("OK", "primary", True)]
+        self.sheet.layout().setContentsMargins(26, 22, 26, 20)
 
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(14, 14, 14, 14)
-        card = QWidget()
-        card.setObjectName("card")
-        v = QVBoxLayout(card)
-        v.setContentsMargins(24, 22, 24, 20)
-        v.setSpacing(8)
-
-        color, glyph = KINDS.get(kind, KINDS["info"])
-        badge = QLabel(glyph)
-        badge.setObjectName("badge")
-        badge.setFixedSize(40, 40)
-        badge.setAlignment(Qt.AlignCenter)
-        badge.setStyleSheet(f"background: {color};")
+        badge = _Badge(kind)
         brow = QHBoxLayout()
         brow.addStretch()
         brow.addWidget(badge)
         brow.addStretch()
-        v.addLayout(brow)
-        v.addSpacing(4)
+        self.body.addLayout(brow)
+        self.body.addSpacing(2)
 
         h = QLabel(heading)
         h.setObjectName("heading")
         h.setAlignment(Qt.AlignCenter)
         h.setWordWrap(True)
         h.setTextFormat(Qt.PlainText)
-        v.addWidget(h)
+        self.body.addWidget(h)
         if detail:
             d = QLabel(detail)
             d.setObjectName("detail")
@@ -91,11 +128,10 @@ class Alert(QDialog):
             d.setTextInteractionFlags(Qt.TextSelectableByMouse)
             long_text = len(detail) > 160 or detail.count("\n") > 2
             d.setAlignment(Qt.AlignLeft if long_text else Qt.AlignCenter)
-            v.addWidget(d)
-        v.addSpacing(10)
+            self.body.addWidget(d)
+        self.body.addSpacing(8)
+        self.body.addStretch(1)                  # ruang sisa di bawah, bukan di antara judul & keterangan
 
-        row = QHBoxLayout()
-        row.setSpacing(10)
         self._btns = []
         for i, (label, style, value) in enumerate(buttons):
             b = QPushButton(label)
@@ -104,22 +140,23 @@ class Alert(QDialog):
             b.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             b.setMinimumWidth(104)
             b.clicked.connect(lambda _=False, val=value: self._done(val))
-            row.addWidget(b)
+            self.footer.addWidget(b)
             self._btns.append(b)
-        v.addLayout(row)
-        outer.addWidget(card)
         if self._btns:
             self._btns[min(default_index, len(self._btns) - 1)].setDefault(True)
             self._btns[min(default_index, len(self._btns) - 1)].setFocus()
-        self.setMinimumWidth(400 if len(buttons) < 3 else 460)
-        self.setMaximumWidth(620)
+        # tinggi mengikuti isi
+        self.layout().activate()
+        hint = self.sizeHint()
+        self.resize(max(self.width(), min(hint.width(), 640 + 2 * MARGIN)), hint.height())
 
     def _done(self, val):
         self._value = val
         self.accept()
 
     def reject(self):          # Esc / tombol tutup jendela
-        self._value = self._escape
+        if self._closing is None:
+            self._value = self._escape
         super().reject()
 
     def exec_value(self):

@@ -56,7 +56,7 @@ def cache_paths(project=None, settings: dict | None = None) -> list[Path]:
         seen = set()
         for pg in project.pages:
             try:
-                d = Path(settings.get("output_dir") or (Path(pg.path).parent / "translated")) / ".cache"
+                d = paths.work_dir(pg.path, (settings or {}).get("output_dir") or "", create=False) / ".cache"
             except Exception:
                 continue
             if d not in seen and d.exists():
@@ -127,3 +127,84 @@ def factory_reset() -> list[str]:
     from . import translator
     translator.clear_cache()
     return failed
+
+
+# ---------------------------------------------------------------- folder kerja per chapter
+
+def work_root() -> Path:
+    return paths.data_dir() / "work"
+
+
+def _last_used(d: Path) -> float:
+    for f in (d / ".used", d):
+        try:
+            return f.stat().st_mtime
+        except OSError:
+            pass
+    return 0.0
+
+
+def work_dirs() -> list[dict]:
+    """Folder kerja tiap chapter: {path, name, source, bytes, files, used} — terbaru dulu."""
+    out = []
+    root = work_root()
+    if not root.exists():
+        return out
+    for d in root.iterdir():
+        if not d.is_dir():
+            continue
+        try:
+            src = (d / ".source").read_text(encoding="utf-8").strip()
+        except OSError:
+            src = ""
+        b, c = size_of(d)
+        name = Path(src).name if src else d.name.rsplit("-", 1)[0]
+        parent = Path(src).parent.name if src else ""
+        out.append({"path": d, "name": name, "series": parent, "source": src, "bytes": b, "files": c,
+                    "used": _last_used(d)})
+    out.sort(key=lambda x: -x["used"])
+    return out
+
+
+def project_work_dirs(project, settings: dict | None = None) -> set:
+    """Folder kerja proyek yang sedang terbuka (tidak boleh dihapus otomatis)."""
+    out = set()
+    if project is None or (settings or {}).get("output_dir"):
+        return out
+    for pg in project.pages:
+        try:
+            out.add(paths.work_dir(pg.path, create=False).resolve())
+        except Exception:
+            pass
+    return out
+
+
+def touch_project(project, settings: dict | None = None):
+    for d in project_work_dirs(project, settings):
+        if d.exists():
+            paths.touch_work(d)
+
+
+def delete_work(dirs) -> list[str]:
+    from . import detector
+    detector.flush_writes(15)
+    failed = []
+    for d in dirs:
+        failed += remove(Path(d))
+    return failed
+
+
+def auto_cleanup(days: int, protect=()) -> tuple[int, int]:
+    """Hapus folder kerja yang tidak dipakai lebih dari `days` hari. -> (jumlah folder, byte dibebaskan)."""
+    import time
+    if not days or days <= 0:
+        return 0, 0
+    limit = time.time() - days * 86400
+    keep = {Path(p).resolve() for p in protect}
+    n = freed = 0
+    for w in work_dirs():
+        if w["used"] and w["used"] < limit and Path(w["path"]).resolve() not in keep:
+            if not remove(w["path"]):
+                n += 1
+                freed += w["bytes"]
+    return n, freed

@@ -202,13 +202,15 @@ class MainWindow(QMainWindow):
         self._loading = False
         self._render_after_job = False
 
-        self.render_timer = QTimer(self, singleShot=True, interval=450)
+        self.render_timer = QTimer(self, singleShot=True, interval=250)
         self.render_timer.timeout.connect(self._auto_render)
         # hasil render langsung diserahkan ke tampilan (tanpa membaca ulang file dari disk)
         from core import perf
         from . import imgcache
         imgcache.MAX_MB = 60 if perf.low_end(self.settings) else 160
         pipeline.ON_SAVED = imgcache.put_np
+        from core import detector as _det
+        _det.ON_WRITTEN = imgcache.put_np            # file selesai ditulis -> kunci cache disamakan
         try:
             perf.apply(self.settings)       # batas cache & thread juga berlaku untuk edit / render biasa
         except Exception:
@@ -359,6 +361,9 @@ class MainWindow(QMainWindow):
 
         # tombol utama: satu klik = deteksi + OCR + terjemah + render
         m_go = QMenu(self)
+        self.m_engine = m_go.addMenu(icon("translate"), "Preset engine")
+        self.m_engine.aboutToShow.connect(self._fill_engine_menu)
+        m_go.addSeparator()
         m_go.addAction(icon("zapall"), "Terjemahkan SEMUA halaman  (F6)", self.run_all)
         m_go.addAction(icon("zap"), "Terjemahkan ulang halaman ini dari awal (deteksi ulang)",
                        lambda: self.run_stages(["detect", "ocr", "translate", "render"]))
@@ -408,7 +413,7 @@ class MainWindow(QMainWindow):
         m_exp = QMenu(self)
         self.a_export_as = m_exp.addAction(icon("export"), "Export As…  (pratinjau, PDF / CBZ / ZIP)", self.export_as)
         m_exp.addAction(icon("project"), "Export skrip terjemahan (.txt)…", self.export_script)
-        m_exp.addAction(icon("folderout"), "Buka folder hasil", self.open_output_folder)
+        m_exp.addAction(icon("folderout"), "Buka folder kerja (hasil sementara)", self.open_output_folder)
         b = tool_btn("export", "Export hasil (Ctrl+E = Export As…)")
         b.setMenu(m_exp)
         b.setPopupMode(QToolButton.InstantPopup)
@@ -497,6 +502,7 @@ class MainWindow(QMainWindow):
             other = self.cv_out if cv is self.cv_src else self.cv_src
             cv.block_selected.connect(self._on_canvas_select)
             cv.block_toggled.connect(self._on_canvas_toggle)
+            cv.nudge_key.connect(self._nudge)
             cv.edit_started.connect(self._on_edit_started)
             cv.block_moving.connect(lambda b, o=other: o.reload_boxes())
             cv.block_geometry_changed.connect(self._on_geom_changed)
@@ -815,7 +821,8 @@ class MainWindow(QMainWindow):
         for ico, dx, dy, tip in (("mv_left", -1, 0, "Geser kiri"), ("mv_up", 0, -1, "Geser atas"),
                                  ("mv_down", 0, 1, "Geser bawah"), ("mv_right", 1, 0, "Geser kanan"),
                                  ("mv_reset", 0, 0, "Kembalikan ke posisi semula")):
-            b = mini("", tip + (" (Shift = 10 px)" if dx or dy else ""), checkable=False, w=24, ico=ico)
+            b = mini("", tip + (" — atau tombol panah keyboard setelah klik balon (Shift = 10 px)" if dx or dy else ""),
+                     checkable=False, w=24, ico=ico)
             b.setAutoRepeat(bool(dx or dy))
             b.setAutoRepeatDelay(350)
             b.setAutoRepeatInterval(60)
@@ -1283,6 +1290,11 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(400, lambda: self.render_current(quiet=True))
         self._history = {}
         self._saved_sig = None                     # dihitung ulang: proyek yang baru dibuka = tersimpan
+        try:
+            from core import datastore
+            datastore.touch_project(self.project, self.settings)   # dibuka = masih dipakai (tidak dibersihkan)
+        except Exception:
+            pass
         self._warm_up_ai()
         self.src.setCurrentIndex(max(0, self.src.findData(self.project.source_lang)))
         self.tgt.setCurrentIndex(max(0, self.tgt.findData(self.project.target_lang)))
@@ -1346,53 +1358,116 @@ class MainWindow(QMainWindow):
         return True
 
     # ------------------------------------------------------------------ animasi tombol simpan
-    SAVE_TURN_MS = 420      # 1 putaran
-    SAVE_MIN_TURNS = 2
+    # Gerak dengan kecepatan yang menyambung (tanpa sentakan):
+    #   putaran 1  : mulai pelan lalu makin cepat (ease-in)
+    #   tengah     : kecepatan tetap selama penyimpanan belum selesai
+    #   putaran akhir: melambat halus sampai berhenti tepat tegak (ease-out)
+    #   penutup    : ikon "mengembang" sedikit lalu warnanya memudar kembali normal
+    # Kecepatan di tiap sambungan sama persis -> tidak terlihat patah. Minimal 2 putaran.
+    SAVE_TURN_MS = 480                   # satu putaran di kecepatan penuh (tempo santai, mirip Translator++)
+    SAVE_ACCEL_DEG = 180.0               # setengah putaran pertama: mulai lembut lalu makin cepat
+    SAVE_DECEL_DEG = 270.0               # ¾ putaran terakhir: melambat panjang & halus (ease-out ala iOS)
+    SAVE_SETTLE_MS = 380                 # mengembang lembut + warna kembali normal
+
+    def _save_angle(self, t: float):
+        """Sudut ikon pada waktu t (ms) -> (sudut, selesai_putaran). Kecepatan menyambung di semua fase."""
+        w = 360.0 / self.SAVE_TURN_MS                      # derajat per ms
+        A, D = self.SAVE_ACCEL_DEG, self.SAVE_DECEL_DEG
+        ta = 2 * A / w                                     # durasi fase awal (ease-in kuadrat)
+        tout = 3 * D / w                                   # durasi fase akhir (ease-out kubik)
+
+        def run(tt):                                       # sudut tanpa fase akhir
+            return A * (tt / ta) ** 2 if tt <= ta else A + (tt - ta) * w
+        st = self._save_state
+        if st["final_at"] is None and self._save_done:
+            # fase akhir dimulai di sudut yang membuat ikon berhenti TEPAT tegak, minimal 2 putaran total
+            now = run(t)
+            end = 720.0
+            while end - D < max(now, A):
+                end += 360.0
+            start = end - D
+            st["final_at"], st["final_from"] = ta + (start - A) / w, start
+        fa = st["final_at"]
+        if fa is not None and t >= fa:
+            u = min(1.0, (t - fa) / tout)
+            return st["final_from"] + D * (1 - (1 - u) ** 3), u >= 1.0
+        return run(t), False
 
     def _spin_save_start(self):
-        """Ikon simpan berputar selama menyimpan (minimal 2 putaran), lalu kembali normal."""
-        from PySide6.QtCore import QEasingCurve, QVariantAnimation
-        from PySide6.QtGui import QPainter, QTransform
+        """Ikon simpan berputar halus selama menyimpan (minimal 2 putaran), lalu kembali normal."""
+        from PySide6.QtCore import QElapsedTimer
         self._spin_save_stop()
-        size = 40
-        base = icon("save", "#9182ff").pixmap(QSize(size, size))
+        btn = self.b_save
+        isz = btn.iconSize()
+        dpr = max(1.0, btn.devicePixelRatioF())
+        hi = QSize(int(isz.width() * dpr * 3), int(isz.height() * dpr * 3))   # sumber resolusi tinggi
+        self._save_src = {"acc": icon("save", "#9182ff").pixmap(hi), "norm": icon("save").pixmap(hi)}
+        self._save_geo = (isz, dpr)
+        self._save_hi = hi
         self._save_done = False
-        anim = QVariantAnimation(self)
-        anim.setStartValue(0.0)
-        anim.setEndValue(360.0)
-        anim.setDuration(self.SAVE_TURN_MS)
-        anim.setEasingCurve(QEasingCurve.Linear)
-        anim.setLoopCount(-1)
+        self._save_state = {"final_at": None, "final_from": 0.0, "settle_at": None}
+        self._save_clock = QElapsedTimer()
+        self._save_clock.start()
+        t = QTimer(self)
+        t.setTimerType(Qt.PreciseTimer)
+        t.setInterval(8)                    # ~120 fps, mengikuti refresh layar
+        t.timeout.connect(self._save_tick)
+        self._save_anim = t
+        btn.setEnabled(True)
+        self._save_tick()
+        t.start()
 
-        def frame(v):
-            pm = QPixmap(base.size())
-            pm.setDevicePixelRatio(base.devicePixelRatio())
-            pm.fill(Qt.transparent)
-            p = QPainter(pm)
-            p.setRenderHint(QPainter.SmoothPixmapTransform)
-            w, h = base.width() / base.devicePixelRatio(), base.height() / base.devicePixelRatio()
-            p.setTransform(QTransform().translate(w / 2, h / 2).rotate(float(v)).translate(-w / 2, -h / 2))
-            p.drawPixmap(0, 0, base)
-            p.end()
-            self.b_save.setIcon(QIcon(pm))
+    def _save_frame(self, angle: float, scale: float = 1.0, mix: float = 0.0) -> QIcon:
+        """Gambar ikon diputar (sudut), diperbesar (scale) & dicampur ke warna normal (mix 0..1)."""
+        from PySide6.QtGui import QPainter
+        isz, dpr = self._save_geo
+        pm = QPixmap(int(isz.width() * dpr), int(isz.height() * dpr))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        w, h = isz.width(), isz.height()
+        p.translate(w / 2, h / 2)
+        p.rotate(angle % 360.0)
+        p.scale(scale, scale)
+        tgt = QRectF(-w / 2, -h / 2, w, h)
+        for key, op in (("acc", 1.0 - mix), ("norm", mix)):
+            if op > 0.001:
+                p.setOpacity(op)
+                p.drawPixmap(tgt, self._save_src[key], QRectF(self._save_src[key].rect()))
+        p.end()
+        return QIcon(pm)
 
-        def loop(n):          # n = jumlah putaran yang sudah selesai
-            if self._save_done and n >= self.SAVE_MIN_TURNS:
-                self._spin_save_stop()
-
-        anim.valueChanged.connect(frame)
-        anim.currentLoopChanged.connect(loop)
-        self._save_anim = anim
-        self.b_save.setEnabled(True)
-        anim.start()
+    def _save_tick(self):
+        if getattr(self, "_save_anim", None) is None:
+            return
+        t = float(self._save_clock.elapsed())
+        st = self._save_state
+        if st["settle_at"] is None:
+            ang, done = self._save_angle(t)
+            if not done:
+                self.b_save.setIcon(self._save_frame(ang))
+                return
+            st["settle_at"] = t
+            # warna akhir = tampilan tombol setelah tersimpan (abu-abu bila tidak ada perubahan lagi)
+            mode = QIcon.Mode.Normal if self._dirty else QIcon.Mode.Disabled
+            self._save_src["norm"] = icon("save_dirty" if self._dirty else "save").pixmap(self._save_hi, mode)
+        u = min(1.0, (t - st["settle_at"]) / self.SAVE_SETTLE_MS)
+        import math
+        e = 1 - (1 - u) ** 3                                  # ease-out
+        scale = 1.0 + 0.09 * math.sin(math.pi * e)           # mengembang lembut lalu kembali
+        mix = e * e * (3 - 2 * e)                            # warna memudar halus ke normal
+        self.b_save.setIcon(self._save_frame(0.0, scale, mix))
+        if u >= 1.0:
+            self._spin_save_stop()
 
     def _spin_save_stop(self):
-        anim = getattr(self, "_save_anim", None)
-        if anim is None:
+        t = getattr(self, "_save_anim", None)
+        if t is None:
             return
         self._save_anim = None
-        anim.stop()
-        anim.deleteLater()
+        t.stop()
+        t.deleteLater()
         self.b_save.setIcon(icon("save_dirty" if self._dirty else "save"))
         self._refresh_state()
 
@@ -3240,7 +3315,7 @@ class MainWindow(QMainWindow):
             return
         cfg = d.config()
         self.settings["export_opts"] = d.options()
-        self.settings["export_dir"] = str(Path(cfg["out"]).parent)
+        self.settings["export_dir"] = str(Path(cfg["out"]) if cfg["fmt"] == "img" else Path(cfg["out"]).parent)
         if cfg["meta"].get("translator"):
             self.settings["export_translator"] = cfg["meta"]["translator"]
         pipeline.save_settings(self.settings)
@@ -3262,6 +3337,8 @@ class MainWindow(QMainWindow):
                 w.log.emit(f"CBZ {jenis}{extra}: {r['files']} gambar · {out}")
             elif cfg["fmt"] == "psd":
                 w.log.emit(f"PSD berlapis: {r['files']} halaman · {out}")
+            elif cfg["fmt"] == "img":
+                w.log.emit(f"Gambar: {r['files']} file → {out}")
             else:
                 w.log.emit(f"ZIP: {r['files']} gambar · {out}")
 
@@ -3274,6 +3351,51 @@ class MainWindow(QMainWindow):
         if f:
             pipeline.export_text(self.project, f)
             self.log(f"Skrip diekspor: {f}")
+
+    def _fill_engine_menu(self):
+        """Daftar preset engine di menu tombol Terjemahkan: klik = langsung pindah engine / model."""
+        from PySide6.QtGui import QActionGroup
+        m = self.m_engine
+        m.clear()
+        pipeline.ensure_engine_presets(self.settings)
+        grp = QActionGroup(m)
+        names = {"google": "Google", "deepl": "DeepL", "llm": "LLM"}
+        cur = self.settings.get("engine_preset")
+        for p in self.settings["engine_presets"]:
+            eng = p.get("translate_engine", "google")
+            detail = names.get(eng, eng) + (f" · {p.get('llm_model', '')}" if eng == "llm" and p.get("llm_model") else "")
+            a = m.addAction(f"{p['name']}    —  {detail}")
+            a.setCheckable(True)
+            a.setChecked(p["name"] == cur)
+            grp.addAction(a)
+            a.triggered.connect(lambda _=False, n=p["name"]: self.use_engine_preset(n))
+        m.addSeparator()
+        m.addAction(icon("settings"), "Atur preset…", self._open_engine_settings)
+
+    def use_engine_preset(self, name: str):
+        if not pipeline.apply_engine_preset(self.settings, name):
+            return
+        pipeline.save_settings(self.settings)
+        eng = self.settings.get("translate_engine")
+        model = f" ({self.settings.get('llm_model')})" if eng == "llm" else ""
+        self.log(f"Preset engine: {name} — {eng}{model}")
+        self.status_lbl.setText(f"Preset engine dipakai: {name}")
+
+    def _open_engine_settings(self):
+        self.settings["_settings_tab"] = 1          # langsung ke halaman Terjemahan
+        self.edit_settings()
+
+    def auto_clean_work(self):
+        """Hapus folder kerja chapter yang lama tidak dibuka (Pengaturan → Data)."""
+        try:
+            from core import datastore
+            days = int(self.settings.get("work_keep_days", 30) or 0)
+            n, freed = datastore.auto_cleanup(days, datastore.project_work_dirs(self.project, self.settings))
+            if n:
+                self.log(f"Pembersihan otomatis: {n} folder kerja chapter yang tidak dibuka > {days} hari dihapus "
+                         f"({datastore.human(freed)}).")
+        except Exception as e:
+            self.log(f"Pembersihan folder kerja dilewati: {e}")
 
     def open_output_folder(self):
         p = self.page() or (self.project.pages[0] if self.project.pages else None)
@@ -3300,6 +3422,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, e):
         if getattr(self, "_closing_confirmed", False) or self.confirm_unsaved():
+            from core import detector
+            detector.flush_writes(30)           # hasil render terakhir benar-benar tersimpan
             e.accept()
         else:
             e.ignore()
@@ -3402,7 +3526,7 @@ QMenu::item { padding: 6px 18px 6px 10px; border-radius: 4px; }
 QMenu::item:selected { background: #7c6cff; color: white; }
 QMenu::separator { height: 1px; background: #343c50; margin: 4px 6px; }
 QCheckBox { spacing: 8px; background: transparent; }
-QToolTip { background: #202636; color: #e3e8f3; border: 1px solid #343c50; padding: 4px; }
+QToolTip { background: #1f2434; color: #e9ecf6; border: 1px solid rgba(170,160,255,0.35); border-radius: 10px; padding: 7px 10px; font-size: 9pt; }
 """
 
 
@@ -3460,4 +3584,5 @@ def run():
     w.show()
     if len(sys.argv) > 1:
         w._load_paths(sys.argv[1:])
+    QTimer.singleShot(4000, w.auto_clean_work)
     sys.exit(app.exec())

@@ -28,6 +28,9 @@ def load_image(path: str) -> np.ndarray:
     Gambar yang baru dibuka disimpan sebentar di memori: satu halaman dibaca 4-6 kali selama
     deteksi -> OCR -> font -> hapus teks -> render, jadi tidak perlu di-decode ulang tiap kali.
     Selalu mengembalikan SALINAN (pemanggil boleh mengubahnya)."""
+    pend = pending_image(path)          # hasil render yang belum selesai ditulis ke disk
+    if pend is not None:
+        return pend.copy()
     try:
         st = os.stat(path)
         key = (st.st_mtime_ns, st.st_size)
@@ -78,6 +81,78 @@ def save_image(path: str, img: np.ndarray, fast: bool = False):
     if not ok:
         raise IOError(f"Gagal menyimpan {path}")
     buf.tofile(path)
+
+
+# ---------------------------------------------------------------- tulis di belakang layar
+# Menyimpan PNG halaman penuh (±0,15–0,4 dtk) adalah bagian TERLAMA saat mengedit teks. Hasil render
+# langsung ditampilkan dari memori, file-nya ditulis oleh thread terpisah. Edit beruntun pada halaman
+# yang sama hanya menulis versi terakhir.
+_W_COND = threading.Condition()
+_PENDING: dict = {}            # path -> gambar yang menunggu ditulis
+_BUSY = [None]                 # (path, gambar) yang sedang ditulis
+_WRITER = [None]
+ON_WRITTEN = None              # dipanggil (path, gambar) setelah file benar-benar tertulis
+
+
+def pending_image(path: str):
+    with _W_COND:
+        img = _PENDING.get(path)
+        if img is None and _BUSY[0] is not None and _BUSY[0][0] == path:
+            img = _BUSY[0][1]
+        return img
+
+
+def _writer_loop():
+    while True:
+        with _W_COND:
+            while not _PENDING:
+                _W_COND.wait()
+            path = next(iter(_PENDING))
+            img = _PENDING.pop(path)
+            _BUSY[0] = (path, img)
+        try:
+            save_image(path, img)
+            with _W_COND:
+                newer = path in _PENDING
+            if not newer:
+                remember_image(path, img)
+                if ON_WRITTEN is not None:
+                    try:
+                        ON_WRITTEN(path, img)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        with _W_COND:
+            _BUSY[0] = None
+            _W_COND.notify_all()
+
+
+def save_image_later(path: str, img: np.ndarray) -> bool:
+    """Tulis gambar di belakang layar. File yang belum ada ditulis langsung (False)."""
+    if not os.path.exists(path):
+        save_image(path, img)
+        return False
+    with _W_COND:
+        _PENDING[path] = img
+        if _WRITER[0] is None or not _WRITER[0].is_alive():
+            _WRITER[0] = threading.Thread(target=_writer_loop, name="rexxa-writer", daemon=True)
+            _WRITER[0].start()
+        _W_COND.notify_all()
+    return True
+
+
+def flush_writes(timeout: float = 60.0) -> bool:
+    """Tunggu semua file selesai ditulis (sebelum export / menutup aplikasi)."""
+    import time
+    end = time.monotonic() + timeout
+    with _W_COND:
+        while _PENDING or _BUSY[0] is not None:
+            left = end - time.monotonic()
+            if left <= 0:
+                return False
+            _W_COND.wait(min(left, 0.2))
+    return True
 
 
 # ---------------------------------------------------------------- bubble (OpenCV)

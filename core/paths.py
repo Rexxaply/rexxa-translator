@@ -65,3 +65,32 @@ def migrate_old_data():
             shutil.copy2(old, new)
         except OSError:
             pass
+
+
+def work_dir(image_path: str, custom: str = "", create: bool = True) -> Path:
+    """Folder kerja (hasil render & gambar bersih) untuk satu chapter.
+    Bawaan: tersembunyi di folder data aplikasi, jadi folder chapter tetap bersih —
+    gambar baru keluar ke folder pilihan saat Export. Bila 'Folder hasil kerja' diisi, pakai itu."""
+    if custom:
+        d = Path(custom)
+    else:
+        import hashlib
+        src = Path(image_path).resolve().parent
+        h = hashlib.sha1(str(src).lower().encode("utf-8")).hexdigest()[:10]
+        name = "".join(c for c in src.name if c.isalnum() or c in " ._-()").strip()[:60] or "chapter"
+        d = data_dir() / "work" / f"{name}-{h}"
+    if create:
+        d.mkdir(parents=True, exist_ok=True)
+        if not custom:
+            touch_work(d, Path(image_path).resolve().parent)
+    return d
+
+
+def touch_work(d: Path, source: Path | None = None):
+    """Catat kapan folder kerja terakhir dipakai (untuk pembersihan otomatis) + asal chapternya."""
+    try:
+        if source is not None and not (d / ".source").exists():
+            (d / ".source").write_text(str(source), encoding="utf-8")
+        (d / ".used").write_text("", encoding="utf-8")
+    except OSError:
+        pass
