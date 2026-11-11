@@ -41,6 +41,25 @@ def _edges(gray: np.ndarray) -> np.ndarray:
     return cv2.Canny(g, 40, 100) > 0
 
 
+def structure(gray: np.ndarray, L: int = 15) -> np.ndarray:
+    """Garis gelap (tepi balon, tepi kotak, garis gambar) -- ruas lurus >= L px yang tipis.
+    Butiran raster (titik terpisah) dan noda / bercak tebal tidak termasuk."""
+    dark = (gray < 110).astype(np.uint8)
+    if not dark.any():
+        return np.zeros(gray.shape, bool)
+    out = np.zeros_like(dark)
+    c = L // 2
+    for ang in range(0, 180, 15):
+        k = np.zeros((L, L), np.uint8)
+        dx, dy = np.cos(np.radians(ang)) * c, np.sin(np.radians(ang)) * c
+        cv2.line(k, (int(round(c - dx)), int(round(c - dy))), (int(round(c + dx)), int(round(c + dy))), 1, 1)
+        out |= cv2.morphologyEx(dark, cv2.MORPH_OPEN, k)
+    # bagian tebal (bercak / noda / area hitam) bukan garis
+    thick = cv2.distanceTransform(dark, cv2.DIST_L2, 3) > 3.5
+    thick = cv2.dilate(thick.astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
+    return (out > 0) & ~thick
+
+
 def smoothness(img: np.ndarray, mask: np.ndarray, ring_px: int | None = None, detail: dict | None = None) -> float:
     """Skor kemulusan area `mask` di gambar `img` dibanding latar sekitarnya (0..1)."""
     m8 = (mask > 0).astype(np.uint8)
@@ -62,6 +81,11 @@ def smoothness(img: np.ndarray, mask: np.ndarray, ring_px: int | None = None, de
         return 1.0
     g = _gray(img).astype(np.float32)
     hf = _hf(g)
+    # garis / bentuk gelap (tepi balon, kotak) tidak dinilai: itu bagian gambar, bukan cacat
+    struct = cv2.dilate(structure(g).astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+    m2, ring2 = m & ~struct, ring & ~struct
+    if m2.sum() >= 12 and ring2.sum() >= 20:
+        m, ring = m2, ring2
     gi, gr = g[m], g[ring]
 
     def mad(v):
@@ -75,11 +99,12 @@ def smoothness(img: np.ndarray, mask: np.ndarray, ring_px: int | None = None, de
     si, sr = mad(gi), mad(gr)
     d_std = abs(np.log((si + 4.0) / (sr + 4.0))) / 1.0
     # sambungan: loncatan terang tepat di tepi area dibanding variasi biasa di latar
-    edge = _ring(m.astype(np.uint8) * 255, 2) | (m & ~(cv2.erode(m.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0))
+    edge = (_ring(m.astype(np.uint8) * 255, 2) | (m & ~(cv2.erode(m.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0))) & ~struct
     sm = cv2.GaussianBlur(g, (0, 0), 1.5)
     gx, gy = cv2.Sobel(sm, cv2.CV_32F, 1, 0), cv2.Sobel(sm, cv2.CV_32F, 0, 1)
     gm = np.hypot(gx, gy)
-    d_seam = max(0.0, float(np.median(gm[edge])) / (float(np.median(gm[ring])) + 6.0) - 1.15) / 0.8
+    d_seam = (max(0.0, float(np.median(gm[edge])) / (float(np.median(gm[ring])) + 6.0) - 1.15) / 0.8
+              if edge.sum() >= 10 else 0.0)
     # noda besar di dalam area (bercak gelap / terang yang tidak ada di latar)
     blob = (np.abs(cv2.GaussianBlur(g, (0, 0), 3.0) - mr) > max(35.0, sr * 1.6 + 10)) & m
     ring_blob = (np.abs(cv2.GaussianBlur(g, (0, 0), 3.0) - mr) > max(35.0, sr * 1.6 + 10)) & ring
@@ -97,7 +122,7 @@ def smoothness(img: np.ndarray, mask: np.ndarray, ring_px: int | None = None, de
 
 
 def find_source(img: np.ndarray, mask: np.ndarray, avoid: np.ndarray | None = None,
-                search: int | None = None, low_end: bool = False):
+                search: int | None = None, low_end: bool = False, strict: bool = True):
     """Posisi (dx, dy) potongan halaman yang paling cocok untuk menambal `mask`:
     tepi sekitarnya mirip, isinya bersih dan teksturnya mirip latar. None bila tidak ada."""
     H, W = mask.shape[:2]
@@ -210,7 +235,7 @@ def find_source(img: np.ndarray, mask: np.ndarray, avoid: np.ndarray | None = No
             + (np.log((float(np.median(hi)) + 2) / (ref_hf + 2)) / 0.6) ** 2 \
             + (np.log((gstd + 4) / (ref_std + 4)) / 0.7) ** 2
         ce = float(ed[qy:qy + th, qx:qx + tw][inner].mean())
-        if ce > ref_ed * 1.5 + 0.02:
+        if ce > (ref_ed * 1.25 + 0.01 if strict else ref_ed * 1.6 + 0.03):
             continue                     # sumber berisi garis / bentuk yang tidak ada di sekitar area
         pen += (max(0.0, ce - ref_ed) / 0.02) ** 2
         score = d / (ref_std ** 2 + 60.0) + pen
@@ -278,7 +303,7 @@ def apply_patch(img: np.ndarray, mask: np.ndarray, offset) -> np.ndarray:
 TILE = 56          # area lebih besar dari ini ditambal per ubin (seperti menambal sedikit demi sedikit)
 
 
-def _patch_tiles(img, mask, avoid, low_end):
+def _patch_tiles(img, mask, avoid, low_end, strict=True):
     """Tambal area besar per ubin, dari tepi ke tengah: setiap ubin dicocokkan dengan tepi yang sudah
     benar (latar asli atau ubin yang baru ditambal)."""
     out = img.copy()
@@ -309,7 +334,7 @@ def _patch_tiles(img, mask, avoid, low_end):
         # bagian yang belum ditambal jangan dipakai sebagai pembanding / sumber
         av2 = left.copy() if av is None else (av | left)
         av2[tmask > 0] = 0
-        off = find_source(out, tmask, av2, low_end=low_end)
+        off = find_source(out, tmask, av2, low_end=low_end, strict=strict)
         if off is not None:
             cand = apply_patch(out, tmask, off)
             if smoothness(cand, tmask) >= smoothness(out, tmask) - 0.02:
@@ -348,11 +373,11 @@ def _patch_region_local(img, mask, avoid, force, low_end):
     if ys.size == 0:
         return img, before, before, False
     if max(ys.max() - ys.min(), xs.max() - xs.min()) + 1 > TILE * 1.4:
-        out, ok = _patch_tiles(img, mask, avoid, low_end)
+        out, ok = _patch_tiles(img, mask, avoid, low_end, strict=not force)
         if not ok:
             return img, before, before, False
     else:
-        off = find_source(img, mask, avoid, low_end=low_end)
+        off = find_source(img, mask, avoid, low_end=low_end, strict=not force)
         if off is None:
             return img, before, before, False
         out = apply_patch(img, mask, off)
@@ -386,6 +411,9 @@ def auto_patch(original: np.ndarray, cleaned: np.ndarray, avoid_rects=(), low_en
         avoid[max(0, y):max(0, y + h), max(0, x):max(0, x + w)] = 1
     out = cleaned
     cands = []
+    # garis yang memang ada di gambar asli dan masih ada di hasil: dilindungi
+    protect = structure(_gray(original)) & structure(_gray(cleaned))
+    protect = cv2.dilate(protect.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
     for i in range(1, n):
         x, y, w, h, a = st[i]
         if a < 40 or w * h > 0.25 * H * W or max(w, h) > 320:
@@ -394,6 +422,9 @@ def auto_patch(original: np.ndarray, cleaned: np.ndarray, avoid_rects=(), low_en
         m[y:y + h, x:x + w] = (lbl[y:y + h, x:x + w] == i) & diff[y:y + h, x:x + w]
         m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
         m = cv2.dilate(m, np.ones((3, 3), np.uint8))
+        m[protect] = 0                       # garis asli (tepi balon / kotak) tidak pernah ditimpa
+        if m.sum() < 30:
+            continue
         sc = smoothness(out, m)
         if sc < GOOD:
             cands.append((sc, m))

@@ -603,6 +603,23 @@ def _outline_only(inside: np.ndarray, stm: np.ndarray, lh: float) -> bool:
     return free < 0.15 * A
 
 
+def _line_mask(gray: np.ndarray, lh: float, thr: int = 160) -> np.ndarray:
+    """Garis panjang (tepi balon, tepi kotak narasi, garis gambar) -- termasuk garis tipis / abu-abu
+    hasil antialias. Ruas lurus yang lebih panjang dari tinggi huruf dicari dengan 'opening' berbentuk
+    garis di 12 arah; huruf tidak punya ruas lurus sepanjang itu, jadi huruf yang menempel ke garis
+    tidak ikut terhitung sebagai garis."""
+    dark = (gray < thr).astype(np.uint8)
+    L = max(9, int(lh * 1.0)) | 1
+    out = np.zeros_like(dark)
+    c = L // 2
+    for ang in range(0, 180, 15):
+        k = np.zeros((L, L), np.uint8)
+        dx, dy = np.cos(np.radians(ang)) * c, np.sin(np.radians(ang)) * c
+        cv2.line(k, (int(round(c - dx)), int(round(c - dy))), (int(round(c + dx)), int(round(c + dy))), 1, 1)
+        out |= cv2.morphologyEx(dark, cv2.MORPH_OPEN, k)
+    return out > 0
+
+
 def _letters_on_lines(lbl, ids, stm, lh):
     """Bagian huruf yang menempel ke garis panjang (tepi balon / kotak) di dekat teks. Garis = ruas
     lurus yang lebih panjang dari tinggi huruf (dicari dengan 'opening' berbentuk garis di 12 arah);
@@ -619,7 +636,7 @@ def _letters_on_lines(lbl, ids, stm, lh):
     mask = np.isin(lbl[Y0:Y1, X0:X1], ids).astype(np.uint8)
     if not mask.any():
         return None
-    L = max(7, int(lh * 1.3)) | 1
+    L = max(7, int(lh * 0.9)) | 1        # ruas pendek: garis balon yang melengkung tetap terbaca garis
     linepix = np.zeros_like(mask)
     for ang in range(0, 180, 15):
         k = np.zeros((L, L), np.uint8)
@@ -667,13 +684,19 @@ def _outline_text_fill(dst, sub, stm, lh, seed, ai_sub, detail_sub) -> bool:
         (np.maximum(dst_[:, 2], dst_[:, 3]) > lh * 1.6) & (over < 0.3 * dst_[:, 4])
     big[0] = False
     lines = big[dl] & (stm == 0)          # huruf yang menempel ke garis tetap ikut dihapus
-    full = (full > 0) & ~lines
     stuck = _letters_on_lines(dl, np.nonzero(big)[0], stm, lh)
     if stuck is not None:                 # huruf yang menempel ke garis balon / kotak
         lines &= ~stuck
-        full |= cv2.dilate(stuck.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
-        full &= ~lines
-    barrier = cv2.dilate(big[dl].astype(np.uint8), np.ones((3, 3), np.uint8))   # termasuk huruf yang menempel
+    # garis tipis / abu-abu (antialias) yang menyambung garis tebal juga dilindungi
+    lmask = _line_mask(gray, lh) & (stm == 0)
+    if stuck is not None:
+        lmask &= ~stuck
+    lines |= cv2.dilate(lmask.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    lines &= (stm == 0)
+    full = (full > 0) & ~lines
+    if stuck is not None:
+        full |= (cv2.dilate(stuck.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0) & ~lines
+    barrier = cv2.dilate((big[dl] | lmask).astype(np.uint8), np.ones((3, 3), np.uint8))
     nf, fl = cv2.connectedComponents((barrier == 0).astype(np.uint8), connectivity=4)
     seeds = fl[(stm > 0) & (barrier == 0)]
     if seeds.size:
@@ -1057,19 +1080,33 @@ def refine_clean(img: np.ndarray, out: np.ndarray, done, wants_lama: bool) -> np
             o[restore] = img[y0:y1, x0:x1][restore]
             # 4. sambungan antara bagian yang dikembalikan & bagian yang dibersihkan
             seam = cv2.dilate(restore.astype(np.uint8), np.ones((3, 3), np.uint8)) & changed & ~restore
-            residue[y0:y1, x0:x1] |= seam.astype(np.uint8) * 255
+            if not getattr(b, "_grain_fill", False):          # raster: sambungan sudah bertekstur
+                residue[y0:y1, x0:x1] |= seam.astype(np.uint8) * 255
 
         # --- 3. sisa huruf: masih gelap di tempat yang dulunya huruf, padahal sekitarnya terang
         near = cv2.dilate(t.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
         bgv = cv2.medianBlur(go, max(3, int(lh * 0.8)) | 1)
-        left = near & (g0 < 160) & (go.astype(np.int16) < bgv.astype(np.int16) - 45) & ~restore
+        # garis balon / kotak di dekat huruf bukan sisa huruf (jangan dioles)
+        keep_lines = cv2.dilate((_line_mask(go, lh) & ~t).astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+        left = near & (g0 < 160) & (go.astype(np.int16) < bgv.astype(np.int16) - 45) & ~restore & ~keep_lines
         if left.any():
             nn, l2, s2, _ = cv2.connectedComponentsWithStats(left.astype(np.uint8), connectivity=8)
             # latar berbintik yang diisi tekstur: bintik seukuran butiran bukan sisa huruf
-            min_a = max(14, int((lh * 0.22) ** 2)) if getattr(b, "_grain_fill", False) else 3
+            grainy = getattr(b, "_grain_fill", False)
+            min_a = max(14, int((lh * 0.22) ** 2)) if grainy else 3
+            loc = np.zeros(left.shape, np.uint8)
             for i in range(1, nn):
                 if s2[i][4] >= min_a and max(s2[i][2], s2[i][3]) <= lh * 2.5:
-                    residue[y0:y1, x0:x1][l2 == i] = 255
+                    loc[l2 == i] = 255
+            if loc.any() and grainy:
+                # latar raster: sisa huruf diisi tekstur raster juga (dioles AI malah jadi noda kabur)
+                fillr = cv2.dilate(loc, np.ones((5, 5), np.uint8)) > 0
+                fillr &= ~keep_lines
+                clean_src = (cv2.dilate(loc, np.ones((9, 9), np.uint8)) == 0) & ~keep_lines & ~near
+                _quilt_fill(o, fillr, o.copy(), clean_src, int(b.x) * 13 + int(b.y),
+                            k=max(4, min(8, int(lh * 0.3))), ref=None)
+                loc[:] = 0          # tidak dioles AI/Telea (di raster hasilnya noda kabur)
+            residue[y0:y1, x0:x1] |= loc
         out[y0:y1, x0:x1] = o
     if residue.any():
         residue = cv2.dilate(residue, np.ones((3, 3), np.uint8))
