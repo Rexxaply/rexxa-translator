@@ -363,7 +363,7 @@ class MainWindow(QMainWindow):
         self.b_go = QToolButton()
         self.b_go.setObjectName("primary")
         self.b_go.setText("  Terjemahkan")
-        self.b_go.setIcon(icon("zap", "#ffffff"))
+        self.b_go.setIcon(icon("translate_go", "#ffffff"))
         self.b_go.setIconSize(QSize(18, 18))
         self.b_go.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.b_go.setToolTip("Deteksi → OCR → terjemah → hapus teks → typeset halaman ini (F5)")

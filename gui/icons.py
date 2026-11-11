@@ -77,7 +77,17 @@ ICONS = {
 }
 
 
+# ikon berwarna penuh (SVG utuh, bukan garis 24 px). {c} = warna ikon.
+# translate: dua kartu (文 -> A) + panah melingkar — dari terjemah-ungu.svg, dibuat transparan:
+# latar ungu dibuang, huruf "A" dilubangi supaya warna tombol terlihat di baliknya.
+RAW = {
+    "translate_go": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect x="88" y="88" width="200" height="200" rx="38" fill="{c}" fill-opacity=".28"/><path transform="translate(-10 -10)" fill="{c}" d="M178.08 126.94V146.4H128.93V164.58H146.98C153.76 182.37 161.95 197.73 172.58 210.4C159.9 219.62 144.42 226.27 126.11 230.88C129.82 235.36 135.71 244.32 137.89 249.06C156.83 243.3 173.09 235.23 186.78 224.48C199.97 235.36 216.22 243.42 236.45 248.67C239.26 243.3 245.41 234.34 249.89 229.98C231.07 225.89 215.33 218.98 202.66 209.63C213.66 197.22 222.5 182.37 229.02 164.58H247.07V146.4H197.28V126.94ZM187.94 196.58C179.36 187.23 172.7 176.61 167.84 164.58H207.01C202.27 176.99 195.87 187.62 187.94 196.58Z"/><path fill="{c}" fill-rule="evenodd" d="M262 224H386Q424 224 424 262V386Q424 424 386 424H262Q224 424 224 386V262Q224 224 262 224ZM270.51 374.93H301.61L306.6 358.18H340.65L345.5 374.93H377.49L342.97 273.07H304.69ZM313.17 336.3 313.44 335.42C317.13 323.11 320.55 311.22 323.9 298.84C327.18 311.22 330.53 323.11 334.08 335.42L334.36 336.3Z"/><g fill="none" stroke="{c}" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"><path d="M330 110q76 0 76 76"/><path d="M386 168l20 22 20-22"/><path d="M182 402q-76 0-76-76"/><path d="M126 344l-20-22-20 22"/></g></svg>',
+}
+
+
 def svg(name: str, color: str = "#d5dbea") -> str:
+    if name in RAW:
+        return RAW[name].replace("{c}", color)
     return _S.format(c=color, body=ICONS[name])
 
 
