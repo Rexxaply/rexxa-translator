@@ -8,6 +8,11 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.1.3 · Patch update
+
+- Daftar font menampilkan nama tiap font dengan font itu sendiri (pratinjau langsung, gaya Bold/Italic ikut) — di panel Tipografi & Preset teks
+- Daftar pilihan (font, bahasa, preset, dll.) tidak lagi memanjang setinggi layar: maksimal ±14 baris, sisanya digulir
+
 ## 2.1.2 · Patch update
 
 - Tema baru mengikuti warna logo: latar biru-gelap yang lembut di mata, aksen ungu-biru, tombol utama bergradasi biru → ungu
@@ -33,11 +38,3 @@ Penomoran MAJOR.MINOR.PATCH:
 ## 2.0.8 · Patch update
 
 - Jenis update kini tertulis jelas: Major / Minor / Patch update (badge berwarna di jendela "Update tersedia", juga di catatan rilis & changelog)
-
-## 2.0.7 · Patch update
-
-- Export As… (Ctrl+E): dialog seperti print — pratinjau dulu, pilih halaman saat ini / semua / rentang (mis. 1-5, 8)
-- PDF Manga (1 gambar = 1 halaman) atau Manhwa / Manhua (strip disambung, dipotong di celah antar panel)
-- CBZ + ComicInfo.xml (judul, chapter, penerjemah, genre, arah baca) untuk Mihon, Komga, Kavita, dll.
-- Paket Local Source Mihon: folder seri + cover + info, tinggal ekstrak ke Mihon/local/
-- Pilihan format gambar (Asli / JPG / WebP) & kualitas; halaman yang belum diterjemahkan bisa disertakan pakai gambar asli
