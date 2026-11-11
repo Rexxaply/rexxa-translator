@@ -3,6 +3,13 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 2.0.6
+
+- Deteksi teks lebih kuat: balon kecil ("HUH?") tidak lagi tergabung dengan garis wajah/rambut
+- Satu huruf + titik-titik ("I...", "A...") sekarang terdeteksi & terbaca benar
+- Tulisan tangan tipis huruf kecil di latar terang ("Is that it...") tidak lagi terlewat
+- OCR: titik-titik di ujung baris ikut terbaca ("TALK..." bukan "TALK."), spasi setelah "..." tidak hilang
+
 ## 2.0.5
 
 - Hapus teks lebih rapi di latar raster/berbintik: bekas teks diisi tekstur aslinya (tanpa gumpalan putih / tambalan terang)
@@ -37,10 +44,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
   - Gambar halaman disimpan sebentar di memori, tidak dibuka ulang dari disk berkali-kali.
   - 1 inti CPU selalu dibiarkan bebas untuk tampilan aplikasi; antrean maks. 1 halaman supaya memori tetap kecil.
 - Mode Hemat kini otomatis hanya untuk RAM < 6 GB atau CPU 2 inti (bisa dipaksa di Pengaturan → Proses → Performa).
-
-## 2.0.1
-- **Font otomatis untuk semua teks + memori font**: dialog, dialog miring, dialog tebal, narasi, dan narasi huruf kecil masing-masing dicarikan font yang paling mirip dengan teks aslinya, lalu **diingat di proyek** sehingga halaman berikutnya langsung memakai font yang sama (cepat & konsisten se-chapter). Font yang kamu pilih manual juga diingat. Menu ⚡ → "Lupakan font yang diingat proyek ini" untuk mencocokkan ulang.
-- **Lebih ringan untuk PC spesifikasi rendah** (Pengaturan → Proses → Performa: Otomatis / Hemat / Normal): memori dibersihkan setiap halaman, thread dibatasi supaya aplikasi tetap responsif, AI hapus teks memakai potongan lebih kecil, jeda otomatis saat RAM hampir habis, halaman diulang dengan cara ringan bila memori penuh, dan **simpan otomatis setiap 5 halaman** saat Terjemahkan Semua.
-- **Deteksi lebih lengkap**: narasi kecil di panel berarsir/gelap ("I feel chilly..."), teks di balon ledakan bergerigi ("FORSINA!?"), dan seruan pendek ("WH...") kini ikut terdeteksi. Kotak balon yang terpotong diperluas sampai seluruh teks asli.
-- **Hasil OCR lebih bersih**: kotak yang ternyata rambut / raster dibuang (dicek dengan kamus), sisa garis balon ("|", "[") dihapus, apostrof hilang dibetulkan (TLL → I'LL, DONT → DON'T).
-- **Tampilan hasil lebih rapi**: ukuran huruf diseragamkan antar balon, narasi huruf kecil tidak lagi dipaksa kapital, teks gelap di latar gelap otomatis diberi garis tepi putih, ekor huruf & tanda baca di ujung ikut terhapus.
