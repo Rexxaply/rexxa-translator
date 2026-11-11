@@ -16,6 +16,8 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq libegl1 libgl1 libxkbcommon0 fonts-dejavu-core >/dev/null
           pip install -q PySide6 opencv-python-headless numpy Pillow requests deep-translator fonttools
       - run: QT_QPA_PLATFORM=offscreen python tools/ui_preview.py ui_preview
+      - run: |
+          cd ui_preview && tar czf shots.tgz *.png && echo "===B64===" && base64 -w0 shots.tgz && echo && echo "===END==="
       - uses: actions/upload-artifact@v4
         with:
           name: ui-preview
