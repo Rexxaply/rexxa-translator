@@ -515,7 +515,9 @@ class _PopupFx(QObject):
         geo = obj.geometry()                      # posisi sudah dihitung combo / menu: jangan sampai ter-reset
         obj.setAttribute(Qt.WA_TranslucentBackground, True)
         obj.setAttribute(Qt.WA_NoSystemBackground, True)
-        obj.setWindowFlag(Qt.NoDropShadowWindowHint, True)   # (membuat ulang jendela -> transparansi pasti aktif)
+        # Di Windows, transparansi per piksel HANYA aktif bila jendela juga FramelessWindowHint; tanpa itu area di luar
+        # lengkungan digambar hitam. (Mengubah flag membuat ulang jendela -> transparansi pasti aktif.)
+        obj.setWindowFlags(obj.windowFlags() | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
         obj.setGeometry(geo)
         if obj.inherits("QComboBoxPrivateContainer"):
             obj.setContentsMargins(0, 0, 0, 0)
