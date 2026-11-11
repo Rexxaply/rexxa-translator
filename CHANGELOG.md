@@ -35,3 +35,11 @@ Penomoran MAJOR.MINOR.PATCH:
 - Ubahan di panel kanan berlaku ke semua balon terpilih: font, ukuran, tebal/miring, KAPITAL, rata, spasi, rotasi, warna, stroke, gradasi, preset 1–5 — hanya nilai yang diubah yang disalin
 - Terjemah ulang / OCR ulang banyak balon dalam 1 permintaan, hapus & geser teks bersamaan
 - Tombol Samakan: ukuran teks & ukuran kotak mengikuti balon aktif
+
+## 2.1.5 · Patch update
+
+- Instruksi tambahan LLM kini prioritas tertinggi: prompt panjang / persona ("You are…") dipakai sebagai system prompt utama, instruksi pendek ditaruh di akhir
+- Variabel di prompt diisi otomatis: {targetLanguage}, {sourceLanguage}
+- Format jawaban JSON selalu diatur aplikasi, jadi prompt sendiri tidak bikin error
+- Terjemahan Indonesia lebih santai & tidak kaku (nggak, udah, aku/kamu, gue/lo; hindari "Anda", "tersebut") — kecuali Gaya bahasa Baku
+- Hasil terjemahan LLM lama di cache tidak dipakai lagi
