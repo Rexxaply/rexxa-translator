@@ -136,7 +136,7 @@ class _Dim(QWidget):
 
 class GlassDialog(QDialog):
     POP_IN_MS = 420
-    POP_OUT_MS = 150
+    POP_OUT_MS = 130
 
     def __init__(self, parent=None, title: str = "", subtitle: str = "", size=(760, 560), resizable=True,
                  header: bool = True):
@@ -277,16 +277,16 @@ class GlassDialog(QDialog):
             t = min(1.0, max(0.0, (x - a0) / (a1 - a0)))
             return t * t * (3 - 2 * t)
         if a["dir"] > 0:
-            # ala iOS: kaca buram muncul DULU, isi menyusul saat kaca sudah pekat -> isi dialog tidak pernah
-            # bertumpuk dengan halaman yang tajam di belakang. Gerak mengembang (pegas) tetap penuh.
+            # Kaca langsung PEKAT sejak frame pertama (tidak ada fase kaca setengah transparan yang terlihat seperti
+            # lapisan hantu), hanya mengembang ala pegas dari 92%. Isi menyusul memudar di atas kaca yang sudah pekat.
             scale = 0.92 + 0.08 * _spring(u)
-            op_glass = ramp(u, 0.0, 0.18)
-            op_content = ramp(u, 0.12, 0.34)
+            op_glass = 1.0
+            op_content = ramp(u, 0.05, 0.30)
         else:
-            # tutup: isi hilang dulu, lalu kacanya
-            scale = 1.0 - 0.04 * u
-            op_content = 1 - ramp(u, 0.0, 0.35)
-            op_glass = 1 - ramp(u, 0.25, 1.0)
+            # tutup: isi hilang dulu, kaca mengecil & lenyap cepat
+            scale = 1.0 - 0.06 * u
+            op_content = 1 - ramp(u, 0.0, 0.30)
+            op_glass = (1 - ramp(u, 0.15, 1.0)) ** 2
         c = r.center()
         p.translate(c)
         p.scale(scale, scale)
