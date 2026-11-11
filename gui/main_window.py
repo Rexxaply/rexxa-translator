@@ -677,7 +677,8 @@ class MainWindow(QMainWindow):
             b.setToolTip(tip)
             return shrink(b, minw=min(w, 20), maxw=w + 8)
 
-        self.p_font = QComboBox()
+        from .fontcombo import FontCombo
+        self.p_font = FontCombo()        # nama font tampil dengan font itu sendiri
         self.p_font.addItem("Font default", "")
         for f in typeset.list_fonts():
             self.p_font.addItem(typeset.font_name(f), f)
@@ -3062,6 +3063,8 @@ QComboBox, QSpinBox, QPlainTextEdit, QLineEdit, QTextEdit, QDoubleSpinBox {
   background: #202636; border: 1px solid #313849; border-radius: 6px; padding: 4px 6px; }
 QComboBox:hover, QSpinBox:hover { border-color: #455069; }
 QComboBox::drop-down { border: none; width: 18px; }
+QComboBox { combobox-popup: 0; }   /* daftar pilihan bisa digulir (tidak memanjang setinggi layar) */
+QComboBox QAbstractItemView QScrollBar:vertical { width: 10px; }
 QComboBox QAbstractItemView { background: #202636; selection-background-color: #7c6cff; }
 QPlainTextEdit:focus, QLineEdit:focus { border-color: #7c6cff; }
 QWidget#panel { background: #171b27; }

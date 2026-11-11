@@ -58,7 +58,8 @@ class TextPanel(QWidget):
         self.rows = []
         for n, p in enumerate(pipeline.presets(settings), 1):
             lbl = QLabel(f"Preset {n}" + ("  <span style='color:#7c6cff'>default</span>" if n == 1 else ""))
-            font = QComboBox()
+            from .fontcombo import FontCombo
+            font = FontCombo()
             _font_items(font, p["font"])
             b = self._toggle("B", "Tebal", p["bold"])
             it = self._toggle("I", "Miring", p["italic"])
