@@ -77,6 +77,15 @@ def export_pdf(project: Project, pdf_path: str, kind: str = "auto", quality: int
     paths = page_images(project)
     if not paths:
         raise ValueError("Belum ada halaman yang diterjemahkan.")
+    return export_files(paths, pdf_path, kind, quality=quality, width=width, log=log)
+
+
+def export_files(paths: list[str], pdf_path: str, kind: str = "auto", quality: int = 90,
+                 width: int = 0, log=None, title: str = "", jpeg: bool = True) -> dict:
+    """PDF dari daftar file gambar (urutan dipertahankan). Gambar RGB disimpan Pillow
+    sebagai JPEG di dalam PDF; `quality` mengatur ukuran/ketajamannya."""
+    if not paths:
+        raise ValueError("Tidak ada gambar untuk PDF.")
     if kind == "auto":
         kind = detect_kind(paths)
     pages = []
@@ -105,5 +114,5 @@ def export_pdf(project: Project, pdf_path: str, kind: str = "auto", quality: int
     first, rest = pages[0], pages[1:]
     Path(pdf_path).parent.mkdir(parents=True, exist_ok=True)
     first.save(pdf_path, "PDF", save_all=True, append_images=rest, resolution=72.0, quality=quality,
-               title=Path(pdf_path).stem, creator="Rexxa Translator")
+               title=title or Path(pdf_path).stem, creator="Rexxa Translator")
     return {"kind": kind, "pages_in": len(paths), "pages_out": len(pages)}

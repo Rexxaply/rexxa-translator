@@ -107,6 +107,7 @@ class Project:
     glossary: dict = field(default_factory=dict)   # istilah tetap: {"先輩": "Senpai"}
     series_title: str = ""    # judul seri terjemahan (untuk logo judul otomatis)
     font_memory: dict = field(default_factory=dict)   # {golongan gaya: path font} dipakai ulang di halaman lain
+    export_meta: dict = field(default_factory=dict)   # info seri/chapter untuk Export As (ComicInfo.xml)
     file: str = ""
 
     def add_images(self, paths):
@@ -129,6 +130,7 @@ class Project:
             "glossary": self.glossary,
             "series_title": self.series_title,
             "font_memory": self.font_memory,
+            "export_meta": self.export_meta,
             "pages": [p.to_dict() for p in self.pages],
         }
         Path(self.file).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -143,6 +145,7 @@ class Project:
             glossary=d.get("glossary", {}),
             series_title=d.get("series_title", ""),
             font_memory=d.get("font_memory", {}) or {},
+            export_meta=d.get("export_meta", {}) or {},
             file=file,
         )
 

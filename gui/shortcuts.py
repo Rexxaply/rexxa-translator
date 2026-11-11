@@ -9,6 +9,7 @@ SHORTCUTS = [
     ("open", "File", "Buka folder chapter", "Ctrl+O", False),
     ("save", "File", "Simpan proyek", "Ctrl+S", False),
     ("save_as", "File", "Simpan proyek sebagai… (file baru)", "Ctrl+Shift+S", False),
+    ("export", "File", "Export As… (pratinjau, PDF / CBZ / ZIP)", "Ctrl+E", False),
     ("settings", "File", "Pengaturan", "Ctrl+,", False),
 
     ("translate_page", "Proses", "Terjemahkan halaman ini", "F5", False),

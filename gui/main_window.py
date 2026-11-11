@@ -393,14 +393,10 @@ class MainWindow(QMainWindow):
         tb.addWidget(vline())
 
         m_exp = QMenu(self)
-        m_exp.addAction(icon("export"), "Export ZIP / CBZ…", self.export_zip)
-        m_pdf = m_exp.addMenu(icon("book"), "Export PDF (semua halaman)")
-        m_pdf.addAction("Otomatis (deteksi manga / manhwa)…", lambda: self.export_pdf("auto"))
-        m_pdf.addAction("Manga — 1 gambar = 1 halaman…", lambda: self.export_pdf("manga"))
-        m_pdf.addAction("Manhwa / Manhua — disambung jadi strip panjang…", lambda: self.export_pdf("webtoon"))
+        self.a_export_as = m_exp.addAction(icon("export"), "Export As…  (pratinjau, PDF / CBZ / ZIP)", self.export_as)
         m_exp.addAction(icon("project"), "Export skrip terjemahan (.txt)…", self.export_script)
         m_exp.addAction(icon("folderout"), "Buka folder hasil", self.open_output_folder)
-        b = tool_btn("export", "Export hasil")
+        b = tool_btn("export", "Export hasil (Ctrl+E = Export As…)")
         b.setMenu(m_exp)
         b.setPopupMode(QToolButton.InstantPopup)
         tb.addWidget(b)
@@ -895,6 +891,7 @@ class MainWindow(QMainWindow):
             "save": self.save_project,
             "save_as": self.save_project_as,
             "settings": self.edit_settings,
+            "export": self.export_as,
             "translate_page": self.translate_page,
             "translate_all": self.run_all,
             "detect_all": self.detect_all,
@@ -1416,7 +1413,7 @@ class MainWindow(QMainWindow):
         self.b_line_color.setEnabled(has and getattr(self, "tool", "select") in ("line", "pen", "shape"))
         self.b_prev.setEnabled(has and self.cur > 0)
         self.b_next.setEnabled(has and 0 <= self.cur < n - 1)
-        self.b_export.setEnabled(any(pg.output_path for pg in self.project.pages) and not busy)
+        self.b_export.setEnabled(bool(self.project.pages) and not busy)
         self.b_undo.setEnabled(bool(h["undo"]) and not busy)
         self.b_redo.setEnabled(bool(h["redo"]) and not busy)
         self.b_undo.setToolTip(f"Undo (Ctrl+Z) · {len(h['undo'])} dari maks. {UNDO_LIMIT} langkah")
@@ -2748,38 +2745,42 @@ class MainWindow(QMainWindow):
             self.project.glossary = d.result_glossary()
             self.log(f"Glosarium: {len(self.project.glossary)} istilah.")
 
-    def export_zip(self):
-        if not any(p.output_path for p in self.project.pages):
-            QMessageBox.information(self, APP_NAME, "Belum ada halaman yang diterjemahkan.")
-            return
-        default = Path(self.project.pages[0].path).parent.name + "_translated.cbz"
-        f, _ = QFileDialog.getSaveFileName(self, "Export ZIP / CBZ", default, "Arsip komik (*.cbz *.zip)")
-        if f:
-            pipeline.export_zip(self.project, f)
-            self.log(f"Diekspor: {f}")
-
-    def export_pdf(self, kind="auto"):
-        if not any(p.output_path and Path(p.output_path).exists() for p in self.project.pages):
-            QMessageBox.information(self, APP_NAME, "Belum ada halaman yang diterjemahkan.")
+    def export_as(self):
+        """Dialog Export As: pratinjau + pilih halaman + PDF manga/manhwa/manhua, CBZ (ComicInfo) atau ZIP."""
+        if not self.project.pages:
+            QMessageBox.information(self, APP_NAME, "Belum ada halaman. Buka folder chapter dulu.")
             return
         if self.thread:
             return
-        default = Path(self.project.pages[0].path).parent.name + "_translated.pdf"
-        out_dir = Path(self.project.pages[0].output_path or self.project.pages[0].path).parent
-        f, _ = QFileDialog.getSaveFileName(self, "Export PDF", str(out_dir / default), "PDF (*.pdf)")
-        if not f:
+        from .exportdlg import ExportDialog
+        d = ExportDialog(self.project, self.cur, self.settings, self)
+        if not d.exec():
             return
-        if not f.lower().endswith(".pdf"):
-            f += ".pdf"
+        cfg = d.config()
+        self.settings["export_opts"] = d.options()
+        self.settings["export_dir"] = str(Path(cfg["out"]).parent)
+        if cfg["meta"].get("translator"):
+            self.settings["export_translator"] = cfg["meta"]["translator"]
+        pipeline.save_settings(self.settings)
+        if cfg["fmt"] == "cbz":
+            self.project.export_meta = cfg["meta"]
+            self._refresh_state()
         proj = self.project
 
         def job(w: Worker):
-            from core import pdfexport
-            r = pdfexport.export_pdf(proj, f, kind, log=w.log.emit)
-            jenis = "manhwa/manhua (disambung)" if r["kind"] == "webtoon" else "manga"
-            w.log.emit(f"PDF {jenis}: {r['pages_in']} gambar → {r['pages_out']} halaman PDF · {f}")
+            from core import exporter
+            out = cfg.pop("out")
+            r = exporter.export(proj, out, progress=w.progress.emit, stop=lambda: w.stop, **cfg)
+            jenis = {"manga": "manga", "manhwa": "manhwa", "manhua": "manhua"}[r["kind"]]
+            if cfg["fmt"] == "pdf":
+                w.log.emit(f"PDF {jenis}: {r['files']} gambar → {r['pages_out']} halaman PDF · {out}")
+            elif cfg["fmt"] == "cbz":
+                extra = " (paket Local Source Mihon)" if cfg["mihon_pack"] else " + ComicInfo.xml"
+                w.log.emit(f"CBZ {jenis}{extra}: {r['files']} gambar · {out}")
+            else:
+                w.log.emit(f"ZIP: {r['files']} gambar · {out}")
 
-        self._start(job, "Export PDF")
+        self._start(job, "Export")
 
     def export_script(self):
         if not self.project.pages:
