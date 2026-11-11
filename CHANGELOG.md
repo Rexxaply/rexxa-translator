@@ -8,6 +8,10 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.0.8 · Patch update
+
+- Jenis update kini tertulis jelas: Major / Minor / Patch update (badge berwarna di jendela "Update tersedia", juga di catatan rilis & changelog)
+
 ## 2.0.7 · Patch update
 
 - Export As… (Ctrl+E): dialog seperti print — pratinjau dulu, pilih halaman saat ini / semua / rentang (mis. 1-5, 8)
@@ -41,10 +45,3 @@ Penomoran MAJOR.MINOR.PATCH:
 - OCR lebih pintar: memilih hasil baca terbaik (kamus + jumlah huruf), varian bersih-bintik, menyambung kata ber-tanda hubung ("FOL- LOWING"), kapital seragam, I'M / I'VE
 - Hapus teks di halaman webtoon panjang lebih hemat memori
 - Mode hemat: memori sementara lebih kecil; batas thread juga berlaku saat edit & render
-
-## 2.0.3 · Patch update
-- **Hapus teks 4 tahap (lebih rapi)**: (1) mask dibuat hanya dari bentuk huruf yang terbaca -- bintik raster / butiran kertas tidak ikut; (2) bekas teks diisi sesuai latarnya: warna polos, butiran balon bertekstur, "pulau putih" di belakang teks tetap putih, sisanya dibuat ulang AI (LaMa); (3) garis balon / bingkai narasi / arsiran yang ikut terpotong dikembalikan dari gambar asli; (4) sisa huruf & sambungan dirapikan lagi oleh AI.
-- Balon putih berbintik tidak lagi meninggalkan tambalan abu-abu buram.
-- Deteksi: baris pendek di bawah teks ("DAMN / IT...") ikut terbaca & terhapus.
-- Teks tidak lagi keluar dari kotak narasi yang sempit.
-- Perbaikan bug: halaman kosong setelah menambah / menghapus halaman; kotak manual buatan sendiri tidak lagi ikut terbuang oleh filter OCR; koreksi OCR tidak lagi mengubah logat yang disengaja ("BESHT").
