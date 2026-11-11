@@ -20,9 +20,9 @@ from core import exporter
 
 from .icons import icon
 
-FORMATS = [("PDF", "pdf"), ("CBZ + ComicInfo.xml  (Mihon / Komga / Kavita)", "cbz"), ("ZIP gambar saja", "zip")]
-KINDS = [("Otomatis (deteksi dari bentuk halaman)", "auto"), ("Manga — 1 gambar = 1 halaman", "manga"),
-         ("Manhwa — strip panjang disambung", "manhwa"), ("Manhua — strip panjang disambung", "manhua")]
+FORMATS = [("PDF", "pdf"), ("CBZ + ComicInfo.xml (Mihon)", "cbz"), ("ZIP gambar saja", "zip")]
+KINDS = [("Otomatis (deteksi)", "auto"), ("Manga — per halaman", "manga"),
+         ("Manhwa — strip disambung", "manhwa"), ("Manhua — strip disambung", "manhua")]
 IMG = [("Asli (tanpa kompres ulang)", "asli"), ("JPG (lebih kecil)", "jpg"), ("WebP (paling kecil)", "webp")]
 
 _PIX: dict = {}
@@ -450,8 +450,9 @@ class ExportDialog(QDialog):
                 self.strip.verticalScrollBar().blockSignals(False)
 
     def _strip_scrolled(self, y):
+        y += self.strip.viewport().height() // 2        # halaman di tengah layar
         for k, lb in enumerate(self._strip_labels):
-            if lb.y() + lb.height() > y + 4:
+            if lb.y() + lb.height() > y:
                 if k != self.view_i:
                     self.view_i = k
                     self.pos_lbl.setText(f"{k + 1} / {len(self.files)}")
