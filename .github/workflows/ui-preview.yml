@@ -17,7 +17,7 @@ jobs:
           pip install -q PySide6 opencv-python-headless numpy Pillow requests deep-translator fonttools
       - run: QT_QPA_PLATFORM=offscreen python tools/ui_preview.py ui_preview
       - run: |
-          cd ui_preview && tar czf shots.tgz *.png *.gif && echo "===B64===" && base64 -w 4000 shots.tgz && echo && echo "===END==="
+          cd ui_preview && tar czf shots.tgz *.png && echo "===B64===" && base64 -w 4000 shots.tgz && echo && echo "===END==="
       - uses: actions/upload-artifact@v4
         with:
           name: ui-preview
