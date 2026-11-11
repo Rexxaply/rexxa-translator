@@ -425,7 +425,7 @@ class ExportDialog(QDialog):
     def _pm(self, k, w, h):
         i, f = self.view[k]
         _page, wm = self._extras_on()
-        if not wm or i < 0:
+        if not wm or i < 0 or (w and w < 200):          # thumbnail kecil: watermark tidak terbaca
             return _load(f, w, h)
         from core import skills
         cfg = skills.credits_cfg(self.settings)

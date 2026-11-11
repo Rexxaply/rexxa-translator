@@ -292,6 +292,7 @@ def export(project: Project, out_path: str, *, fmt: str, kind: str, indices: lis
     if kind == "auto":
         kind = detect_kind(files)
     lang = project.target_lang
+    cover_src = files[0]
     if credit_page or watermark:
         import tempfile
         from . import skills
@@ -328,7 +329,7 @@ def export(project: Project, out_path: str, *, fmt: str, kind: str, indices: lis
         z.writestr(f"{series}/{chapter_filename(meta)}.cbz", data)
         z.writestr(f"{series}/ComicInfo.xml", comicinfo_series(meta, kind))
         z.writestr(f"{series}/details.json", details_json(meta))
-        with Image.open(files[0]) as im:
+        with Image.open(cover_src) as im:
             im = _to_rgb(im)
             if im.height > im.width * 1.6:          # strip webtoon: ambil potongan atas saja
                 im = im.crop((0, 0, im.width, int(im.width * 1.45)))
