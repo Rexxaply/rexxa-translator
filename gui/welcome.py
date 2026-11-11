@@ -15,16 +15,16 @@ from .icons import icon
 
 STYLE = """
 QWidget#welcome { background: #11141c; }
-QLabel#wTitle { color: #e9edf6; font-size: 17pt; font-weight: 700; background: transparent; }
+QLabel#wTitle { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; color: #e9edf6; font-size: 18pt; font-weight: 800; background: transparent; }
 QLabel#wSub { color: #7c84a0; font-size: 10pt; background: transparent; }
 QLabel#wHint { color: #56607a; font-size: 8.5pt; background: transparent; }
 QPushButton#wBtn { background: #1f2534; color: #d5dbea; border: 1px solid #313849; border-radius: 9px;
                    padding: 0 16px; min-height: 38px; font-weight: 600; }
 QPushButton#wBtn:hover { background: #2a3142; border-color: #3d4559; }
-QPushButton#wMain { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f86ff, stop:1 #8a63f0); color: white; border: none; border-radius: 9px;
+QPushButton#wMain { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f86ff, stop:1 #8a63f0); color: white; border: none; border-radius: 9px; font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif;
                     padding: 0 18px; min-height: 38px; font-weight: 700; }
 QPushButton#wMain:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6596ff, stop:1 #9b78f5); }
-QLabel#wSection { color: #9098b0; font-size: 8pt; font-weight: 700; letter-spacing: 1px; background: transparent; }
+QLabel#wSection { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; color: #9098b0; font-size: 8pt; font-weight: 700; letter-spacing: 1px; background: transparent; }
 QToolButton#wClear { color: #6e7690; background: transparent; border: none; font-size: 8.5pt; }
 QToolButton#wClear:hover { color: #a598ff; }
 QFrame#recentCard { background: #181d29; border: 1px solid #262c3c; border-radius: 10px; }

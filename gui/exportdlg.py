@@ -59,7 +59,8 @@ def _card(title: str):
     v = QVBoxLayout(f)
     v.setContentsMargins(10, 8, 10, 10)
     v.setSpacing(6)
-    t = QLabel(f"<b>{title}</b>")
+    t = QLabel(title)
+    t.setObjectName("cardTitle")
     v.addWidget(t)
     return f, v
 

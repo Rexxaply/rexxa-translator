@@ -27,7 +27,7 @@ STYLE = f"""
 QDialog#rexxaAlert {{ background: #141824; }}
 QWidget#card {{ background: #1a1f2c; border: 1px solid #2b3243; border-radius: 12px; }}
 QLabel#badge {{ border-radius: 20px; font-size: 17pt; font-weight: 800; color: #111; }}
-QLabel#heading {{ color: #f1f4fa; font-size: 11pt; font-weight: 700; background: transparent; }}
+QLabel#heading {{ font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; color: #f1f4fa; font-size: 11.5pt; font-weight: 700; background: transparent; }}
 QLabel#detail {{ color: #9098b0; font-size: 9pt; background: transparent; }}
 QPushButton {{ min-height: 34px; border-radius: 8px; padding: 0 18px; font-weight: 600; font-size: 9.5pt; }}
 QPushButton#primary {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f86ff, stop:1 #8a63f0); color: white; border: none; }}

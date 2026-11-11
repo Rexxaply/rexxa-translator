@@ -3038,7 +3038,7 @@ class MainWindow(QMainWindow):
             e.ignore()
 
 STYLE = """
-* { font-family: 'Segoe UI', 'Noto Sans', sans-serif; font-size: 9.5pt; color: #d5dbea; }
+* { font-family: 'Inter', 'Segoe UI', 'Noto Sans', sans-serif; font-size: 9.5pt; color: #d5dbea; }
 QMainWindow, QWidget { background: #131722; }
 QToolBar { background: #191e2a; border: none; border-bottom: 1px solid #252b3b; padding: 5px 8px; spacing: 4px; }
 QToolButton { background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 5px; }
@@ -3047,7 +3047,7 @@ QToolButton:checked { background: #343c50; border-color: #7c6cff; }
 QToolButton::menu-indicator { image: none; }
 QToolButton:disabled { background: transparent; border-color: transparent; color: #3e4558; }
 QLineEdit#numField:disabled { color: #3e4558; }
-QToolButton#primary { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f86ff, stop:1 #8a63f0); color: white; font-weight: 600; padding: 6px 12px; border: none; }
+QToolButton#primary { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f86ff, stop:1 #8a63f0); color: white; font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; font-weight: 700; padding: 6px 12px; border: none; }
 QToolButton#primary:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6596ff, stop:1 #9b78f5); }
 QToolButton#primary:disabled { background: #38365f; color: #a7a3cc; }
 QToolButton#primary::menu-button { border-left: 1px solid #a598ff; width: 18px; }
@@ -3056,7 +3056,7 @@ QToolButton#splitBtn::menu-button { width: 14px; border: none; border-left: 1px 
   border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
 QToolButton#splitBtn::menu-button:hover { background: #343c50; }
 QFrame#sep { color: #2e3547; max-width: 1px; margin: 4px 6px; }
-QLabel#pageLbl { font-weight: 600; }
+QLabel#pageLbl { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; font-weight: 700; }
 QLabel#dim { color: #8089a3; }
 QComboBox, QSpinBox, QPlainTextEdit, QLineEdit, QTextEdit, QDoubleSpinBox {
   background: #202636; border: 1px solid #313849; border-radius: 6px; padding: 4px 6px; }
@@ -3068,20 +3068,22 @@ QWidget#panel { background: #171b27; }
 QWidget#pagesHdr { background: #171b27; border-bottom: 1px solid #252b3b; }
 QWidget#pagesHdr QLabel#panelHeader { border-bottom: none; }
 QToolButton#hdrBtn { padding: 3px; border-radius: 5px; }
-QLabel#panelHeader { background: #171b27; color: #9ca4bb; font-weight: 600; font-size: 7.5pt;
+QLabel#panelHeader { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; background: #171b27; color: #9ca4bb; font-weight: 700; font-size: 7.5pt;
   padding: 9px 10px; border-bottom: 1px solid #252b3b; }
 QListWidget { background: #171b27; border: none; outline: 0; }
 QListWidget::item { padding: 4px; border-radius: 6px; border-left: 3px solid transparent; }
 QListWidget::item:hover { background: #222838; }
 QListWidget::item:selected { background: #2a3142; border-left: 3px solid #7c6cff; color: white; }
 QWidget#viewHeaderBar { background: #171b27; border-bottom: 1px solid #252b3b; }
-QLabel#viewHeader { color: #9ca4bb; font-weight: 600; font-size: 8.5pt; padding: 8px; background: transparent; }
+QLabel#viewHeader { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; color: #9ca4bb; font-weight: 700; font-size: 8.5pt; padding: 8px; background: transparent; }
 QWidget#viewHeaderBar QComboBox { padding: 1px 6px; margin-right: 6px; }
 QTabWidget#rightTabs::pane { border: none; background: #171b27; }
-QTabBar::tab { background: #171b27; color: #8b93ab; padding: 7px 9px; font-weight: 600; font-size: 7.5pt;
+QTabBar::tab { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; background: #171b27; color: #8b93ab; padding: 7px 9px; font-weight: 700; font-size: 7.5pt;
   border: none; border-bottom: 2px solid transparent; }
 QTabBar::tab:selected { color: white; border-bottom: 2px solid #7c6cff; }
 QTabBar::tab:hover { color: #d5dbea; }
+QToolButton#sectionHeader { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; font-weight: 700; }
+QLabel#cardTitle { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; font-weight: 700; font-size: 10pt; background: transparent; }
 QFrame#card { background: #1c2130; border: 1px solid #2a3142; border-radius: 8px; }
 QFrame#card QLabel { background: transparent; }
 QToolButton#styleToggle { background: #202636; border: 1px solid #313849; }
@@ -3173,6 +3175,8 @@ def run():
     if chev.exists():
         extra = ("QToolButton#splitBtn::menu-arrow { image: url(%s); width: 9px; height: 9px; }"
                  % chev.as_posix())
+    from . import uifonts
+    uifonts.load()
     app.setStyleSheet(STYLE + extra)
     ic = code_dir() / "assets" / "icon.png"
     if ic.exists():
