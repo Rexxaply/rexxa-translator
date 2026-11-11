@@ -1355,53 +1355,106 @@ class MainWindow(QMainWindow):
         return True
 
     # ------------------------------------------------------------------ animasi tombol simpan
-    SAVE_TURN_MS = 420      # 1 putaran
-    SAVE_MIN_TURNS = 2
+    # Gerak dengan kecepatan yang menyambung (tanpa sentakan):
+    #   putaran 1  : mulai pelan lalu makin cepat (ease-in)
+    #   tengah     : kecepatan tetap selama penyimpanan belum selesai
+    #   putaran akhir: melambat halus sampai berhenti tepat tegak (ease-out)
+    #   penutup    : ikon "mengembang" sedikit lalu warnanya memudar kembali normal
+    # Kecepatan di tiap sambungan sama persis -> tidak terlihat patah. Minimal 2 putaran.
+    SAVE_IN_MS = 400                     # putaran pertama (ease-in kuadrat)
+    SAVE_LIN_MS = 200                    # satu putaran di kecepatan penuh  (360/200 = 2*360/400)
+    SAVE_OUT_MS = 600                    # putaran terakhir (ease-out kubik: 3*360/600 = kecepatan penuh)
+    SAVE_SETTLE_MS = 300                 # mengembang + warna kembali normal
+
+    def _save_angle(self, t: float):
+        """Sudut ikon pada waktu t (ms) -> (sudut, selesai_putaran)."""
+        tin, tlin, tout = self.SAVE_IN_MS, self.SAVE_LIN_MS, self.SAVE_OUT_MS
+        st = self._save_state
+        if st["final_at"] is None and self._save_done:
+            # putaran terakhir dimulai di batas putaran penuh berikutnya (minimal setelah putaran 1)
+            if t <= tin:
+                st["final_at"], st["final_from"] = tin, 360.0
+            else:
+                k = int((t - tin) // tlin) + 1
+                st["final_at"], st["final_from"] = tin + k * tlin, 360.0 * (k + 1)
+        fa = st["final_at"]
+        if fa is not None and t >= fa:
+            u = min(1.0, (t - fa) / tout)
+            return st["final_from"] + 360.0 * (1 - (1 - u) ** 3), u >= 1.0
+        if t <= tin:
+            return 360.0 * (t / tin) ** 2, False
+        return 360.0 + (t - tin) * 360.0 / tlin, False
 
     def _spin_save_start(self):
-        """Ikon simpan berputar selama menyimpan (minimal 2 putaran), lalu kembali normal."""
-        from PySide6.QtCore import QEasingCurve, QVariantAnimation
-        from PySide6.QtGui import QPainter, QTransform
+        """Ikon simpan berputar halus selama menyimpan (minimal 2 putaran), lalu kembali normal."""
+        from PySide6.QtCore import QElapsedTimer
         self._spin_save_stop()
-        size = 40
-        base = icon("save", "#9182ff").pixmap(QSize(size, size))
+        btn = self.b_save
+        isz = btn.iconSize()
+        dpr = max(1.0, btn.devicePixelRatioF())
+        hi = QSize(int(isz.width() * dpr * 3), int(isz.height() * dpr * 3))   # sumber resolusi tinggi
+        self._save_src = {"acc": icon("save", "#9182ff").pixmap(hi), "norm": icon("save").pixmap(hi)}
+        self._save_geo = (isz, dpr)
         self._save_done = False
-        anim = QVariantAnimation(self)
-        anim.setStartValue(0.0)
-        anim.setEndValue(360.0)
-        anim.setDuration(self.SAVE_TURN_MS)
-        anim.setEasingCurve(QEasingCurve.Linear)
-        anim.setLoopCount(-1)
+        self._save_state = {"final_at": None, "final_from": 0.0, "settle_at": None}
+        self._save_clock = QElapsedTimer()
+        self._save_clock.start()
+        t = QTimer(self)
+        t.setTimerType(Qt.PreciseTimer)
+        t.setInterval(8)                    # ~120 fps, mengikuti refresh layar
+        t.timeout.connect(self._save_tick)
+        self._save_anim = t
+        btn.setEnabled(True)
+        self._save_tick()
+        t.start()
 
-        def frame(v):
-            pm = QPixmap(base.size())
-            pm.setDevicePixelRatio(base.devicePixelRatio())
-            pm.fill(Qt.transparent)
-            p = QPainter(pm)
-            p.setRenderHint(QPainter.SmoothPixmapTransform)
-            w, h = base.width() / base.devicePixelRatio(), base.height() / base.devicePixelRatio()
-            p.setTransform(QTransform().translate(w / 2, h / 2).rotate(float(v)).translate(-w / 2, -h / 2))
-            p.drawPixmap(0, 0, base)
-            p.end()
-            self.b_save.setIcon(QIcon(pm))
+    def _save_frame(self, angle: float, scale: float = 1.0, mix: float = 0.0) -> QIcon:
+        """Gambar ikon diputar (sudut), diperbesar (scale) & dicampur ke warna normal (mix 0..1)."""
+        from PySide6.QtGui import QPainter
+        isz, dpr = self._save_geo
+        pm = QPixmap(int(isz.width() * dpr), int(isz.height() * dpr))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        w, h = isz.width(), isz.height()
+        p.translate(w / 2, h / 2)
+        p.rotate(angle % 360.0)
+        p.scale(scale, scale)
+        tgt = QRectF(-w / 2, -h / 2, w, h)
+        for key, op in (("acc", 1.0 - mix), ("norm", mix)):
+            if op > 0.001:
+                p.setOpacity(op)
+                p.drawPixmap(tgt, self._save_src[key], QRectF(self._save_src[key].rect()))
+        p.end()
+        return QIcon(pm)
 
-        def loop(n):          # n = jumlah putaran yang sudah selesai
-            if self._save_done and n >= self.SAVE_MIN_TURNS:
-                self._spin_save_stop()
-
-        anim.valueChanged.connect(frame)
-        anim.currentLoopChanged.connect(loop)
-        self._save_anim = anim
-        self.b_save.setEnabled(True)
-        anim.start()
+    def _save_tick(self):
+        if getattr(self, "_save_anim", None) is None:
+            return
+        t = float(self._save_clock.elapsed())
+        st = self._save_state
+        if st["settle_at"] is None:
+            ang, done = self._save_angle(t)
+            if not done:
+                self.b_save.setIcon(self._save_frame(ang))
+                return
+            st["settle_at"] = t
+        u = min(1.0, (t - st["settle_at"]) / self.SAVE_SETTLE_MS)
+        import math
+        scale = 1.0 + 0.12 * math.sin(math.pi * u)          # mengembang sedikit lalu kembali
+        mix = u * u * (3 - 2 * u)                            # warna memudar halus ke normal
+        self.b_save.setIcon(self._save_frame(0.0, scale, mix))
+        if u >= 1.0:
+            self._spin_save_stop()
 
     def _spin_save_stop(self):
-        anim = getattr(self, "_save_anim", None)
-        if anim is None:
+        t = getattr(self, "_save_anim", None)
+        if t is None:
             return
         self._save_anim = None
-        anim.stop()
-        anim.deleteLater()
+        t.stop()
+        t.deleteLater()
         self.b_save.setIcon(icon("save_dirty" if self._dirty else "save"))
         self._refresh_state()
 
