@@ -400,7 +400,7 @@ class SettingsDialog(QDialog):
         b2 = QPushButton("…"); b2.setFixedWidth(30); b2.clicked.connect(self._pick_out)
         row2.addWidget(self.outdir, 1); row2.addWidget(b2)
         f.addRow("Folder hasil kerja", row2)
-        tabs.addTab(w, "Typeset & Output")
+        tabs.addTab(w, "Typeset && Output")
 
         # --- Teks (preset 1–5, ukuran font, penamaan file)
         self.text = TextPanel(self.s)

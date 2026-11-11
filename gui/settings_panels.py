@@ -251,6 +251,9 @@ class DataPanel(QWidget):
         v.addWidget(d)
         self.work_list = QListWidget()
         self.work_list.setMinimumHeight(150)
+        self.work_list.setStyleSheet(
+            "QListWidget::indicator { width:14px; height:14px; border:1.5px solid #8a93b3; border-radius:4px; "
+            "background:#1c2130; } QListWidget::indicator:checked { background:#7c6cff; border-color:#9182ff; }")
         self.work_list.itemChanged.connect(lambda *_: self._work_sel_changed())
         v.addWidget(self.work_list)
         row = QHBoxLayout()
