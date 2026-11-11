@@ -69,29 +69,14 @@ def main(out):
     m = w.b_go.menu()
     m.popup(w.mapToGlobal(QPoint(170, 50)))
     pump(app, 0.5)
-    print("menu: latar frosted ada =", getattr(m, "_fx_bd", None) is not None, flush=True)
+    print("menu: latar frosted ada =", app._rexxa_popup_fx.backdrop_of(m) is not None, flush=True)
     compose(w, m).save(out / "1_menu_frosted.png")
     m.hide()
     pump(app, 0.2)
     w.src.showPopup()
     pump(app, 0.5)
     c = w.src.view().window()
-    print("dropdown: latar frosted ada =", getattr(c, "_fx_bd", None) is not None, flush=True)
-    from gui.glass import _PopupFx, frosted
-    h = _PopupFx._host_of(c)
-    print("debug: kelas =", c.metaObject().className(), "| fx =", c.property("_rexxa_fx"), "| parent =",
-          c.parentWidget().metaObject().className() if c.parentWidget() else None, "| host =",
-          h.metaObject().className() if h else None, "| geo =", c.geometry(), flush=True)
-    if h is not None:
-        import traceback
-        try:
-            from PySide6.QtCore import QRect
-            g = c.geometry()
-            tl = h.mapFromGlobal(g.topLeft())
-            print("debug rect:", QRect(tl.x() - 24, tl.y() - 24, g.width() + 48, g.height() + 48), flush=True)
-            print("debug frosted:", frosted(h, QRect(tl.x() - 24, tl.y() - 24, g.width() + 48, g.height() + 48), 5.0), flush=True)
-        except Exception:
-            traceback.print_exc()
+    print("dropdown: latar frosted ada =", app._rexxa_popup_fx.backdrop_of(c) is not None, flush=True)
     compose(w, c).save(out / "2_dropdown_frosted.png")
     print("ok", flush=True)
     os._exit(0)

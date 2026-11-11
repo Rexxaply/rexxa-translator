@@ -452,9 +452,22 @@ def smooth_all(root: QWidget):
 
 
 # ---------------------------------------------------------------- dropdown & menu
+def _key(w) -> int:
+    """Alamat objek C++ (objek internal Qt seperti wadah dropdown tidak punya pembungkus Python yang tetap)."""
+    try:
+        import shiboken6
+        return int(shiboken6.getCppPointer(w)[0])
+    except Exception:
+        return id(w)
+
+
 class _PopupFx(QObject):
     """Semua daftar pilihan (QComboBox) & menu: latar jendela transparan supaya sudut membulat terlihat bersih,
     tanpa bayangan kotak Windows, dan muncul dengan memudar + turun sedikit (±140 ms)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._bd = {}                 # alamat popup -> (latar frosted, titik global)
 
     def eventFilter(self, obj, ev):
         t = ev.type()
@@ -469,15 +482,25 @@ class _PopupFx(QObject):
                     if obj.inherits("QComboBoxPrivateContainer"):
                         obj.setContentsMargins(0, 0, 0, 0)
         elif t == QEvent.Show and obj.isWidgetType() and obj.property("_rexxa_fx"):
-            obj._fx_bd = None
             self._backdrop(obj)
             QTimer.singleShot(0, lambda w=obj: self._appear(w))
-            if obj._fx_bd is None:               # dropdown: posisi baru final sesaat setelah tampil
-                QTimer.singleShot(0, lambda w=obj: (self._backdrop(w), w.update(), [c.update() for c in
-                                                     w.findChildren(QWidget)]))
+            if self._bd.get(_key(obj), (None,))[0] is None:      # dropdown: posisi baru final sesaat setelah tampil
+                QTimer.singleShot(0, lambda w=obj: self._retry(w))
+        elif t == QEvent.Hide and obj.isWidgetType() and obj.property("_rexxa_fx"):
+            self._bd.pop(_key(obj), None)
         elif t == QEvent.Paint and obj.isWidgetType() and obj.property("_rexxa_fx"):
             self._paint_backdrop(obj)             # latar kaca frosted, lalu menu menggambar isinya di atasnya
         return False
+
+    def _retry(self, w):
+        try:
+            if w.isVisible():
+                self._backdrop(w)
+                w.update()
+                for c in w.findChildren(QWidget):
+                    c.update()
+        except RuntimeError:
+            pass
 
     @staticmethod
     def _host_of(w):
@@ -490,25 +513,27 @@ class _PopupFx(QObject):
 
     def _backdrop(self, w):
         host = self._host_of(w)
-        w._fx_bd, w._fx_origin = None, QPoint()
         if host is None:
+            self._bd[_key(w)] = (None, QPoint())
             return
         g = w.geometry()
         tl = host.mapFromGlobal(g.topLeft())
         from PySide6.QtCore import QRect
-        w._fx_bd, w._fx_origin = frosted(host, QRect(tl.x() - 24, tl.y() - 24, g.width() + 48, g.height() + 48), 5.0)
+        self._bd[_key(w)] = frosted(host, QRect(tl.x() - 24, tl.y() - 24, g.width() + 48, g.height() + 48), 5.0)
 
-    @staticmethod
-    def _paint_backdrop(w):
+    def backdrop_of(self, w):
+        return self._bd.get(_key(w), (None, QPoint()))[0]
+
+    def _paint_backdrop(self, w):
         p = QPainter(w)
         p.setRenderHint(QPainter.Antialiasing)
         path = QPainterPath()
         path.addRoundedRect(QRectF(w.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
         p.setClipPath(path)
-        bd = getattr(w, "_fx_bd", None)
+        bd, origin = self._bd.get(_key(w), (None, QPoint()))
         if bd is not None:
             p.fillPath(path, QColor(22, 25, 37))
-            p.drawPixmap(w.mapFromGlobal(w._fx_origin), bd)
+            p.drawPixmap(w.mapFromGlobal(origin), bd)
         else:                                     # tidak ada jendela di belakang: kaca gelap pekat
             p.fillPath(path, QColor(28, 31, 46))
         p.end()
