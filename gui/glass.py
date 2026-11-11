@@ -453,8 +453,10 @@ class _PopupFx(QObject):
             if obj.inherits("QComboBoxPrivateContainer") or obj.inherits("QMenu"):
                 if not obj.property("_rexxa_fx"):
                     obj.setProperty("_rexxa_fx", True)
+                    geo = obj.geometry()                  # posisi sudah dihitung combo / menu: jangan sampai ter-reset
                     obj.setAttribute(Qt.WA_TranslucentBackground, True)
                     obj.setWindowFlag(Qt.NoDropShadowWindowHint, True)
+                    obj.setGeometry(geo)
                     if obj.inherits("QComboBoxPrivateContainer"):
                         obj.setContentsMargins(0, 0, 0, 0)
         elif t == QEvent.Show and obj.isWidgetType() and obj.property("_rexxa_fx"):

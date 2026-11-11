@@ -74,6 +74,8 @@ def main(out):
     dlg.ep.showPopup()
     pump(app, 0.5)
     cont = dlg.ep.view().window()
+    print("dropdown preset: x popup =", cont.mapToGlobal(QPoint(0, 0)).x(), "| x kotak =", dlg.ep.mapToGlobal(QPoint(0, 0)).x(),
+          flush=True)
     from PySide6.QtCore import Qt
     print("popup transparan bersudut =", cont.testAttribute(Qt.WA_TranslucentBackground), flush=True)
     compose(w, dlg, cont).save(out / "1_dropdown_preset.png")
@@ -90,7 +92,11 @@ def main(out):
     # dropdown & menu di jendela utama
     w.tgt.showPopup()
     pump(app, 0.5)
-    compose(w, w.tgt.view().window()).crop((380, 0, 1280, 520)).save(out / "3_dropdown_bahasa.png")
+    c = w.tgt.view().window()
+    print("dropdown bahasa: x popup =", c.mapToGlobal(QPoint(0, 0)).x(), "| x kotak =", w.tgt.mapToGlobal(QPoint(0, 0)).x(),
+          "| y popup =", c.mapToGlobal(QPoint(0, 0)).y(), "| bawah kotak =", w.tgt.mapToGlobal(QPoint(0, w.tgt.height())).y(),
+          flush=True)
+    compose(w, c).crop((380, 0, 1280, 520)).save(out / "3_dropdown_bahasa.png")
     w.tgt.hidePopup()
     w._fill_engine_menu()
     m = w.b_go.menu()
