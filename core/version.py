@@ -14,7 +14,7 @@ import re
 
 import requests
 
-__version__ = "2.1.1"
+__version__ = "2.1.2"
 
 DEFAULT_REPO = "Rexxaply/rexxa-translator"
 

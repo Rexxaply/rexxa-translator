@@ -8,6 +8,15 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.1.2 · Patch update
+
+- Tema baru mengikuti warna logo: latar biru-gelap yang lembut di mata, aksen ungu-biru, tombol utama bergradasi biru → ungu
+- Warna kotak di gambar mengikuti logo: balon biru, teks bebas teal, kotak judul oranye; pesan error & tombol hapus tetap merah lembut
+- Font baru: Inter untuk teks & kontrol, Plus Jakarta Sans untuk judul
+- Ikon baru: tombol Terjemahkan (文 → A), pen tool (mata pena), dan file proyek .mtproj (logo R)
+- Layar awal menampilkan logo baru
+- Perbaikan: tombol "Atur kredit & watermark…" sebelumnya tampil sebagai "Atur kredit _watermark…"
+
 ## 2.1.1 · Patch update
 
 - Ikon & logo baru Rexxa Translator (jendela aplikasi & layar pembuka). Ikon file .exe ikut berganti saat update penuh / instal baru
@@ -32,10 +41,3 @@ Penomoran MAJOR.MINOR.PATCH:
 - CBZ + ComicInfo.xml (judul, chapter, penerjemah, genre, arah baca) untuk Mihon, Komga, Kavita, dll.
 - Paket Local Source Mihon: folder seri + cover + info, tinggal ekstrak ke Mihon/local/
 - Pilihan format gambar (Asli / JPG / WebP) & kualitas; halaman yang belum diterjemahkan bisa disertakan pakai gambar asli
-
-## 2.0.6 · Patch update
-
-- Deteksi teks lebih kuat: balon kecil ("HUH?") tidak lagi tergabung dengan garis wajah/rambut
-- Satu huruf + titik-titik ("I...", "A...") sekarang terdeteksi & terbaca benar
-- Tulisan tangan tipis huruf kecil di latar terang ("Is that it...") tidak lagi terlewat
-- OCR: titik-titik di ujung baris ikut terbaca ("TALK..." bukan "TALK."), spasi setelah "..." tidak hilang
