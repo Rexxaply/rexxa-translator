@@ -30,6 +30,27 @@ def parse_version(v: str) -> tuple:
     return tuple(int(n) for n in nums[:3]) + (0,) * (3 - min(3, len(nums)))
 
 
+# Penomoran MAJOR.MINOR.PATCH (Semantic Versioning):
+#   Major (3.0.0) = perubahan besar / rombak, bisa ada yang tidak cocok dengan versi lama
+#   Minor (2.1.0) = fitur baru, tetap cocok dengan proyek & pengaturan lama
+#   Patch (2.0.8) = perbaikan bug / penyempurnaan kecil tanpa fitur baru
+RELEASE_TYPES = {"major": "Major update", "minor": "Minor update", "patch": "Patch update"}
+
+
+def release_type(v: str) -> str:
+    """'major' | 'minor' | 'patch' dari nomor versi (X.0.0 / X.Y.0 / X.Y.Z)."""
+    major, minor, patch = parse_version(v)
+    if patch:
+        return "patch"
+    if minor:
+        return "minor"
+    return "major" if major else "patch"
+
+
+def release_label(v: str) -> str:
+    return RELEASE_TYPES[release_type(v)]
+
+
 def is_newer(remote: str, local: str = __version__) -> bool:
     return parse_version(remote) > parse_version(local)
 

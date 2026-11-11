@@ -42,6 +42,12 @@ def engine_version() -> int:
     return int(m.group(1))
 
 
+def version_label(ver: str) -> str:
+    """Major / Minor / Patch update dari nomor versi (aturan sama dengan core/version.py)."""
+    n = [int(x) for x in re.findall(r"\d+", ver)[:3]] + [0, 0, 0]
+    return "Patch update" if n[2] else "Minor update" if n[1] else "Major update"
+
+
 def release_notes(ver: str) -> str:
     """Ambil bagian '## X.Y.Z' dari CHANGELOG.md."""
     p = ROOT / "CHANGELOG.md"
@@ -183,7 +189,7 @@ def main():
                         "size": full_zip.stat().st_size}
     (DIST / "update.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     (DIST / "release-notes.md").write_text(
-        (meta["notes"] or f"Rexxa Translator {ver}") +
+        f"**{version_label(ver)}**\n\n" + (meta["notes"] or f"Rexxa Translator {ver}") +
         "\n\n---\n**Instal baru:** unduh `" + f"{NAME}-{ver}-win64.zip" + "`, ekstrak, buka `RexxaTranslator.exe`.\n"
         "**Sudah terpasang:** aplikasi akan menawarkan update otomatis.\n", encoding="utf-8")
     for f in sorted(DIST.glob("*")):
