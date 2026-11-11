@@ -3,6 +3,15 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 2.0.5
+
+- Hapus teks lebih rapi di latar raster/berbintik: bekas teks diisi tekstur aslinya (tanpa gumpalan putih / tambalan terang)
+- Teks bergaris tepi putih (mis. di atas tembok) dihapus bersih beserta tepinya; terjemahan ikut diberi garis tepi putih
+- Garis kotak narasi & tepi balon tidak lagi ikut terhapus / tercoret
+- Patch Tool: perapian otomatis area yang kurang mulus + alat Patch manual (K) seperti di Photoshop
+- Sambung otomatis tepi balon yang terputus saat teks dihapus (garis objek seperti tembok/rambut dibiarkan)
+- Font hiasan aneh (Goudy Stout, Algerian, dll.) tidak dipakai lagi untuk dialog & narasi
+
 ## 2.0.4
 
 - Edit teks jauh lebih cepat (±3×): hanya balon yang diubah yang dihitung & digambar ulang, geser teks langsung tampil
@@ -35,13 +44,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - **Deteksi lebih lengkap**: narasi kecil di panel berarsir/gelap ("I feel chilly..."), teks di balon ledakan bergerigi ("FORSINA!?"), dan seruan pendek ("WH...") kini ikut terdeteksi. Kotak balon yang terpotong diperluas sampai seluruh teks asli.
 - **Hasil OCR lebih bersih**: kotak yang ternyata rambut / raster dibuang (dicek dengan kamus), sisa garis balon ("|", "[") dihapus, apostrof hilang dibetulkan (TLL → I'LL, DONT → DON'T).
 - **Tampilan hasil lebih rapi**: ukuran huruf diseragamkan antar balon, narasi huruf kecil tidak lagi dipaksa kapital, teks gelap di latar gelap otomatis diberi garis tepi putih, ekor huruf & tanda baca di ujung ikut terhapus.
-
-## 2.0.0
-- **Kelola halaman**:
-  - Tombol **+** di samping "HALAMAN" untuk menambah gambar baru ke proyek.
-  - **Tahan & seret** halaman di daftar untuk mengubah urutannya sesuka hati.
-  - **Klik kanan** halaman: tambah gambar di akhir, sisipkan gambar setelah halaman ini, pindah ke atas/bawah, dan **hapus halaman** (bisa beberapa sekaligus dengan Ctrl/Shift + klik, atau tombol Delete). File gambarnya tidak ikut terhapus dari komputer.
-- **Riwayat proyek di layar awal** kini berupa daftar menurun: yang **terakhir dibuka di paling atas**, yang lama turun ke bawah (3 teratas tampil, 10 tersimpan di menu ikon folder).
-- Setiap proyek menampilkan **kapan terakhir dibuka**: "2 menit yang lalu", "4 jam 39 menit yang lalu", "2 hari yang lalu", dan seterusnya. Diperbarui otomatis; waktunya juga tampil di menu "Proyek terakhir".
-- **Tata letak teks lebih rapi**: kata dibagi ulang supaya setiap baris mengisi ruang balon secara seimbang (baris tengah lebih panjang di balon oval), tanpa baris yatim, dan memotong kata dengan tanda hubung buatan hanya bila benar-benar terpaksa. Kata ber-tanda-hubung asli (mis. "DASAR-DASARMU") boleh dipisah di tanda hubungnya.
-- Teks bebas yang terbaca sebagai sampah oleh OCR (mis. SFX Jepang di komik Inggris) tidak ikut diterjemahkan dan ditempel.
