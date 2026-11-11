@@ -8,6 +8,13 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.2.0 · Minor update
+
+- Pilih banyak balon sekaligus: Ctrl+klik di gambar (Asli / Hasil) atau Ctrl / Shift+klik di tab Balon; Ctrl+klik lagi untuk melepas
+- Ubahan di panel kanan berlaku ke semua balon terpilih: font, ukuran, tebal/miring, KAPITAL, rata, spasi, rotasi, warna, stroke, gradasi, preset 1–5 — hanya nilai yang diubah yang disalin
+- Terjemah ulang / OCR ulang banyak balon dalam 1 permintaan, hapus & geser teks bersamaan
+- Tombol Samakan: ukuran teks & ukuran kotak mengikuti balon aktif
+
 ## 2.1.5 · Patch update
 
 - Instruksi tambahan LLM kini prioritas tertinggi: prompt panjang / persona ("You are…") dipakai sebagai system prompt utama, instruksi pendek ditaruh di akhir
@@ -33,7 +40,3 @@ Penomoran MAJOR.MINOR.PATCH:
 - Ikon baru: tombol Terjemahkan (文 → A), pen tool (mata pena), dan file proyek .mtproj (logo R)
 - Layar awal menampilkan logo baru
 - Perbaikan: tombol "Atur kredit & watermark…" sebelumnya tampil sebagai "Atur kredit _watermark…"
-
-## 2.1.1 · Patch update
-
-- Ikon & logo baru Rexxa Translator (jendela aplikasi & layar pembuka). Ikon file .exe ikut berganti saat update penuh / instal baru
