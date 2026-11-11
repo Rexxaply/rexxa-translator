@@ -38,3 +38,7 @@ Penomoran MAJOR.MINOR.PATCH:
 - Format jawaban JSON selalu diatur aplikasi, jadi prompt sendiri tidak bikin error
 - Terjemahan Indonesia lebih santai & tidak kaku (nggak, udah, aku/kamu, gue/lo; hindari "Anda", "tersebut") — kecuali Gaya bahasa Baku
 - Hasil terjemahan LLM lama di cache tidak dipakai lagi
+
+## 2.1.4 · Patch update
+
+- Animasi tombol Simpan: ikon disket berputar (ungu) selama proyek disimpan, minimal 2 putaran, lalu kembali normal
