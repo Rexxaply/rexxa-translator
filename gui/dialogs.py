@@ -549,7 +549,8 @@ class SettingsDialog(GlassDialog):
         lab = QLabel(label)
         lab.setObjectName("gLabel")
         lab.setToolTip(tip)
-        widget.setToolTip(tip)
+        if isinstance(widget, QWidget):
+            widget.setToolTip(tip)
         g.addWidget(lab, r, 0, Qt.AlignLeft | Qt.AlignVCenter)
         if isinstance(widget, QWidget):
             g.addWidget(widget, r, 1)
