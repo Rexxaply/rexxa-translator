@@ -469,8 +469,12 @@ class _PopupFx(QObject):
                     if obj.inherits("QComboBoxPrivateContainer"):
                         obj.setContentsMargins(0, 0, 0, 0)
         elif t == QEvent.Show and obj.isWidgetType() and obj.property("_rexxa_fx"):
+            obj._fx_bd = None
             self._backdrop(obj)
             QTimer.singleShot(0, lambda w=obj: self._appear(w))
+            if obj._fx_bd is None:               # dropdown: posisi baru final sesaat setelah tampil
+                QTimer.singleShot(0, lambda w=obj: (self._backdrop(w), w.update(), [c.update() for c in
+                                                     w.findChildren(QWidget)]))
         elif t == QEvent.Paint and obj.isWidgetType() and obj.property("_rexxa_fx"):
             self._paint_backdrop(obj)             # latar kaca frosted, lalu menu menggambar isinya di atasnya
         return False
