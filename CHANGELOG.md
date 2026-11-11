@@ -3,6 +3,16 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 2.0.4
+
+- Edit teks jauh lebih cepat (±3×): hanya balon yang diubah yang dihitung & digambar ulang, geser teks langsung tampil
+- Hasil render langsung tampil dari memori (tanpa membaca ulang file), jeda render otomatis lebih singkat
+- Scan balon lebih cepat (±35%) dengan hasil yang sama persis
+- OCR lebih cepat & akurat: baca per baris memakai posisi baris dari deteksi (tanpa tahap deteksi teks yang berat), hasil OCR disimpan agar tidak dibaca dua kali
+- OCR lebih pintar: memilih hasil baca terbaik (kamus + jumlah huruf), varian bersih-bintik, menyambung kata ber-tanda hubung ("FOL- LOWING"), kapital seragam, I'M / I'VE
+- Hapus teks di halaman webtoon panjang lebih hemat memori
+- Mode hemat: memori sementara lebih kecil; batas thread juga berlaku saat edit & render
+
 ## 2.0.3
 - **Hapus teks 4 tahap (lebih rapi)**: (1) mask dibuat hanya dari bentuk huruf yang terbaca -- bintik raster / butiran kertas tidak ikut; (2) bekas teks diisi sesuai latarnya: warna polos, butiran balon bertekstur, "pulau putih" di belakang teks tetap putih, sisanya dibuat ulang AI (LaMa); (3) garis balon / bingkai narasi / arsiran yang ikut terpotong dikembalikan dari gambar asli; (4) sisa huruf & sambungan dirapikan lagi oleh AI.
 - Balon putih berbintik tidak lagi meninggalkan tambalan abu-abu buram.
@@ -35,8 +45,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - Setiap proyek menampilkan **kapan terakhir dibuka**: "2 menit yang lalu", "4 jam 39 menit yang lalu", "2 hari yang lalu", dan seterusnya. Diperbarui otomatis; waktunya juga tampil di menu "Proyek terakhir".
 - **Tata letak teks lebih rapi**: kata dibagi ulang supaya setiap baris mengisi ruang balon secara seimbang (baris tengah lebih panjang di balon oval), tanpa baris yatim, dan memotong kata dengan tanda hubung buatan hanya bila benar-benar terpaksa. Kata ber-tanda-hubung asli (mis. "DASAR-DASARMU") boleh dipisah di tanda hubungnya.
 - Teks bebas yang terbaca sebagai sampah oleh OCR (mis. SFX Jepang di komik Inggris) tidak ikut diterjemahkan dan ditempel.
-
-## 1.26.0
-- **Kembali ke layar awal**: menu ikon folder → "Kembali ke layar awal" menutup proyek yang sedang dibuka (ditanya simpan dulu bila ada perubahan) dan menampilkan layar awal lagi.
-- **Riwayat proyek di menu ikon folder**: submenu **"Proyek terakhir"** berisi 10 proyek terbaru; klik untuk membuka (ditanya simpan dulu bila proyek sekarang belum disimpan). Ada juga "Hapus riwayat".
-- Layar awal kini menampilkan **3 proyek terbaru** saja (berjajar di layar lebar). Tombol "Hapus riwayat" di layar awal sekarang berfungsi.
