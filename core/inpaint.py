@@ -214,6 +214,7 @@ def auto_style(img: np.ndarray, b: TextBlock):
         if not b.stroke_width:
             b.stroke_width = default_sw if b.color.upper() in ("#000000",) else 0
         if not getattr(b, "sfx", False):
+            _white_outline_text(img, b)
             return
     else:
         _text_color(img, b)
@@ -230,6 +231,7 @@ def auto_style(img: np.ndarray, b: TextBlock):
             pass
         return
     _dark_bg_outline(img, b)
+    _white_outline_text(img, b)
     if b.kind == "bubble":
         return
     region = block_region_mask(img.shape, b)
@@ -263,6 +265,33 @@ def _dark_bg_outline(img: np.ndarray, b: TextBlock):
     if outer < 140:
         b.stroke_color = "#FFFFFF"
         b.stroke_width = max(3, int(round(sh * 0.2)))
+
+
+def _white_outline_text(img: np.ndarray, b: TextBlock):
+    """Huruf asli bergaris tepi putih di atas raster / latar berbintik (mis. "Just between us..." di
+    dinding bata): terjemahan juga diberi garis tepi putih supaya gaya & keterbacaannya sama."""
+    if b.stroke_width or not (b.text_rect and len(b.text_rect) == 4) or not _is_darkish(b.color):
+        return
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    x, y, w, h = (int(v) for v in b.text_rect)
+    sh = int(b.src_h or 16)
+    crop = gray[max(0, y - sh):y + h + sh, max(0, x - sh):x + w + sh]
+    L = (crop < 140).astype(np.uint8)
+    if L.sum() < 30:
+        return
+
+    def e(r):
+        return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1,) * 2)
+
+    r1 = max(2, int(round(sh * 0.25)))
+    near = cv2.dilate(L, e(r1)) & ~cv2.dilate(L, e(1))
+    far = cv2.dilate(L, e(r1 + max(3, int(round(sh * 0.6))))) & ~cv2.dilate(L, e(r1 + 2))
+    if near.sum() < 30 or far.sum() < 30:
+        return
+    nw, fw = float((crop[near > 0] >= 215).mean()), float((crop[far > 0] >= 215).mean())
+    if nw >= 0.8 and fw <= 0.76 and nw - fw >= 0.1:
+        b.stroke_color = "#FFFFFF"
+        b.stroke_width = max(2, int(round(sh * 0.16)))
 
 
 def _is_darkish(c: str) -> bool:
@@ -458,7 +487,21 @@ def _flat_background(img: np.ndarray, mask: np.ndarray, inside: np.ndarray | Non
     return None
 
 
-def _grain_sample(img: np.ndarray, mask: np.ndarray, inside: np.ndarray | None = None, loose: bool = False):
+def _grainy(patch: np.ndarray) -> bool:
+    """Patch bertekstur halus acak (raster / bintik), bukan gambar bergaris besar."""
+    g = cv2.cvtColor(patch, cv2.COLOR_BGR2GRAY)
+    if g.std() < 6:
+        return False
+    dark = (g < 128).astype(np.uint8)
+    n, _l, st, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+    if n <= 1:
+        return True
+    big = st[1:, 4] > max(30, g.size * 0.02)
+    return big.sum() <= 1
+
+
+def _grain_sample(img: np.ndarray, mask: np.ndarray, inside: np.ndarray | None = None, loose: bool = False,
+                  lh: float = 0.0):
     """Piksel latar di sekitar teks bila latarnya berbintik (std > 3); None bila benar-benar polos.
     loose=True: untuk balon terang bertekstur -- None bila latarnya ternyata gambar (bukan butiran)."""
     ring = cv2.dilate(mask, np.ones((9, 9), np.uint8), iterations=2) & ~cv2.dilate(mask, np.ones((3, 3), np.uint8))
@@ -473,6 +516,18 @@ def _grain_sample(img: np.ndarray, mask: np.ndarray, inside: np.ndarray | None =
     med = float(np.median(g))
     keep = vals[np.abs(g - med) <= 40]          # tanpa garis balon / huruf yang tersisa
     if loose:
+        # bintik gelap KECIL (raster) bagian dari butiran; hanya coretan gelap besar yang dibuang
+        # (hanya untuk latar raster kasar; balon putih biasa tetap seperti semula)
+        gimg = img.mean(axis=2) if img.ndim == 3 else img.astype(float)
+        if _coarse_grain(gimg.astype(np.float32), ring):
+            dark = ((gimg < med - 40) & (ring > 0)).astype(np.uint8)
+            n, lbl, st, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+            thr = max(14, int((lh * 0.22) ** 2)) if lh else 14
+            big = np.zeros(n, bool)
+            big[1:] = st[1:, 4] > thr
+            vals2 = img[(ring > 0) & ~big[lbl]]
+            if len(vals2) >= 60:
+                keep = vals2
         # butiran halus: latar terang dan hampir semua piksel dekat dengan nilai tengahnya
         if med < 175 or len(keep) < 0.85 * len(vals):
             return None
@@ -480,6 +535,197 @@ def _grain_sample(img: np.ndarray, mask: np.ndarray, inside: np.ndarray | None =
     if len(keep) < 60 or float(keep.mean(axis=1).std()) <= 3.0:
         return None
     return keep
+
+
+def _coarse_grain(gray: np.ndarray, clean: np.ndarray) -> bool:
+    """Latar raster / bintik kasar: banyak titik gelap KECIL tersebar (bukan garis / huruf besar)."""
+    c = clean > 0
+    if c.sum() < 200:
+        return False
+    med = float(np.median(gray[c]))
+    dark = ((gray < med - 50) & c).astype(np.uint8)
+    n, lbl, st, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+    if n <= 1:
+        return False
+    small = st[1:, 4] <= 14
+    return float(st[1:, 4][small].sum()) > 0.03 * c.sum()
+
+
+def _quilt_fill(dst: np.ndarray, fill: np.ndarray, src: np.ndarray, clean: np.ndarray, seed: int = 0,
+               k: int = 8, ref: float | None = None, tol: float = 22.0) -> bool:
+    """Isi piksel `fill` dengan potongan kecil kxk yang diambil ACAK dari latar bersih di sekitarnya
+    (clean). Bintik raster / butiran kertas tetap utuh polanya tanpa pola berulang, dan kecerahannya
+    sama dengan latar di sekitar teks. ref = kecerahan latar yang diinginkan (opsional)."""
+    clean = (clean > 0).astype(np.uint8)
+    # jangan ambil potongan yang berisi coretan gelap besar (garis bata, garis balon, sisa huruf):
+    # hanya butiran / bintik kecil yang disalin, supaya tidak muncul potongan garis berserakan
+    gsrc = cv2.cvtColor(src, cv2.COLOR_BGR2GRAY)
+    dark = (gsrc < 110).astype(np.uint8)
+    n, lbl, st, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+    if n > 1:
+        big = np.zeros(n, bool)
+        big[1:] = (st[1:, 4] > max(16, k * 2)) | (np.maximum(st[1:, 2], st[1:, 3]) > k)
+        clean &= ~cv2.dilate(big[lbl].astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+    ok = cv2.erode(clean, np.ones((k, k), np.uint8), anchor=(0, 0), borderType=cv2.BORDER_CONSTANT,
+                   borderValue=0)
+    H, W = clean.shape
+    ok[H - k + 1:, :] = 0
+    ok[:, W - k + 1:] = 0
+    if ref is not None:
+        g = cv2.cvtColor(src, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        mean = cv2.boxFilter(g, -1, (k, k), anchor=(0, 0), normalize=True, borderType=cv2.BORDER_REPLICATE)
+        ok &= (np.abs(mean - ref) <= tol).astype(np.uint8)
+    cy, cx = np.nonzero(ok)
+    if cy.size < 20:
+        return False
+    ys, xs = np.nonzero(fill)
+    if ys.size == 0:
+        return True
+    rng = np.random.default_rng(seed)
+    y0, x0 = int(ys.min()), int(xs.min())
+    # setiap sel kxk di area isi mendapat sumber acak sendiri
+    cell = ((ys - y0) // k) * 100000 + (xs - x0) // k
+    uniq, inv = np.unique(cell, return_inverse=True)
+    pick = rng.integers(0, cy.size, uniq.size)
+    sy, sx = cy[pick][inv] + (ys - y0) % k, cx[pick][inv] + (xs - x0) % k
+    dst[ys, xs] = src[sy, sx]
+    return True
+
+
+def _outline_only(inside: np.ndarray, stm: np.ndarray, lh: float) -> bool:
+    """Area 'balon' hampir seluruhnya hanya huruf + tepi putih tipisnya (tidak ada ruang balon)."""
+    A = int((inside > 0).sum())
+    if A < 50:
+        return False
+    r = max(2, int(lh * 0.6))
+    band = cv2.dilate(stm, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1,) * 2))
+    free = int(((inside > 0) & (band == 0)).sum())
+    return free < 0.15 * A
+
+
+def _letters_on_lines(lbl, ids, stm, lh):
+    """Bagian huruf yang menempel ke garis panjang (tepi balon / kotak) di dekat teks. Garis = ruas
+    lurus yang lebih panjang dari tinggi huruf (dicari dengan 'opening' berbentuk garis di 12 arah);
+    sisanya di dalam area teks = huruf."""
+    ys, xs = np.nonzero(stm)
+    if ys.size == 0 or len(ids) == 0:
+        return None
+    H, W = stm.shape
+    m = int(lh * 0.6)
+    x0, y0 = max(0, xs.min() - m), max(0, ys.min() - m)
+    x1, y1 = min(W, xs.max() + m + 1), min(H, ys.max() + m + 1)
+    pad = int(lh * 1.5)
+    X0, Y0, X1, Y1 = max(0, x0 - pad), max(0, y0 - pad), min(W, x1 + pad), min(H, y1 + pad)
+    mask = np.isin(lbl[Y0:Y1, X0:X1], ids).astype(np.uint8)
+    if not mask.any():
+        return None
+    L = max(7, int(lh * 1.3)) | 1
+    linepix = np.zeros_like(mask)
+    for ang in range(0, 180, 15):
+        k = np.zeros((L, L), np.uint8)
+        c = L // 2
+        dx, dy = np.cos(np.radians(ang)) * c, np.sin(np.radians(ang)) * c
+        cv2.line(k, (int(round(c - dx)), int(round(c - dy))), (int(round(c + dx)), int(round(c + dy))), 1, 1)
+        linepix |= cv2.morphologyEx(mask, cv2.MORPH_OPEN, k)
+    linepix = cv2.dilate(linepix, np.ones((3, 3), np.uint8))
+    cand = (mask > 0) & (linepix == 0)
+    win = np.zeros_like(cand)
+    win[y0 - Y0:y1 - Y0, x0 - X0:x1 - X0] = True
+    cand &= win
+    n, l2, st, _ = cv2.connectedComponentsWithStats(cand.astype(np.uint8), connectivity=8)
+    keep = np.zeros(n, bool)
+    keep[1:] = st[1:, 4] >= 6
+    cand = keep[l2]
+    if not cand.any():
+        return None
+    out = np.zeros(stm.shape, bool)
+    out[Y0:Y1, X0:X1] = cand
+    return out
+
+
+def _outline_text_fill(dst, sub, stm, lh, seed, ai_sub, detail_sub) -> bool:
+    """Teks bergaris tepi putih di atas raster / gambar: huruf + tepi putihnya diganti latar dari
+    LUAR tepi. Latar berbintik rata -> diisi tekstur aslinya langsung (tanpa AI, rapi & cepat).
+    Latar dengan garis / gambar (dinding bata, dsb.) -> bentuknya dibuat ulang AI, lalu butiran
+    rasternya ditambahkan kembali supaya tidak terlihat kabur. False = tidak bisa (pakai cara biasa)."""
+    gray = cv2.cvtColor(sub, cv2.COLOR_BGR2GRAY)
+    r = max(2, int(round(lh * 0.35)))
+    band = cv2.dilate(stm, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1,) * 2))
+    # tepi putih bisa lebih tebal: ikutkan piksel terang yang menempel ke pita huruf
+    bright = (gray >= 215).astype(np.uint8)
+    n, lbl = cv2.connectedComponents(bright)
+    ids = np.unique(lbl[(band > 0) & (bright > 0)])
+    reach = cv2.dilate(stm, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * int(lh * 0.8) + 1,) * 2))
+    halo = np.isin(lbl, ids[ids > 0]) & (reach > 0)
+    full = cv2.dilate(((band > 0) | halo).astype(np.uint8), np.ones((3, 3), np.uint8))
+    # garis panjang (tepi kotak narasi / balon, garis gambar) yang bukan huruf: tidak boleh ditimpa,
+    # dan menjadi pembatas -- tekstur hanya diambil dari ruang yang sama dengan teks
+    dark = (gray < 110).astype(np.uint8)
+    n, dl, dst_, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+    over = np.bincount(dl[stm > 0], minlength=n)
+    big = (dst_[:, 4] > max(30, int((lh * 0.5) ** 2))) & \
+        (np.maximum(dst_[:, 2], dst_[:, 3]) > lh * 1.6) & (over < 0.3 * dst_[:, 4])
+    big[0] = False
+    lines = big[dl] & (stm == 0)          # huruf yang menempel ke garis tetap ikut dihapus
+    full = (full > 0) & ~lines
+    stuck = _letters_on_lines(dl, np.nonzero(big)[0], stm, lh)
+    if stuck is not None:                 # huruf yang menempel ke garis balon / kotak
+        lines &= ~stuck
+        full |= cv2.dilate(stuck.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+        full &= ~lines
+    barrier = cv2.dilate(big[dl].astype(np.uint8), np.ones((3, 3), np.uint8))   # termasuk huruf yang menempel
+    nf, fl = cv2.connectedComponents((barrier == 0).astype(np.uint8), connectivity=4)
+    seeds = fl[(stm > 0) & (barrier == 0)]
+    if seeds.size:
+        cnt = np.bincount(seeds, minlength=nf)
+        cnt[0] = 0
+        main = cnt >= max(1, 0.35 * cnt.max())     # ruang tempat sebagian besar huruf berada
+        region = main[fl]
+        # isi tidak boleh menyeberangi garis (mis. ke balon putih di sebelah kotak narasi)
+        full = full & (region | (stm > 0) | (barrier > 0) & ~lines)
+    else:
+        region = np.ones_like(full)
+    full = full.astype(np.uint8)
+    ring = cv2.dilate(full, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (4 * int(lh) + 1,) * 2)) & ~full
+    ring2 = (ring > 0) & region & (barrier == 0)
+    if ring2.sum() >= 300:
+        ring = ring2.astype(np.uint8)
+    rv = gray[ring > 0]
+    if rv.size < 100:
+        return False
+    if (np.median(rv) >= 235 and (rv >= 225).mean() > 0.9) or not _coarse_grain(gray, ring):
+        return False                                   # latarnya polos / bukan raster: cara biasa
+    k = max(4, min(8, int(lh * 0.3)))
+    q = sub.copy()
+    if not _quilt_fill(q, full > 0, sub.copy(), ring > 0, seed, k=k, ref=float(rv.mean()), tol=30.0):
+        return False
+    # latar yang sebagian besar gambar (bukan butiran raster) -> biarkan AI yang membuat ulang
+    dark = (gray < 110).astype(np.uint8) & (ring > 0).astype(np.uint8)
+    nn, l2, st, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+    big = sum(int(a) for a in st[1:, 4] if a > max(16, k * 2))
+    if big > 0.25 * rv.size:
+        return False
+    m = full > 0
+    dst[m] = q[m]
+    return True
+
+
+def _solid_white_far(sub: np.ndarray, stm: np.ndarray, halo: np.ndarray, lh: float) -> float:
+    """Berapa banyak putih POLOS yang menyambung ke tepi putih huruf tapi jauh dari huruf
+    (dibanding jumlah piksel huruf). Besar = teks di atas kotak / pulau putih (bagian desain);
+    kecil = hanya garis tepi putih di sekeliling huruf."""
+    gray = cv2.cvtColor(sub, cv2.COLOR_BGR2GRAY)
+    k = max(3, int(lh * 0.18)) | 1
+    solid = cv2.morphologyEx((gray >= 225).astype(np.uint8), cv2.MORPH_OPEN, np.ones((k, k), np.uint8))
+    n, lbl = cv2.connectedComponents(solid)
+    ids = np.unique(lbl[(halo > 0) & (solid > 0)])
+    ids = ids[ids > 0]
+    if not ids.size:
+        return 0.0
+    reg = np.isin(lbl, ids)
+    d = cv2.distanceTransform((stm == 0).astype(np.uint8), cv2.DIST_L2, 3)
+    far = int((reg & (d > lh * 0.7)).sum())
+    return far / max(1, int((stm > 0).sum()))
 
 
 def _fill_bubble(img, b):
@@ -607,11 +853,14 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", b
     sebagian dikembalikan ke asli); default salinan img."""
     out = img.copy() if base is None else base.copy()
     use_lama = lama_available()
+    wants_lama0 = use_lama and method in ("lama", "auto")
+    detail = np.zeros(img.shape, np.int16)      # butiran raster yang ditambahkan setelah AI
     ai_mask = np.zeros(img.shape[:2], np.uint8)
     cands = None
     done = []            # (blok, mask huruf, tinggi huruf) untuk tahap perapian
 
     for b in blocks:
+        b._grain_fill = False
         if not b.clean or b.kind == "title":      # logo judul diurus titlelogo
             continue
         if b.text_rect and not (b.source or "").strip() and not (b.translation or "").strip():
@@ -648,14 +897,42 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", b
         if b.kind == "bubble" and b.mask_poly:
             sh = max(2, int(min(b.w, b.h) * 0.012))
             inside = block_region_mask(img.shape, b, shrink=sh)[ry0:ry1, rx0:rx1]
+            if _outline_only(inside, stm, _lh):
+                # "balon" yang terdeteksi ternyata hanya garis tepi putih di sekeliling huruf
+                # (teks bergaris tepi di atas raster / gambar, mis. "Just between us..."):
+                # latar aslinya ada di LUAR tepi putih itu
+                inside = None
+                if method in ("auto", "fill") and _outline_text_fill(
+                        out[ry0:ry1, rx0:rx1], sub, stm, _lh, int(b.x) * 31 + int(b.y),
+                        ai_mask[ry0:ry1, rx0:rx1], detail[ry0:ry1, rx0:rx1]):
+                    b._grain_fill = True
+                    continue
         color = _flat_background(sub, stm, inside) if method in ("auto", "fill") else None
         if color is None and inside is not None and method in ("auto", "fill"):
-            grain = _grain_sample(sub, stm, inside, loose=True)
+            grain = _grain_sample(sub, stm, inside, loose=True, lh=_lh)
             if grain is not None:
-                # balon terang berbintik (tekstur kertas / raster tipis): isi dengan butiran latarnya
-                fillm = (cv2.dilate(stm, np.ones((3, 3), np.uint8)) > 0) & (inside > 0)
-                rng = np.random.default_rng(int(b.x) * 7919 + int(b.y))
-                out[ry0:ry1, rx0:rx1][fillm] = grain[rng.integers(0, len(grain), int(fillm.sum()))]
+                # balon terang berbintik (tekstur kertas / raster): isi dengan TEKSTUR latarnya sendiri
+                # (potongan latar bersih ditempel berulang) -> bintik gelap & terang tetap sama polanya,
+                # bekas teks tidak terlihat sebagai tambalan yang lebih terang / halus
+                # huruf + garis tepi putih tipis di sekelilingnya (kalau tidak ikut diganti, tepi
+                # putihnya tertinggal sebagai bayangan huruf yang lebih terang)
+                rr = max(2, int(round(_lh * 0.22)))
+                band = cv2.dilate(stm, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * rr + 1,) * 2))
+                fillm = (band > 0) & (inside > 0)
+                clean = (cv2.dilate(band, np.ones((5, 5), np.uint8)) == 0) & \
+                    (cv2.erode(inside, np.ones((5, 5), np.uint8)) > 0)
+                gsub = cv2.cvtColor(sub, cv2.COLOR_BGR2GRAY)
+                cv_ = gsub[clean]
+                ref = float(cv_.mean()) if cv_.size > 200 else None
+                coarse = cv_.size > 200 and _coarse_grain(gsub, clean)    # raster / bintik kasar
+                seed = int(b.x) * 7919 + int(b.y)
+                if not coarse:
+                    fillm = (cv2.dilate(stm, np.ones((3, 3), np.uint8)) > 0) & (inside > 0)
+                if not coarse or not _quilt_fill(out[ry0:ry1, rx0:rx1], fillm, sub.copy(), clean, seed,
+                                                 k=max(4, min(8, int(_lh * 0.3))), ref=ref, tol=25.0):
+                    rng = np.random.default_rng(seed)
+                    out[ry0:ry1, rx0:rx1][fillm] = grain[rng.integers(0, len(grain), int(fillm.sum()))]
+                b._grain_fill = True
                 rest = (stm > 0) & ~fillm
                 if rest.any():
                     ai_mask[ry0:ry1, rx0:rx1] |= rest.astype(np.uint8) * 255
@@ -684,20 +961,43 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", b
         else:
             halo = _halo(sub, stm, _lh)
             hs, ts = int((halo > 0).sum()), int((stm > 0).sum())
-            if not getattr(b, "sfx", False) and ts and hs > 0.8 * ts:
-                # teks gelap di atas "pulau" putih (kotak cahaya di atas raster, mis. "Just between
-                # us..."): putihnya bagian dari desain -> isi bekas huruf dengan putih itu, bukan AI
+            if not getattr(b, "sfx", False) and ts and hs > 0.8 * ts \
+                    and (_solid_white_far(sub, stm, halo, _lh) > 1.5 or not wants_lama0):
+                # tanpa AI (LaMa tidak ada / metode OpenCV): area besar tidak bisa dibuat ulang dengan
+                # rapi, jadi tepi putih tebalnya dipertahankan
+                # teks di atas kotak / pulau putih POLOS yang lebar (bagian desain): isi bekas huruf
+                # dengan putih itu
                 pick = sub[(halo > 0) & (stm == 0)]
                 if len(pick):
                     col = np.median(pick, axis=0).astype(np.uint8)
                     fillm = cv2.dilate(stm, np.ones((3, 3), np.uint8)) > 0
                     out[ry0:ry1, rx0:rx1][fillm] = col
                     continue
-            ai_mask[ry0:ry1, rx0:rx1] |= stm | halo   # latar bergambar: generate ulang (AI)
+            # latar bergambar (termasuk teks bergaris tepi putih, mis. "Just between us..." di atas
+            # dinding bata): huruf + garis tepi putihnya dihapus dan latarnya dibuat ulang
+            full = stm | halo
+            if (halo > 0).any():
+                full = cv2.dilate(full, np.ones((3, 3), np.uint8))
+            if not wants_lama0 and method in ("auto", "fill"):
+                # tanpa AI: tempel tekstur latar di sekitarnya (raster / bintik) daripada dioles kabur
+                avoid = cv2.dilate(full, np.ones((7, 7), np.uint8))
+                ring = cv2.dilate(avoid, np.ones((15, 15), np.uint8)) & ~avoid
+                gsub = cv2.cvtColor(sub, cv2.COLOR_BGR2GRAY)
+                rv = gsub[ring > 0]
+                if rv.size > 100 and rv.std() > 25 and _grainy(sub[ring.any(axis=1)][:, ring.any(axis=0)]):
+                    if _quilt_fill(out[ry0:ry1, rx0:rx1], full > 0, sub.copy(), avoid == 0,
+                                   int(b.x) * 31 + int(b.y), k=max(4, min(8, int(_lh * 0.3))),
+                                   ref=float(rv.mean()), tol=30.0):
+                        b._grain_fill = True
+                        continue
+            ai_mask[ry0:ry1, rx0:rx1] |= full   # generate ulang (AI)
 
     wants_lama = use_lama and method in ("lama", "auto")
     if ai_mask.any():
         out = _inpaint_lama(out, ai_mask) if wants_lama else _inpaint_opencv(out, ai_mask)
+        dm = detail.any(axis=2) & (ai_mask > 0)
+        if dm.any():     # AI membuat ulang bentuk latar (garis bata dsb.), butiran raster ditambahkan lagi
+            out[dm] = np.clip(out[dm].astype(np.int16) + detail[dm], 0, 255).astype(np.uint8)
     if done and method != "none":
         out = refine_clean(img, out, done, wants_lama)
     return out
@@ -755,8 +1055,10 @@ def refine_clean(img: np.ndarray, out: np.ndarray, done, wants_lama: bool) -> np
         left = near & (g0 < 160) & (go.astype(np.int16) < bgv.astype(np.int16) - 45) & ~restore
         if left.any():
             nn, l2, s2, _ = cv2.connectedComponentsWithStats(left.astype(np.uint8), connectivity=8)
+            # latar berbintik yang diisi tekstur: bintik seukuran butiran bukan sisa huruf
+            min_a = max(14, int((lh * 0.22) ** 2)) if getattr(b, "_grain_fill", False) else 3
             for i in range(1, nn):
-                if s2[i][4] >= 3 and max(s2[i][2], s2[i][3]) <= lh * 2.5:
+                if s2[i][4] >= min_a and max(s2[i][2], s2[i][3]) <= lh * 2.5:
                     residue[y0:y1, x0:x1][l2 == i] = 255
         out[y0:y1, x0:x1] = o
     if residue.any():

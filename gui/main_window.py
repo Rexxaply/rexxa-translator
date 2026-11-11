@@ -1203,6 +1203,11 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, APP_NAME, f"Gagal membuka proyek:\n{e}")
             return
         pipeline.mark_clean_valid(self.project)    # hasil bersih tersimpan langsung dipakai
+        n_fix = pipeline.sanitize_fonts(self.project)
+        if n_fix:
+            self.log(f"{n_fix} balon memakai font hiasan hasil pilih otomatis → diganti font biasa "
+                     "(render ulang halaman untuk memperbarui hasil).")
+            QTimer.singleShot(400, lambda: self.render_current(quiet=True))
         self._history = {}
         self._saved_sig = None                     # dihitung ulang: proyek yang baru dibuka = tersimpan
         self._warm_up_ai()

@@ -240,6 +240,11 @@ def auto_fonts(img, page: Page, project: Project, settings: dict, log=None, only
     if not settings.get("font_match_all", True):
         return
     from . import fontmatch
+    from . import fontmatch as _fm0
+    for b in (page.blocks if only is None else only):
+        # font hiasan yang dulu dipilih OTOMATIS (bukan pilihan manual) dilepas, lalu dicocokkan ulang
+        if b.font and b.font_cat and not getattr(b, "sfx", False) and _fm0.is_decorative(b.font):
+            b.font = ""
     blocks = [b for b in (page.blocks if only is None else only)
               if b.kind in ("bubble", "free") and not getattr(b, "sfx", False) and not b.font
               and b.text_rect and len(b.text_rect) == 4]
@@ -254,6 +259,10 @@ def auto_fonts(img, page: Page, project: Project, settings: dict, log=None, only
     strokes = [f["stroke"] for f in feats.values() if f]
     page_stroke = float(np.median(strokes)) if strokes else 0.0
     mem = project.font_memory
+    from . import fontmatch as _fm
+    for cat in list(mem):                   # font hiasan yang dulu terpilih otomatis: cari ulang
+        if mem[cat] and _fm.is_decorative(mem[cat]):
+            del mem[cat]
     by_cat = {}
     for b in blocks:
         b.font_cat = font_category(b, feats.get(b.id), page_stroke)
@@ -265,7 +274,8 @@ def auto_fonts(img, page: Page, project: Project, settings: dict, log=None, only
             path = ""
             try:
                 res = fontmatch.best_font(img, rep.text_rect, rep.src_h, top=3,
-                                          include_system=bool(settings.get("font_match_system", True)))
+                                          include_system=bool(settings.get("font_match_system", True)),
+                                          readable=True, lowercase=cat == "narration-lower")
                 if res and res[0][1] <= FONT_OK:
                     path = res[0][0]
             except Exception:
@@ -397,6 +407,23 @@ def _clean_sig(b) -> tuple:
 def _rect_pad(r, pad, W, H):
     x, y, w, h = r[:4]
     return max(0, x - pad), max(0, y - pad), min(W, x + w + pad), min(H, y + h + pad)
+
+
+def sanitize_fonts(project: Project) -> int:
+    """Lepaskan font hiasan (mis. Goudy Stout) yang terpilih OTOMATIS untuk dialog / narasi di proyek
+    lama -> kembali ke font default / font yang diingat. Font pilihan manual tidak diubah.
+    Mengembalikan jumlah balon yang diubah."""
+    from . import fontmatch
+    bad = {c for c, pth in project.font_memory.items() if pth and fontmatch.is_decorative(pth)}
+    for c in bad:
+        del project.font_memory[c]
+    n = 0
+    for pg in project.pages:
+        for b in pg.blocks:
+            if b.font and b.font_cat and not getattr(b, "sfx", False) and fontmatch.is_decorative(b.font):
+                b.font = project.font_memory.get(b.font_cat, "")
+                n += 1
+    return n
 
 
 def mark_clean_valid(project: Project):

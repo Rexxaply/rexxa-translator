@@ -183,6 +183,43 @@ _DISPLAY = ("wild", "badaboom", "komika", "bangers", "anime ace", "animeace", "i
             "bauhaus", "cooper black", "permanent", "creepster", "luckiest", "boogaloo", "bebas", "black", "heavy")
 _SERIF = ("serif", "times", "georgia", "garamond", "caladea", "cambria", "book antiqua", "palatino", "century")
 
+# font hiasan / judul / sambung yang TIDAK cocok untuk dialog & narasi (sulit dibaca, terlalu lebar,
+# huruf kapital hias, dsb.). Nama file Windows (mis. GOUDYSTO.TTF = Goudy Stout) & nama keluarga.
+_DECOR = ("goudysto", "goudystout", "alger", "broadw", "castelar", "castellar", "chiller", "jokerman",
+          "oldengl", "oldenglish", "ravie", "snap", "showg", "showcard", "stencil", "latinwd", "widelatin",
+          "playbill", "harngton", "harrington", "vivaldi", "curlz", "bauhs", "bauhaus", "itcblkad",
+          "blackadder", "itcedscr", "edwardian", "engr", "engravers", "felixti", "felixtitling", "gigi",
+          "kunstler", "magneto", "maturasc", "matura", "mistral", "niageng", "niagsol", "niagara",
+          "parchm", "parchment", "poorich", "poorrichard", "rage", "vineritc", "viner", "vladimir",
+          "infroman", "informalroman", "juice", "pristina", "papyrus", "colonna", "bodpstc", "bodonipost",
+          "forte", "freescpt", "freestyle", "frscript", "frenchscript", "imprisha", "imprint", "onyx",
+          "coprgt", "copperplate", "perti", "perpetuatitling", "agency", "hatten", "haettenschweiler",
+          "elephnt", "elephant", "brlns", "tempsitc", "tempus", "harlowsi", "harlow", "palscri", "palace",
+          "glecb", "gloucester", "scriptbl", "scriptmt", "brushsci", "brushscript", "lcallig",
+          "lucidacalligraphy", "lhandw", "lucidahandwriting", "ocraext", "ocra", "mod20", "modernno",
+          "segoesc", "segoescript", "gabriola", "bernhc", "bernard", "britanic", "britannic",
+          "goudyst", "rosewood", "wingding", "webding", "holtwood", "monotypecorsiva", "mtcorsva",
+          "kaushan", "pacifico", "lobster", "greatvibes", "allura", "dancingscript", "sacramento",
+          "unifraktur", "fraktur", "blackletter", "cinzeldecorative", "monoton", "bungeeshade",
+          "fasterone", "ewert", "codystar", "frijole", "nosifer", "eater", "creepster")
+
+
+def is_decorative(path: str) -> bool:
+    """Font hiasan yang tidak dipakai untuk dialog / narasi (tetap boleh untuk SFX / judul)."""
+    k = "".join(ch for ch in Path(path).stem.lower() if ch.isalnum())
+    return any(k.startswith(d) for d in _DECOR)
+
+
+def _lower_ratio(path: str) -> float:
+    """Tinggi huruf kecil 'x' dibanding 'X' (~1.0 = font kapital saja / huruf kecil = kapital)."""
+    try:
+        f = ImageFont.truetype(path, 64)
+        lx = f.getbbox("x")
+        ux = f.getbbox("X")
+        return (lx[3] - lx[1]) / max(1, ux[3] - ux[1])
+    except Exception:
+        return 1.0
+
 
 def distance(a: dict, b: dict) -> float:
     # setiap ciri dibatasi: satu ciri yang meleset jauh (mis. kekasaran tepi kuas yang tidak dimiliki
@@ -240,7 +277,8 @@ GOOD_ENOUGH = 3.0      # skor di bawah ini = font lokal sudah cukup mirip, Googl
 
 
 def best_font(img: np.ndarray, rect, src_h: int, include_system: bool = True, top: int = 1,
-              heavy: bool = False, online: bool = False, log=None):
+              heavy: bool = False, online: bool = False, log=None, readable: bool = False,
+              lowercase: bool = False):
     """Font paling mirip untuk teks di rect. Mengembalikan path (atau list (path, skor) bila top>1).
     heavy=True : utamakan font tebal (logo judul).
     online=True: bila font lokal kurang mirip, cari cadangan di Google Fonts (diunduh & disimpan)."""
@@ -252,9 +290,20 @@ def best_font(img: np.ndarray, rect, src_h: int, include_system: bool = True, to
     n0 = len(_cache)
 
     def score(path, pen):
+        if readable and is_decorative(path):
+            return None                  # dialog / narasi: tanpa font hiasan
         f = font_features(path)
         if not f:
             return None
+        if readable:
+            # lebar huruf harus mirip (font sangat lebar / sempit membuat teks tidak muat & aneh)
+            if src.get("aspect") and f.get("aspect") and \
+                    not (0.68 <= f["aspect"] / max(1e-3, src["aspect"]) <= 1.45):
+                return None
+            if abs(f.get("slant", 0)) > 0.45:
+                return None              # sangat miring (huruf sambung)
+            if lowercase and _lower_ratio(path) > 0.9:
+                return None              # teks asli huruf kecil: jangan font kapital saja
         return (distance(src, f) + pen + _style_bias(path, src)
                 + (_weight_bias(path) if heavy else 0.0), path)
 
