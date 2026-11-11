@@ -54,7 +54,10 @@ ICONS = {
     "wand": '<path d="M4 20L15 9"/><path d="M15 4v3M13.5 5.5h3M19 9v2M18 10h2M11 3v1.5M10.25 3.75h1.5"/>',
     "gradient": '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 20L20 4M4 14l10-10M10 20l10-10"/>',
     "cursor": '<path d="M5 3l14 8-6 1.5L10 19z"/>',
-    "pen": '<path d="M12 3l7 7-4 4-3 7-3-3-3 1 1-3-3-3 7-3z"/><circle cx="12" cy="12" r="1.5"/>',
+    # pena (mata pena + celah + pegangan) — dari pen-mono.svg (512 px) diperkecil ke 24 px
+    "pen": '<g stroke-width="1.5"><path d="M12 2.8L17.34 11.72 14.91 18.75H9.09L6.66 11.72Z"/>'
+           '<path d="M12 2.8V10.78"/><rect x="8.44" y="18.75" width="7.13" height="2.63" rx=".47"/></g>'
+           '<circle cx="12" cy="12.28" r=".7" stroke-width="1.4"/>',
     "home": '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
     "line": '<path d="M4 19c3-1 4-6 7-8s5 1 9-6"/><circle cx="4" cy="19" r="1.6"/><circle cx="20" cy="5" r="1.6"/>',
     "hand": '<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11 10.5V4a1.5 1.5 0 0 1 3 0v6.5"/>'
