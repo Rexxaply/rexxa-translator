@@ -52,8 +52,36 @@ def main(out):
     from PySide6.QtCore import Qt
     print("dropdown disiapkan sebelum dibuka:", bool(cont.property("_rexxa_fx")), "| transparan:",
           cont.testAttribute(Qt.WA_TranslucentBackground), flush=True)
+    fx = app._rexxa_popup_fx
+    cnt = {"n": 0}
+    orig = fx._paint_backdrop
+
+    def counted(w):
+        cnt["n"] += 1
+        return orig(w)
+    fx._paint_backdrop = counted
     cb.showPopup()
     pump(app, 0.6)
+    print("panggilan gambar panel:", cnt["n"], "| backdrop:", fx.backdrop_of(cont) is not None, flush=True)
+    from PySide6.QtGui import QPainter, QColor
+    from PySide6.QtCore import QEvent, QObject
+
+    class Probe(QObject):
+        def eventFilter(self, o, e):
+            if e.type() == QEvent.Paint and o is cont:
+                print("  paint container, rect=", e.rect(), flush=True)
+            return False
+    pr = Probe()
+    app.installEventFilter(pr)
+    cont.repaint()
+    pump(app, 0.1)
+    im0 = pil(cont.grab().toImage())
+    print("setelah repaint, piksel tengah:", im0.getpixel((im0.width // 2, im0.height - 6)), flush=True)
+    # coba: lukis langsung tanpa anak (sembunyikan view sebentar)
+    cb.view().hide()
+    im1 = pil(cont.grab().toImage())
+    print("tanpa view, piksel tengah:", im1.getpixel((im1.width // 2, im1.height // 2)), flush=True)
+    cb.view().show()
     im = pil(cont.grab().toImage())
     w, h = im.size
     corners = [im.getpixel((1, 1)), im.getpixel((w - 2, 1)), im.getpixel((1, h - 2)), im.getpixel((w - 2, h - 2))]
