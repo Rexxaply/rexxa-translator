@@ -361,6 +361,9 @@ class MainWindow(QMainWindow):
 
         # tombol utama: satu klik = deteksi + OCR + terjemah + render
         m_go = QMenu(self)
+        self.m_engine = m_go.addMenu(icon("translate"), "Preset engine")
+        self.m_engine.aboutToShow.connect(self._fill_engine_menu)
+        m_go.addSeparator()
         m_go.addAction(icon("zapall"), "Terjemahkan SEMUA halaman  (F6)", self.run_all)
         m_go.addAction(icon("zap"), "Terjemahkan ulang halaman ini dari awal (deteksi ulang)",
                        lambda: self.run_stages(["detect", "ocr", "translate", "render"]))
@@ -3349,6 +3352,39 @@ class MainWindow(QMainWindow):
             pipeline.export_text(self.project, f)
             self.log(f"Skrip diekspor: {f}")
 
+    def _fill_engine_menu(self):
+        """Daftar preset engine di menu tombol Terjemahkan: klik = langsung pindah engine / model."""
+        from PySide6.QtGui import QActionGroup
+        m = self.m_engine
+        m.clear()
+        pipeline.ensure_engine_presets(self.settings)
+        grp = QActionGroup(m)
+        names = {"google": "Google", "deepl": "DeepL", "llm": "LLM"}
+        cur = self.settings.get("engine_preset")
+        for p in self.settings["engine_presets"]:
+            eng = p.get("translate_engine", "google")
+            detail = names.get(eng, eng) + (f" · {p.get('llm_model', '')}" if eng == "llm" and p.get("llm_model") else "")
+            a = m.addAction(f"{p['name']}    —  {detail}")
+            a.setCheckable(True)
+            a.setChecked(p["name"] == cur)
+            grp.addAction(a)
+            a.triggered.connect(lambda _=False, n=p["name"]: self.use_engine_preset(n))
+        m.addSeparator()
+        m.addAction(icon("settings"), "Atur preset…", self._open_engine_settings)
+
+    def use_engine_preset(self, name: str):
+        if not pipeline.apply_engine_preset(self.settings, name):
+            return
+        pipeline.save_settings(self.settings)
+        eng = self.settings.get("translate_engine")
+        model = f" ({self.settings.get('llm_model')})" if eng == "llm" else ""
+        self.log(f"Preset engine: {name} — {eng}{model}")
+        self.status_lbl.setText(f"Preset engine dipakai: {name}")
+
+    def _open_engine_settings(self):
+        self.settings["_settings_tab"] = 1          # langsung ke halaman Terjemahan
+        self.edit_settings()
+
     def auto_clean_work(self):
         """Hapus folder kerja chapter yang lama tidak dibuka (Pengaturan → Data)."""
         try:
@@ -3490,7 +3526,7 @@ QMenu::item { padding: 6px 18px 6px 10px; border-radius: 4px; }
 QMenu::item:selected { background: #7c6cff; color: white; }
 QMenu::separator { height: 1px; background: #343c50; margin: 4px 6px; }
 QCheckBox { spacing: 8px; background: transparent; }
-QToolTip { background: #202636; color: #e3e8f3; border: 1px solid #343c50; padding: 4px; }
+QToolTip { background: #1f2434; color: #e9ecf6; border: 1px solid rgba(170,160,255,0.35); border-radius: 10px; padding: 7px 10px; font-size: 9pt; }
 """
 
 

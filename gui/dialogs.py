@@ -14,6 +14,7 @@ from PySide6.QtGui import QDesktopServices, QFont, QFontDatabase
 from core import paths, pipeline, translator, typeset, version
 
 from . import shortcuts as SC
+from .glass import GlassDialog
 from .settings_panels import DataPanel, ShortcutPanel, TextPanel
 from .alert import Alert, MessageBox as QMessageBox  # noqa: E402,F811  (semua alert bergaya Rexxa)
 
@@ -311,129 +312,531 @@ def _qt_unload(path):
         QFontDatabase.removeApplicationFont(fid)
 
 
-class SettingsDialog(QDialog):
-    def __init__(self, settings: dict, parent=None, project=None):
-        super().__init__(parent)
-        self.setWindowTitle("Pengaturan")
-        self.resize(640, 560)
-        self.s = dict(settings)
-        self.factory_reset = False
-        tabs = QTabWidget()
+# ====================================================================== Pengaturan (Liquid Glass)
+SETTINGS_STYLE = """
+QListWidget#gNav { background: transparent; border: none; outline: none; font-weight: 600; font-size: 9.5pt; }
+QListWidget#gNav::item { height: 36px; padding-left: 8px; border-radius: 12px; color: rgba(225,229,242,0.70); margin: 1px 0; }
+QListWidget#gNav::item:hover { background: rgba(255,255,255,0.06); color: #f2f4fb; }
+QListWidget#gNav::item:selected { color: #ffffff;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.20), stop:1 rgba(255,255,255,0.07));
+    border: 1px solid rgba(255,255,255,0.16); }
+QFrame#gCard { background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.075); border-radius: 16px; }
+QFrame#gCard QLabel { background: transparent; }
+QLabel#gPageTitle { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; font-size: 15pt; font-weight: 800; color: #f2f4fb; }
+QLabel#gPageDesc { color: rgba(225,229,242,0.58); font-size: 9pt; }
+QLabel#gCardTitle { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; font-size: 10.5pt; font-weight: 700; color: #eef0f7; }
+QLabel#gCardDesc { color: rgba(225,229,242,0.52); font-size: 8.5pt; }
+QLabel#gLabel { color: #dfe3ef; }
+QLabel#gHint { color: rgba(200,206,230,0.55); font-size: 10pt; }
+QLabel#gHint:hover { color: #b9adff; }
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit {
+    background: rgba(0,0,0,0.26); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 5px 9px;
+    min-height: 22px; color: #eef0f7; selection-background-color: #6f7fe0; }
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QTextEdit:focus { border: 1px solid rgba(170,160,255,0.75); }
+QPushButton#gSmall { min-height: 28px; padding: 0 12px; border-radius: 14px; color: #e3e7f3; font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.11), stop:1 rgba(255,255,255,0.04)); }
+QPushButton#gSmall:hover { background: rgba(255,255,255,0.15); }
+QPushButton#gSmall:disabled { color: rgba(225,229,242,0.30); }
+QPushButton#gDanger { min-height: 28px; padding: 0 12px; border-radius: 14px; font-weight: 600; color: #ff9aa4;
+    border: 1px solid rgba(255,110,125,0.35); background: rgba(255,110,125,0.08); }
+QPushButton#gDanger:hover { background: rgba(255,110,125,0.18); }
+QPushButton#gDanger:disabled { color: rgba(255,154,164,0.30); border-color: rgba(255,110,125,0.12); }
+QCheckBox { color: #dfe3ef; spacing: 8px; }
+QScrollBar:vertical { background: transparent; width: 8px; margin: 4px 1px; }
+QScrollBar::handle:vertical { background: rgba(255,255,255,0.18); border-radius: 3px; min-height: 30px; }
+QScrollBar::handle:vertical:hover { background: rgba(255,255,255,0.32); }
+QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::sub-page { background: none; height: 0; }
+"""
 
-        # --- Proses
-        w = QWidget(); f = QFormLayout(w)
-        self.detect = _combo(DETECT, self.s["detect_mode"]); f.addRow("Deteksi teks", self.detect)
-        self.ocr = _combo(OCR, self.s["ocr_engine"]); f.addRow("Engine OCR", self.ocr)
-        self.clean = _combo(CLEAN, self.s["clean_method"]); f.addRow("Hapus teks", self.clean)
-        self.autopatch = QCheckBox("Perapian otomatis: area bekas teks yang belum mulus ditambal area serupa (Patch)")
-        self.autopatch.setChecked(bool(self.s.get("auto_patch", True))); f.addRow("", self.autopatch)
-        self.autolines = QCheckBox("Sambung otomatis garis balon yang terputus setelah teks dihapus")
-        self.autolines.setChecked(bool(self.s.get("auto_lines", True))); f.addRow("", self.autolines)
-        self.gpu = QCheckBox("Pakai GPU (CUDA) jika tersedia"); self.gpu.setChecked(self.s["gpu"]); f.addRow("", self.gpu)
-        self.sfxmatch = QCheckBox("Teks spesial / SFX: pilih font yang mirip dengan aslinya")
-        self.sfxmatch.setChecked(bool(self.s.get("sfx_font_match", True))); f.addRow("", self.sfxmatch)
-        self.sysfont = QCheckBox("Boleh memakai font perangkat (Windows\\Fonts) bila lebih mirip")
-        self.sysfont.setChecked(bool(self.s.get("font_match_system", True))); f.addRow("", self.sysfont)
-        self.gfont = QCheckBox("Cadangan: cari di Google Fonts bila font di perangkat kurang mirip (perlu internet)")
-        self.gfont.setChecked(bool(self.s.get("font_match_online", True))); f.addRow("", self.gfont)
-        self.fontall = QCheckBox("Semua teks: pilih font yang mirip dengan aslinya && ingat untuk halaman berikutnya")
-        self.fontall.setChecked(bool(self.s.get("font_match_all", True))); f.addRow("", self.fontall)
+# penjelasan yang muncul saat kursor diarahkan ke pengaturan
+TIPS = {
+    "detect": "Cara aplikasi menemukan teks di halaman.\n• Balon: cepat, untuk teks di dalam balon kata.\n"
+              "• EasyOCR: menemukan teks di mana saja (narasi, papan, SFX), lebih lambat.\n• Hybrid: gabungan keduanya.",
+    "ocr": "Mesin pembaca teks asli. manga-ocr paling akurat untuk Jepang; EasyOCR untuk Korea, Mandarin, Inggris.\n"
+           "Otomatis = dipilih sesuai bahasa sumber.",
+    "clean": "Cara menghapus teks asli dari gambar.\n• Isi warna balon: tercepat, untuk balon polos.\n"
+             "• OpenCV inpaint: cepat untuk latar sederhana.\n• LaMa AI: paling rapi untuk latar bergambar, lebih lambat.",
+    "autopatch": "Bekas teks yang masih belum mulus ditambal otomatis dengan potongan area yang mirip di sekitarnya.",
+    "autolines": "Garis tepi balon yang ikut terhapus disambung lagi secara otomatis.",
+    "gpu": "Pakai kartu grafis NVIDIA (CUDA) untuk OCR & LaMa supaya jauh lebih cepat. Tidak berpengaruh bila tidak ada GPU.",
+    "perf": "Hemat = memakai lebih sedikit memori & thread (lebih stabil di laptop spesifikasi rendah).\n"
+            "Normal = tenaga penuh. Otomatis = dipilih dari spesifikasi PC-mu.",
+    "sfx": "Untuk teks spesial / SFX, aplikasi mencari font yang bentuknya mirip dengan tulisan aslinya.",
+    "sysfont": "Font yang terpasang di Windows boleh dipakai bila bentuknya lebih mirip dengan teks asli.",
+    "gfont": "Bila font di perangkat kurang mirip, aplikasi mencari cadangan di Google Fonts (perlu internet).",
+    "fontall": "Setiap jenis teks (dialog, narasi, teriakan…) diberi font yang mirip aslinya, dan pilihanmu diingat untuk "
+               "halaman berikutnya.",
+    "preset": "Simpan beberapa pengaturan engine (mis. Gemini & OpenRouter). Kalau satu sedang gangguan, tinggal pindah "
+              "preset — dari sini atau dari menu panah di tombol Terjemahkan.",
+    "engine": "Mesin penerjemah.\n• Google: gratis, cepat, kualitas standar.\n• DeepL: lebih natural, butuh API key.\n"
+              "• LLM / AI: paling natural & bisa diatur gayanya (Gemini, OpenAI, OpenRouter, lokal…).",
+    "deepl": "API key dari akun DeepL (deepl.com → Akun → API key). Disimpan hanya di komputermu.",
+    "provider": "Isi otomatis alamat & model untuk penyedia populer. Pilih Kustom untuk mengisi sendiri.",
+    "base": "Alamat API yang kompatibel OpenAI, mis. https://generativelanguage.googleapis.com/v1beta/openai.",
+    "model": "Nama model di penyedia tersebut, mis. gemini-2.5-flash, gpt-4o-mini, claude-sonnet-5.",
+    "key": "API key penyedia LLM. Disimpan hanya di komputermu, tidak pernah dikirim ke tempat lain.",
+    "temp": "Kreativitas jawaban AI. 0,2–0,4 = konsisten & setia ke teks asli (disarankan). Lebih tinggi = lebih bebas.",
+    "extra": "Instruksi untuk AI, prioritas tertinggi. Boleh kalimat pendek (mis. 'pakai gue/lo') atau system prompt "
+             "utuh ('You are…'). {targetLanguage} / {sourceLanguage} diisi otomatis.",
+    "style": "Nada bahasa hasil terjemahan: santai, gaul, baku, kocak, atau dramatis.",
+    "honor": "Pertahankan panggilan asli (-san, senpai, oppa) atau ganti dengan padanan Indonesia (kak, bang, pak).",
+    "memory": "AI mengingat tokoh, gender, dan cara mereka saling memanggil, supaya terjemahan konsisten antar halaman.",
+    "prevctx": "Beberapa kalimat terakhir halaman sebelumnya ikut dikirim sebagai konteks percakapan.",
+    "maxsize": "Batas ukuran huruf saat ukuran diatur otomatis (Auto) mengikuti besar balon.",
+    "stroke": "Ketebalan garis tepi huruf untuk kotak teks baru (0 = tanpa garis tepi).",
+    "fmt": "Format file hasil kerja. PNG = kualitas penuh; JPG / WebP = lebih kecil.",
+    "outdir": "Tempat hasil kerja sementara (gambar jadi & bersih). Kosongkan untuk memakai folder tersembunyi aplikasi. "
+              "Gambar untuk dibagikan dibuat lewat Export (Ctrl+E).",
+}
+
+
+class SettingsDialog(GlassDialog):
+    NAV = [("Proses", "scan", "Deteksi, OCR & penghapusan teks"),
+           ("Terjemahan", "translate", "Engine, preset & gaya bahasa"),
+           ("Typeset & Output", "image", "Ukuran huruf & file hasil"),
+           ("Teks", "type", "Preset gaya teks 1–5"),
+           ("Font", "bold", "Font yang terpasang"),
+           ("Shortcut", "keyboard", "Pintasan keyboard"),
+           ("Data", "database", "Cache, hasil kerja & reset"),
+           ("Tentang", "info", "Versi & folder data")]
+
+    def __init__(self, settings: dict, parent=None, project=None):
+        super().__init__(parent, "Pengaturan", "Arahkan kursor ke ⓘ atau ke sebuah pengaturan untuk melihat gunanya.",
+                         size=(860, 600))
+        import copy
+        from PySide6.QtWidgets import QStackedWidget
+        from .icons import icon
+        self.setStyleSheet(self.styleSheet() + SETTINGS_STYLE)
+        self.s = copy.deepcopy(dict(settings))
+        pipeline.ensure_engine_presets(self.s)
+        self.factory_reset = False
+        self._loading = False
+
+        row = QHBoxLayout()
+        row.setSpacing(14)
+        self.nav = QListWidget()
+        self.nav.setObjectName("gNav")
+        self.nav.setFixedWidth(178)
+        from PySide6.QtCore import QSize
+        self.nav.setIconSize(QSize(17, 17))
+        self.stack = QStackedWidget()
+        for name, ico, tip in self.NAV:
+            it = QListWidgetItem(icon(ico), "  " + name)
+            it.setToolTip(tip)
+            self.nav.addItem(it)
+        row.addWidget(self.nav)
+        row.addWidget(self.stack, 1)
+        self.body.addLayout(row, 1)
+
+        self._build_process()
+        self._build_translate()
+        self._build_output()
+        self.text = TextPanel(self.s)
+        self._page_wrap("Teks", "Preset 1–5: font, tebal, miring & huruf kapital yang bisa dipakai cepat dengan "
+                                "tombol 1–5. Preset 1 = gaya bawaan.", self.text, scroll=False)
+        self.fonts = FontPanel(self.text.default_font, self.text.set_default_font, self.text.refresh_fonts)
+        self._page_wrap("Font", "Instal font sendiri (.ttf / .otf), cari di Google Fonts, atau jadikan default.",
+                        self.fonts, scroll=False)
+        self.sc = ShortcutPanel(self.s)
+        self._page_wrap("Shortcut", "Klik sebuah pintasan lalu tekan kombinasi tombol baru.", self.sc, scroll=False)
+        self.data = DataPanel(self.s, project, self.sc, self._on_factory_reset)
+        self._page_wrap("Data", "Ukuran cache & hasil kerja, pembersihan otomatis, dan reset aplikasi.", self.data,
+                        scroll=False)
+        self._build_about()
+
+        self.nav.currentRowChanged.connect(self._go)
+        self.nav.setCurrentRow(int(self.s.get("_settings_tab", 0) or 0) if 0 <= int(self.s.get("_settings_tab", 0) or 0)
+                               < self.nav.count() else 0)
+
+        hint = QLabel("Perubahan berlaku setelah Simpan.")
+        hint.setObjectName("gSub")
+        cancel = QPushButton("Batal")
+        cancel.setObjectName("gGhost")
+        cancel.clicked.connect(self.reject)
+        ok = QPushButton("Simpan")
+        ok.setObjectName("gPrimary")
+        ok.setDefault(True)
+        ok.clicked.connect(self._ok)
+        self.footer.addWidget(hint)
+        self.footer.addStretch()
+        self.footer.addWidget(cancel)
+        self.footer.addWidget(ok)
+        from .glass import smooth_all
+        smooth_all(self)
+
+    # ------------------------------------------------------------ kerangka halaman
+    def _go(self, i):
+        self.stack.setCurrentIndex(i)
+        if self.stack.widget(i) is getattr(self, "_data_page", None):
+            self.data.refresh()
+
+    def _page(self, title, desc):
+        from PySide6.QtWidgets import QScrollArea
+        sa = QScrollArea()
+        sa.setWidgetResizable(True)
+        sa.setFrameShape(QScrollArea.NoFrame)
+        inner = QWidget()
+        v = QVBoxLayout(inner)
+        v.setContentsMargins(2, 0, 10, 8)
+        v.setSpacing(12)
+        t = QLabel(title)
+        t.setObjectName("gPageTitle")
+        d = QLabel(desc)
+        d.setObjectName("gPageDesc")
+        d.setWordWrap(True)
+        v.addWidget(t)
+        v.addWidget(d)
+        sa.setWidget(inner)
+        self.stack.addWidget(sa)
+        return v
+
+    def _page_wrap(self, title, desc, widget, scroll=True):
+        w = QWidget()
+        v = QVBoxLayout(w)
+        v.setContentsMargins(2, 0, 4, 0)
+        v.setSpacing(10)
+        t = QLabel(title)
+        t.setObjectName("gPageTitle")
+        d = QLabel(desc)
+        d.setObjectName("gPageDesc")
+        d.setWordWrap(True)
+        v.addWidget(t)
+        v.addWidget(d)
+        v.addWidget(widget, 1)
+        self.stack.addWidget(w)
+        if widget is getattr(self, "data", None):
+            self._data_page = w
+
+    def _card(self, parent_layout, title=None, desc=None):
+        from PySide6.QtWidgets import QFrame, QGridLayout
+        card = QFrame()
+        card.setObjectName("gCard")
+        outer = QVBoxLayout(card)
+        outer.setContentsMargins(16, 13, 16, 14)
+        outer.setSpacing(8)
+        if title:
+            t = QLabel(title)
+            t.setObjectName("gCardTitle")
+            outer.addWidget(t)
+        if desc:
+            d = QLabel(desc)
+            d.setObjectName("gCardDesc")
+            d.setWordWrap(True)
+            outer.addWidget(d)
+        g = QGridLayout()
+        g.setHorizontalSpacing(12)
+        g.setVerticalSpacing(8)
+        g.setColumnStretch(1, 1)
+        g.setColumnMinimumWidth(0, 128)
+        outer.addLayout(g)
+        parent_layout.addWidget(card)
+        card.grid = g
+        return card
+
+    @staticmethod
+    def _hint(tip):
+        h = QLabel("ⓘ")
+        h.setObjectName("gHint")
+        h.setToolTip(tip)
+        h.setCursor(Qt.WhatsThisCursor)
+        return h
+
+    def _row(self, card, label, widget, tip_key):
+        g = card.grid
+        r = g.rowCount()
+        tip = TIPS.get(tip_key, "")
+        lab = QLabel(label)
+        lab.setObjectName("gLabel")
+        lab.setToolTip(tip)
+        widget.setToolTip(tip)
+        g.addWidget(lab, r, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        if isinstance(widget, QWidget):
+            g.addWidget(widget, r, 1)
+        else:
+            g.addLayout(widget, r, 1)
+        g.addWidget(self._hint(tip), r, 2)
+        return lab
+
+    def _check(self, card, text, checked, tip_key):
+        g = card.grid
+        r = g.rowCount()
+        cb = QCheckBox(text)
+        cb.setChecked(bool(checked))
+        cb.setToolTip(TIPS.get(tip_key, ""))
+        g.addWidget(cb, r, 0, 1, 2)
+        g.addWidget(self._hint(TIPS.get(tip_key, "")), r, 2)
+        return cb
+
+    # ------------------------------------------------------------ halaman: Proses
+    def _build_process(self):
+        v = self._page("Proses", "Cara aplikasi menemukan, membaca, dan menghapus teks asli di halaman.")
+        c = self._card(v, "Deteksi & baca teks")
+        self.detect = _combo(DETECT, self.s["detect_mode"])
+        self._row(c, "Deteksi teks", self.detect, "detect")
+        self.ocr = _combo(OCR, self.s["ocr_engine"])
+        self._row(c, "Engine OCR", self.ocr, "ocr")
+        c = self._card(v, "Hapus teks asli")
+        self.clean = _combo(CLEAN, self.s["clean_method"])
+        self._row(c, "Metode", self.clean, "clean")
+        self.autopatch = self._check(c, "Rapikan otomatis bekas teks yang belum mulus (Patch)",
+                                     self.s.get("auto_patch", True), "autopatch")
+        self.autolines = self._check(c, "Sambung garis balon yang ikut terhapus", self.s.get("auto_lines", True),
+                                     "autolines")
+        c = self._card(v, "Pencocokan font", "Memilih font hasil terjemahan yang mirip dengan tulisan aslinya.")
+        self.fontall = self._check(c, "Semua teks: pilih font yang mirip && ingat untuk halaman berikutnya",
+                                   self.s.get("font_match_all", True), "fontall")
+        self.sfxmatch = self._check(c, "Teks spesial / SFX: cari font yang mirip", self.s.get("sfx_font_match", True),
+                                    "sfx")
+        self.sysfont = self._check(c, "Boleh memakai font Windows bila lebih mirip",
+                                   self.s.get("font_match_system", True), "sysfont")
+        self.gfont = self._check(c, "Cadangan dari Google Fonts (perlu internet)", self.s.get("font_match_online", True),
+                                 "gfont")
+        c = self._card(v, "Performa")
         from core import perf
         self.perf = QComboBox()
         for k, label in (("auto", f"Otomatis ({perf.describe(self.s)})"),
-                         ("hemat", "Hemat — untuk PC/laptop spesifikasi rendah (lebih stabil)"),
-                         ("normal", "Normal — pakai tenaga penuh")):
+                         ("hemat", "Hemat — PC / laptop spesifikasi rendah"),
+                         ("normal", "Normal — tenaga penuh")):
             self.perf.addItem(label, k)
         self.perf.setCurrentIndex(max(0, self.perf.findData(self.s.get("perf_mode", "auto"))))
-        f.addRow("Performa", self.perf)
-        tabs.addTab(w, "Proses")
+        self._row(c, "Mode", self.perf, "perf")
+        self.gpu = self._check(c, "Pakai GPU (CUDA) bila tersedia", self.s["gpu"], "gpu")
+        v.addStretch()
 
-        # --- Terjemahan
-        w = QWidget(); f = QFormLayout(w)
-        self.trans = _combo(TRANS, self.s["translate_engine"]); f.addRow("Engine", self.trans)
-        self.deepl = QLineEdit(self.s["deepl_key"]); self.deepl.setEchoMode(QLineEdit.Password)
-        f.addRow("API key DeepL", self.deepl)
-        f.addRow(QLabel("<b>LLM (kompatibel OpenAI)</b>"))
-        self.preset = QComboBox(); self.preset.addItems(list(translator.LLM_PRESETS) + ["Kustom"])
+    # ------------------------------------------------------------ halaman: Terjemahan
+    def _build_translate(self):
+        v = self._page("Terjemahan", "Pilih mesin penerjemah dan atur gaya bahasanya. Simpan beberapa preset engine "
+                                     "supaya gampang pindah saat satu model bermasalah.")
+        c = self._card(v, "Preset engine", "Setiap preset menyimpan engine, alamat, model, API key & temperature. "
+                                           "Perubahan di bawah langsung tersimpan ke preset yang dipilih.")
+        self.ep = QComboBox()
+        self.ep.setMinimumWidth(180)
+        self._row(c, "Preset aktif", self.ep, "preset")
+        btns = QHBoxLayout()
+        btns.setSpacing(6)
+        self.ep_new = QPushButton("+ Baru")
+        self.ep_new.setObjectName("gSmall")
+        self.ep_new.setToolTip("Buat preset baru dari pengaturan yang sedang tampil (lalu ubah model / key-nya).")
+        self.ep_ren = QPushButton("Ganti nama")
+        self.ep_ren.setObjectName("gSmall")
+        self.ep_ren.setToolTip("Ubah nama preset ini.")
+        self.ep_del = QPushButton("Hapus")
+        self.ep_del.setObjectName("gDanger")
+        self.ep_del.setToolTip("Hapus preset ini (minimal harus ada satu preset).")
+        for b in (self.ep_new, self.ep_ren, self.ep_del):
+            btns.addWidget(b)
+        btns.addStretch()
+        c.grid.addLayout(btns, c.grid.rowCount(), 1, 1, 2)
+        self.ep_new.clicked.connect(self._ep_new)
+        self.ep_ren.clicked.connect(self._ep_rename)
+        self.ep_del.clicked.connect(self._ep_delete)
+
+        c = self._card(v, "Engine")
+        self.trans = _combo(TRANS, self.s["translate_engine"])
+        self._row(c, "Engine", self.trans, "engine")
+        self.deepl = QLineEdit(self.s["deepl_key"])
+        self.deepl.setEchoMode(QLineEdit.Password)
+        self.deepl.setPlaceholderText("API key DeepL")
+        self.l_deepl = self._row(c, "API key DeepL", self.deepl, "deepl")
+        self.preset = QComboBox()
+        self.preset.addItems(list(translator.LLM_PRESETS) + ["Kustom"])
         self.preset.setCurrentText(self.s.get("llm_preset", "Gemini"))
-        self.preset.currentTextChanged.connect(self._apply_preset)
-        f.addRow("Preset", self.preset)
-        self.base = QLineEdit(self.s["llm_base_url"]); f.addRow("Base URL", self.base)
-        self.model = QLineEdit(self.s["llm_model"]); f.addRow("Model", self.model)
-        self.key = QLineEdit(self.s["llm_api_key"]); self.key.setEchoMode(QLineEdit.Password)
-        f.addRow("API key", self.key)
-        self.temp = QDoubleSpinBox(); self.temp.setRange(0, 1.5); self.temp.setSingleStep(0.1)
-        self.temp.setValue(float(self.s["llm_temperature"])); f.addRow("Temperature", self.temp)
-        self.extra = QTextEdit(self.s["llm_extra_prompt"]); self.extra.setFixedHeight(110)
-        self.extra.setPlaceholderText("Instruksi tambahan, mis. 'Pakai bahasa gaul Jakarta untuk karakter remaja'.\n"
-                                      "Boleh juga system prompt utuh ('You are…'); {targetLanguage} / {sourceLanguage} diisi otomatis.")
-        self.extra.setToolTip("Instruksi ini diberi prioritas tertinggi. Prompt panjang / persona dipakai sebagai "
-                              "system prompt utama; format jawaban JSON tetap diatur aplikasi.")
-        f.addRow("Instruksi tambahan", self.extra)
+        self.l_preset = self._row(c, "Penyedia", self.preset, "provider")
+        self.base = QLineEdit(self.s["llm_base_url"])
+        self.l_base = self._row(c, "Base URL", self.base, "base")
+        self.model = QLineEdit(self.s["llm_model"])
+        self.l_model = self._row(c, "Model", self.model, "model")
+        self.key = QLineEdit(self.s["llm_api_key"])
+        self.key.setEchoMode(QLineEdit.Password)
+        self.l_key = self._row(c, "API key", self.key, "key")
+        self.temp = QDoubleSpinBox()
+        self.temp.setRange(0, 1.5)
+        self.temp.setSingleStep(0.1)
+        self.temp.setValue(float(self.s["llm_temperature"]))
+        self.l_temp = self._row(c, "Temperature", self.temp, "temp")
+        self._engine_card = c
+
+        c = self._card(v, "Gaya terjemahan", "Berlaku untuk engine LLM / AI.")
+        self.extra = QTextEdit(self.s["llm_extra_prompt"])
+        self.extra.setFixedHeight(92)
+        self.extra.setPlaceholderText("mis. 'Pakai bahasa gaul Jakarta untuk karakter remaja', atau system prompt utuh.")
+        self._row(c, "Instruksi tambahan", self.extra, "extra")
         from core import skills
-        f.addRow(QLabel("<b>Skill AI</b> <small>(untuk LLM)</small>"))
-        self.style = _combo([(v[0], k) for k, v in skills.STYLES.items()], self.s.get("tl_style", "alami"))
-        f.addRow("Gaya bahasa", self.style)
-        self.honor = _combo([(v[0], k) for k, v in skills.HONORIFICS.items()], self.s.get("tl_honorific", "keep"))
-        f.addRow("Honorifik", self.honor)
-        self.memory = QCheckBox("Pakai memori cerita (tokoh, gender, panggilan)")
-        self.memory.setChecked(bool(self.s.get("story_memory", True)))
-        f.addRow("", self.memory)
-        self.prevctx = QCheckBox("Sertakan akhir halaman sebelumnya sebagai konteks")
-        self.prevctx.setChecked(bool(self.s.get("story_context", True)))
-        f.addRow("", self.prevctx)
-        tabs.addTab(w, "Terjemahan")
+        self.style = _combo([(x[0], k) for k, x in skills.STYLES.items()], self.s.get("tl_style", "alami"))
+        self._row(c, "Gaya bahasa", self.style, "style")
+        self.honor = _combo([(x[0], k) for k, x in skills.HONORIFICS.items()], self.s.get("tl_honorific", "keep"))
+        self._row(c, "Honorifik", self.honor, "honor")
+        self.memory = self._check(c, "Pakai memori cerita (tokoh, gender, panggilan)", self.s.get("story_memory", True),
+                                  "memory")
+        self.prevctx = self._check(c, "Sertakan akhir halaman sebelumnya sebagai konteks",
+                                   self.s.get("story_context", True), "prevctx")
+        v.addStretch()
 
-        # --- Typeset & output
-        w = QWidget(); f = QFormLayout(w)
-        self.maxsize = QSpinBox(); self.maxsize.setRange(8, 200); self.maxsize.setValue(int(self.s["max_font_size"]))
-        f.addRow("Ukuran font maks", self.maxsize)
-        self.stroke = QSpinBox(); self.stroke.setRange(0, 10); self.stroke.setValue(int(self.s["default_stroke"]))
-        f.addRow("Stroke default", self.stroke)
-        f.addRow("", QLabel("<small>Font, tebal, miring & KAPITAL diatur di tab <b>Teks</b> (preset).</small>"))
-        self.fmt = QComboBox(); self.fmt.addItems(["png", "jpg", "webp"]); self.fmt.setCurrentText(self.s["output_format"])
-        f.addRow("Format output", self.fmt)
+        self.preset.currentTextChanged.connect(self._apply_provider)
+        for w in (self.deepl, self.base, self.model, self.key):
+            w.textEdited.connect(self._ep_store)
+        self.temp.valueChanged.connect(self._ep_store)
+        self.trans.currentIndexChanged.connect(self._engine_changed)
+        self.ep.currentIndexChanged.connect(self._ep_switch)
+        self._ep_cur = self.s.get("engine_preset")
+        self._ep_fill()
+        self._engine_changed()
+
+    # ------------------------------------------------------------ preset engine
+    def _ep_fill(self):
+        self._loading = True
+        self.ep.clear()
+        for p in self.s["engine_presets"]:
+            self.ep.addItem(p["name"])
+        self.ep.setCurrentText(self._ep_cur)
+        self._loading = False
+        self.ep_del.setEnabled(len(self.s["engine_presets"]) > 1)
+
+    def _fields(self) -> dict:
+        return {"translate_engine": self.trans.currentData(), "deepl_key": self.deepl.text().strip(),
+                "llm_preset": self.preset.currentText(), "llm_base_url": self.base.text().strip(),
+                "llm_model": self.model.text().strip(), "llm_api_key": self.key.text().strip(),
+                "llm_temperature": self.temp.value()}
+
+    def _ep_store(self, *_):
+        if self._loading:
+            return
+        p = pipeline.find_engine_preset(self.s, self._ep_cur)
+        if p is not None:
+            p.update(self._fields())
+
+    def _ep_load(self, name):
+        p = pipeline.find_engine_preset(self.s, name) or {}
+        self._loading = True
+        self.trans.setCurrentIndex(max(0, self.trans.findData(p.get("translate_engine", "google"))))
+        self.deepl.setText(p.get("deepl_key", ""))
+        self.preset.setCurrentText(p.get("llm_preset", "Kustom"))
+        self.base.setText(p.get("llm_base_url", ""))
+        self.model.setText(p.get("llm_model", ""))
+        self.key.setText(p.get("llm_api_key", ""))
+        self.temp.setValue(float(p.get("llm_temperature", 0.3)))
+        self._loading = False
+        self._engine_changed()
+
+    def _ep_switch(self, _i):
+        if self._loading:
+            return
+        self._ep_store()
+        self._ep_cur = self.ep.currentText()
+        self._ep_load(self._ep_cur)
+
+    def _ask_name(self, title, current=""):
+        d = NameDialog(self, title, current, [p["name"] for p in self.s["engine_presets"] if p["name"] != current])
+        return d.value() if d.exec() else None
+
+    def _ep_new(self):
+        self._ep_store()
+        n = 2
+        while pipeline.find_engine_preset(self.s, f"Preset {n}"):
+            n += 1
+        name = self._ask_name("Preset baru", f"Preset {n}")
+        if not name:
+            return
+        self.s["engine_presets"].append(dict(self._fields(), name=name))
+        self._ep_cur = name
+        self._ep_fill()
+
+    def _ep_rename(self):
+        old = self._ep_cur
+        name = self._ask_name("Ganti nama preset", old)
+        if not name or name == old:
+            return
+        pipeline.find_engine_preset(self.s, old)["name"] = name
+        self._ep_cur = name
+        self._ep_fill()
+
+    def _ep_delete(self):
+        if len(self.s["engine_presets"]) <= 1:
+            return
+        from .alert import ask
+        if not ask(self, "Hapus preset", f"Hapus preset “{self._ep_cur}”?", yes="Hapus", no="Batal", kind="warn",
+                   danger=True):
+            return
+        self.s["engine_presets"] = [p for p in self.s["engine_presets"] if p["name"] != self._ep_cur]
+        self._ep_cur = self.s["engine_presets"][0]["name"]
+        self._ep_fill()
+        self._ep_load(self._ep_cur)
+
+    def _engine_changed(self, *_):
+        eng = self.trans.currentData()
+        for w, lab, show in ((self.deepl, self.l_deepl, eng == "deepl"),
+                             (self.preset, self.l_preset, eng == "llm"), (self.base, self.l_base, eng == "llm"),
+                             (self.model, self.l_model, eng == "llm"), (self.key, self.l_key, eng == "llm"),
+                             (self.temp, self.l_temp, eng == "llm")):
+            w.setVisible(show)
+            lab.setVisible(show)
+            g = self._engine_card.grid
+            idx = g.indexOf(w)
+            if idx >= 0:
+                r, _c, _rs, _cs = g.getItemPosition(idx)
+                h = g.itemAtPosition(r, 2)
+                if h and h.widget():
+                    h.widget().setVisible(show)
+        self._ep_store()
+
+    def _apply_provider(self, name):
+        if name in translator.LLM_PRESETS and not self._loading:
+            url, model = translator.LLM_PRESETS[name]
+            self.base.setText(url)
+            self.model.setText(model)
+        self._ep_store()
+
+    # ------------------------------------------------------------ halaman: Typeset & Output, Tentang
+    def _build_output(self):
+        v = self._page("Typeset & Output", "Batas ukuran huruf otomatis dan tempat file hasil kerja.")
+        c = self._card(v, "Teks hasil", "Font, tebal, miring & KAPITAL diatur di halaman Teks (preset).")
+        self.maxsize = QSpinBox()
+        self.maxsize.setRange(8, 200)
+        self.maxsize.setValue(int(self.s["max_font_size"]))
+        self._row(c, "Ukuran font maks", self.maxsize, "maxsize")
+        self.stroke = QSpinBox()
+        self.stroke.setRange(0, 10)
+        self.stroke.setValue(int(self.s["default_stroke"]))
+        self._row(c, "Stroke default", self.stroke, "stroke")
+        c = self._card(v, "File hasil kerja")
+        self.fmt = QComboBox()
+        self.fmt.addItems(["png", "jpg", "webp"])
+        self.fmt.setCurrentText(self.s["output_format"])
+        self._row(c, "Format", self.fmt, "fmt")
         row2 = QHBoxLayout()
-        self.outdir = QLineEdit(self.s["output_dir"]); self.outdir.setPlaceholderText("kosong = folder tersembunyi aplikasi (disarankan)")
-        self.outdir.setToolTip("Tempat hasil kerja sementara (gambar jadi & gambar bersih). Gambar akhir untuk dibagikan "
-                               "dibuat lewat Export (Ctrl+E) → 'Gambar (ke folder)'.")
-        b2 = QPushButton("…"); b2.setFixedWidth(30); b2.clicked.connect(self._pick_out)
-        row2.addWidget(self.outdir, 1); row2.addWidget(b2)
-        f.addRow("Folder hasil kerja", row2)
-        tabs.addTab(w, "Typeset && Output")
+        self.outdir = QLineEdit(self.s["output_dir"])
+        self.outdir.setPlaceholderText("kosong = folder tersembunyi aplikasi (disarankan)")
+        self.outdir.setToolTip(TIPS["outdir"])
+        b2 = QPushButton("Pilih…")
+        b2.setObjectName("gSmall")
+        b2.clicked.connect(self._pick_out)
+        row2.addWidget(self.outdir, 1)
+        row2.addWidget(b2)
+        self._row(c, "Folder hasil kerja", row2, "outdir")
+        v.addStretch()
 
-        # --- Teks (preset 1–5, ukuran font, penamaan file)
-        self.text = TextPanel(self.s)
-        tabs.addTab(self.text, "Teks")
-
-        # --- Font
-        self.fonts = FontPanel(self.text.default_font, self.text.set_default_font, self.text.refresh_fonts)
-        tabs.addTab(self.fonts, "Font")
-
-        # --- Shortcut & Data
-        self.sc = ShortcutPanel(self.s)
-        tabs.addTab(self.sc, "Shortcut")
-        self.data = DataPanel(self.s, project, self.sc, self._on_factory_reset)
-        tabs.addTab(self.data, "Data")
-        tabs.currentChanged.connect(lambda i: tabs.widget(i) is self.data and self.data.refresh())
-
-        # --- Tentang (update selalu otomatis dari GitHub, tidak perlu diatur)
-        w = QWidget(); f = QFormLayout(w)
-        f.addRow("Versi", QLabel(f"<b>Rexxa Translator {version.__version__}</b>"))
-        f.addRow("Update", QLabel("Otomatis — dicek saat aplikasi dibuka"))
-        f.addRow(QLabel("<b>Data pribadi</b> (pengaturan, API key, font) — aman saat update:"))
+    def _build_about(self):
+        v = self._page("Tentang", "Informasi aplikasi dan lokasi data pribadimu.")
+        c = self._card(v)
+        g = c.grid
+        g.addWidget(QLabel("Versi"), 0, 0)
+        g.addWidget(QLabel(f"<b>Rexxa Translator {version.__version__}</b>"), 0, 1)
+        g.addWidget(QLabel("Update"), 1, 0)
+        g.addWidget(QLabel("Otomatis — dicek setiap aplikasi dibuka"), 1, 1)
+        c = self._card(v, "Data pribadi", "Pengaturan, API key, font & hasil kerja. Aman saat aplikasi di-update.")
         drow = QHBoxLayout()
-        dl = QLineEdit(str(paths.data_dir())); dl.setReadOnly(True)
+        dl = QLineEdit(str(paths.data_dir()))
+        dl.setReadOnly(True)
         ob = QPushButton("Buka folder")
+        ob.setObjectName("gSmall")
         ob.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(paths.data_dir()))))
-        drow.addWidget(dl, 1); drow.addWidget(ob)
-        f.addRow("Folder", drow)
-        tabs.addTab(w, "Tentang")
+        drow.addWidget(dl, 1)
+        drow.addWidget(ob)
+        c.grid.addLayout(drow, 0, 0, 1, 3)
+        v.addStretch()
 
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        bb.accepted.connect(self._ok); bb.rejected.connect(self.reject)
-        lay = QVBoxLayout(self); lay.addWidget(tabs); lay.addWidget(bb)
-
+    # ------------------------------------------------------------ simpan
     def _on_factory_reset(self):
         self.factory_reset = True
         QMessageBox.information(self, "Reset aplikasi", "Pengaturan dikembalikan ke awal.")
@@ -448,36 +851,68 @@ class SettingsDialog(QDialog):
             return
         self.accept()
 
-    def _apply_preset(self, name):
-        if name in translator.LLM_PRESETS:
-            url, model = translator.LLM_PRESETS[name]
-            self.base.setText(url); self.model.setText(model)
-
     def _pick_out(self):
-        d = QFileDialog.getExistingDirectory(self, "Folder output")
+        d = QFileDialog.getExistingDirectory(self, "Folder hasil kerja")
         if d:
             self.outdir.setText(d)
 
     def result_settings(self) -> dict:
         s = self.s
-        s.update(detect_mode=self.detect.currentData(), ocr_engine=self.ocr.currentData(),
+        self._ep_store()
+        s["engine_preset"] = self._ep_cur
+        s.update(self._fields())
+        s.update(llm_extra_prompt=self.extra.toPlainText().strip(),
+                 detect_mode=self.detect.currentData(), ocr_engine=self.ocr.currentData(),
                  clean_method=self.clean.currentData(), gpu=self.gpu.isChecked(),
                  auto_patch=self.autopatch.isChecked(), auto_lines=self.autolines.isChecked(),
-                 translate_engine=self.trans.currentData(), deepl_key=self.deepl.text().strip(),
-                 llm_preset=self.preset.currentText(), llm_base_url=self.base.text().strip(),
-                 llm_model=self.model.text().strip(), llm_api_key=self.key.text().strip(),
-                 llm_temperature=self.temp.value(), llm_extra_prompt=self.extra.toPlainText().strip(),
                  tl_style=self.style.currentData(), tl_honorific=self.honor.currentData(),
                  story_memory=self.memory.isChecked(), story_context=self.prevctx.isChecked(),
                  max_font_size=self.maxsize.value(), default_stroke=self.stroke.value(),
                  output_format=self.fmt.currentText(), output_dir=self.outdir.text().strip(),
                  sfx_font_match=self.sfxmatch.isChecked(), font_match_system=self.sysfont.isChecked(),
                  font_match_online=self.gfont.isChecked(), font_match_all=self.fontall.isChecked(),
-                 perf_mode=self.perf.currentData() or "auto")
+                 perf_mode=self.perf.currentData() or "auto", _settings_tab=self.nav.currentRow())
         s.update(self.text.values())
         s.update(self.sc.values())
         pipeline.sync_default_style(s)
         return s
+
+
+class NameDialog(GlassDialog):
+    """Kotak kecil untuk mengetik nama (preset, dll.)."""
+
+    def __init__(self, parent, title, current="", taken=()):
+        super().__init__(parent, title, "Nama bebas, mis. “Gemini utama” atau “OpenRouter cadangan”.", size=(380, 150),
+                         resizable=False)
+        self.setStyleSheet(self.styleSheet() + SETTINGS_STYLE)
+        self.taken = {t.lower() for t in taken}
+        self.edit = QLineEdit(current)
+        self.edit.selectAll()
+        self.msg = QLabel("")
+        self.msg.setObjectName("gSub")
+        self.body.addWidget(self.edit)
+        self.body.addWidget(self.msg)
+        cancel = QPushButton("Batal")
+        cancel.setObjectName("gGhost")
+        cancel.clicked.connect(self.reject)
+        self.ok = QPushButton("Simpan")
+        self.ok.setObjectName("gPrimary")
+        self.ok.setDefault(True)
+        self.ok.clicked.connect(self.accept)
+        self.footer.addStretch()
+        self.footer.addWidget(cancel)
+        self.footer.addWidget(self.ok)
+        self.edit.textChanged.connect(self._check)
+        self._check()
+
+    def _check(self, *_):
+        t = self.value()
+        bad = "Nama tidak boleh kosong." if not t else ("Nama ini sudah dipakai." if t.lower() in self.taken else "")
+        self.msg.setText(bad)
+        self.ok.setEnabled(not bad)
+
+    def value(self) -> str:
+        return self.edit.text().strip()[:40]
 
 
 class GlossaryDialog(QDialog):

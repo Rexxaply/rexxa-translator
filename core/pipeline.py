@@ -144,7 +144,61 @@ def load_settings() -> dict:
                     case="upper" if s.get("uppercase", True) else "none")
         s["text_presets"] = p
     sync_default_style(s)
+    ensure_engine_presets(s)
     return s
+
+
+# ---------------------------------------------------------------- preset engine terjemahan
+# Satu preset = engine + kunci/alamat/model yang dipakai. Beberapa preset bisa disimpan (mis. "Gemini" dan
+# "OpenRouter"); kalau satu sedang gangguan tinggal pindah preset. Nilai preset aktif juga ditulis ke kunci
+# biasa (translate_engine, llm_model, …) supaya bagian lain aplikasi tidak perlu berubah.
+ENGINE_KEYS = ("translate_engine", "deepl_key", "llm_preset", "llm_base_url", "llm_model", "llm_api_key",
+               "llm_temperature")
+
+
+def engine_values(s: dict) -> dict:
+    return {k: s.get(k, DEFAULT_SETTINGS.get(k)) for k in ENGINE_KEYS}
+
+
+def ensure_engine_presets(s: dict):
+    """Pastikan ada daftar preset; pertama kali dibuat satu preset "Default" dari pengaturan sekarang."""
+    lst = [p for p in (s.get("engine_presets") or []) if isinstance(p, dict) and str(p.get("name", "")).strip()]
+    if not lst:
+        lst = [dict(engine_values(s), name="Default")]
+    s["engine_presets"] = lst
+    if s.get("engine_preset") not in [p["name"] for p in lst]:
+        s["engine_preset"] = lst[0]["name"]
+    return lst
+
+
+def find_engine_preset(s: dict, name: str):
+    for p in s.get("engine_presets") or []:
+        if p.get("name") == name:
+            return p
+    return None
+
+
+def apply_engine_preset(s: dict, name: str) -> bool:
+    """Jadikan preset `name` aktif: nilainya disalin ke pengaturan yang dipakai saat menerjemahkan."""
+    p = find_engine_preset(s, name)
+    if p is None:
+        return False
+    for k in ENGINE_KEYS:
+        if k in p:
+            s[k] = p[k]
+    s["engine_preset"] = name
+    return True
+
+
+def store_engine_preset(s: dict, name: str | None = None):
+    """Simpan nilai engine yang sedang berlaku ke preset (bawaan: preset aktif)."""
+    name = name or s.get("engine_preset") or "Default"
+    p = find_engine_preset(s, name)
+    if p is None:
+        p = {"name": name}
+        s.setdefault("engine_presets", []).append(p)
+    p.update(engine_values(s))
+    return p
 
 
 def save_settings(s: dict):
