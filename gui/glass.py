@@ -23,14 +23,14 @@ GLASS_STYLE = """
 QWidget { background: transparent; }
 QScrollArea { border: none; }
 QComboBoxPrivateContainer { background: transparent; border: none; }
-QComboBox QAbstractItemView { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(44,50,74,0.62), stop:1 rgba(26,29,44,0.70));
-    border: 1px solid rgba(255,255,255,0.18); border-radius: 12px; padding: 5px; outline: 0; color: #e3e7f3; }
+QComboBox QAbstractItemView { background: transparent;
+    border: none; border-radius: 12px; padding: 5px; outline: 0; color: #e3e7f3; }
 QComboBox QAbstractItemView::item { min-height: 30px; padding: 2px 10px; border-radius: 8px; margin: 1px 0; }
 QComboBox QAbstractItemView::item:hover { background: rgba(255,255,255,0.07); }
 QComboBox QAbstractItemView::item:selected { color: white;
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(111,143,232,0.62), stop:1 rgba(143,120,224,0.62)); }
-QMenu { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(44,50,74,0.62), stop:1 rgba(26,29,44,0.70));
-    border: 1px solid rgba(255,255,255,0.18); border-radius: 12px; padding: 6px; }
+QMenu { background: transparent;
+    border: none; border-radius: 12px; padding: 6px; }
 QMenu::item { padding: 7px 20px 7px 12px; border-radius: 8px; color: #e3e7f3; }
 QMenu::item:selected { color: white; background: rgba(140,130,230,0.55); }
 QListWidget, QTableWidget, QTreeWidget { background: rgba(0,0,0,0.18); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; }
@@ -136,7 +136,7 @@ class _Dim(QWidget):
 
 class GlassDialog(QDialog):
     POP_IN_MS = 420
-    POP_OUT_MS = 150
+    POP_OUT_MS = 130
 
     def __init__(self, parent=None, title: str = "", subtitle: str = "", size=(760, 560), resizable=True,
                  header: bool = True):
@@ -277,16 +277,17 @@ class GlassDialog(QDialog):
             t = min(1.0, max(0.0, (x - a0) / (a1 - a0)))
             return t * t * (3 - 2 * t)
         if a["dir"] > 0:
-            # ala iOS: kaca buram muncul DULU, isi menyusul saat kaca sudah pekat -> isi dialog tidak pernah
-            # bertumpuk dengan halaman yang tajam di belakang. Gerak mengembang (pegas) tetap penuh.
+            # Kaca langsung PEKAT sejak frame pertama (tidak ada fase kaca setengah transparan yang terlihat seperti
+            # lapisan hantu), hanya mengembang ala pegas dari 92%. Isi menyusul memudar di atas kaca yang sudah pekat.
             scale = 0.92 + 0.08 * _spring(u)
-            op_glass = ramp(u, 0.0, 0.18)
-            op_content = ramp(u, 0.12, 0.34)
+            op_glass = 1.0
+            op_content = ramp(u, 0.05, 0.30)
         else:
-            # tutup: isi hilang dulu, lalu kacanya
-            scale = 1.0 - 0.04 * u
-            op_content = 1 - ramp(u, 0.0, 0.35)
-            op_glass = 1 - ramp(u, 0.25, 1.0)
+            # tutup: isi hilang dulu; kaca tetap pekat sambil mengecil, lalu lenyap di frame terakhir
+            # (tidak ada fase kaca setengah transparan)
+            scale = 1.0 - 0.14 * u * u
+            op_content = 1 - ramp(u, 0.0, 0.30)
+            op_glass = 1 - ramp(u, 0.82, 1.0)
         c = r.center()
         p.translate(c)
         p.scale(scale, scale)
@@ -505,18 +506,31 @@ class _PopupFx(QObject):
         super().__init__(parent)
         self._bd = {}                 # alamat popup -> (latar frosted, titik global)
 
+    @staticmethod
+    def _prep(obj):
+        """Jadikan jendela popup transparan (sudut lengkung bersih, tanpa pojok hitam) & tanpa bayangan kotak."""
+        if obj.property("_rexxa_fx"):
+            return
+        obj.setProperty("_rexxa_fx", True)
+        geo = obj.geometry()                      # posisi sudah dihitung combo / menu: jangan sampai ter-reset
+        obj.setAttribute(Qt.WA_TranslucentBackground, True)
+        obj.setAttribute(Qt.WA_NoSystemBackground, True)
+        obj.setWindowFlag(Qt.NoDropShadowWindowHint, True)   # (membuat ulang jendela -> transparansi pasti aktif)
+        obj.setGeometry(geo)
+        if obj.inherits("QComboBoxPrivateContainer"):
+            obj.setContentsMargins(0, 0, 0, 0)
+
     def eventFilter(self, obj, ev):
         t = ev.type()
-        if t == QEvent.Polish and obj.isWidgetType() and obj.isWindow():
-            if obj.inherits("QComboBoxPrivateContainer") or obj.inherits("QMenu"):
-                if not obj.property("_rexxa_fx"):
-                    obj.setProperty("_rexxa_fx", True)
-                    geo = obj.geometry()                  # posisi sudah dihitung combo / menu: jangan sampai ter-reset
-                    obj.setAttribute(Qt.WA_TranslucentBackground, True)
-                    obj.setWindowFlag(Qt.NoDropShadowWindowHint, True)
-                    obj.setGeometry(geo)
-                    if obj.inherits("QComboBoxPrivateContainer"):
-                        obj.setContentsMargins(0, 0, 0, 0)
+        if t == QEvent.Polish and obj.isWidgetType():
+            if obj.isWindow() and (obj.inherits("QComboBoxPrivateContainer") or obj.inherits("QMenu")):
+                self._prep(obj)
+            elif obj.inherits("QComboBox"):
+                # siapkan jendela daftar SEJAK kotak dropdown dibuat, jauh sebelum pertama kali dibuka
+                try:
+                    self._prep(obj.view().window())
+                except Exception:
+                    pass
         elif t == QEvent.Show and obj.isWidgetType() and obj.property("_rexxa_fx"):
             self._backdrop(obj)
             QTimer.singleShot(0, lambda w=obj: self._appear(w))
@@ -561,17 +575,33 @@ class _PopupFx(QObject):
         return self._bd.get(_key(w), (None, QPoint()))[0]
 
     def _paint_backdrop(self, w):
+        """Gambar seluruh panel kaca popup sendiri (latar frosted + warna + garis tepi) dengan lengkungan halus.
+        Daftar / menu di atasnya transparan, jadi tidak ada sudut kotak yang menyembul."""
         p = QPainter(w)
         p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(w.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         path = QPainterPath()
-        path.addRoundedRect(QRectF(w.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
-        p.setClipPath(path)
+        path.addRoundedRect(r, 12, 12)
+        p.setCompositionMode(QPainter.CompositionMode_Source)
+        p.fillRect(w.rect(), Qt.transparent)              # sudut di luar lengkungan benar-benar kosong
+        p.setCompositionMode(QPainter.CompositionMode_SourceOver)
         bd, origin = self._bd.get(_key(w), (None, QPoint()))
         if bd is not None:
+            p.save()
+            p.setClipPath(path)
             p.fillPath(path, QColor(22, 25, 37))
             p.drawPixmap(w.mapFromGlobal(origin), bd)
-        else:                                     # tidak ada jendela di belakang: kaca gelap pekat
-            p.fillPath(path, QColor(28, 31, 46))
+            p.restore()
+            top, bot = QColor(44, 50, 74, 165), QColor(26, 29, 44, 185)
+        else:                                             # tidak ada jendela di belakang: kaca gelap pekat
+            top, bot = QColor(40, 45, 66), QColor(26, 29, 44)
+        g = QLinearGradient(r.topLeft(), r.bottomLeft())
+        g.setColorAt(0, top)
+        g.setColorAt(1, bot)
+        p.fillPath(path, QBrush(g))
+        p.setPen(QPen(QColor(255, 255, 255, 46), 1))
+        p.setBrush(Qt.NoBrush)
+        p.drawPath(path)
         p.end()
 
     @staticmethod
