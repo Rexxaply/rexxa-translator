@@ -402,7 +402,7 @@ class SettingsDialog(GlassDialog):
            ("Tentang", "info", "Versi & folder data")]
 
     def __init__(self, settings: dict, parent=None, project=None):
-        super().__init__(parent, "Pengaturan", "Arahkan kursor ke ⓘ atau ke sebuah pengaturan untuk melihat gunanya.",
+        super().__init__(parent, "Pengaturan", "Arahkan kursor ke ikon (i) atau ke sebuah pengaturan untuk melihat gunanya.",
                          size=(860, 600))
         import copy
         from PySide6.QtWidgets import QStackedWidget
@@ -536,8 +536,11 @@ class SettingsDialog(GlassDialog):
 
     @staticmethod
     def _hint(tip):
-        h = QLabel("ⓘ")
+        from .icons import icon
+        h = QLabel()
         h.setObjectName("gHint")
+        h.setPixmap(icon("info", "#9aa2c4").pixmap(16, 16))
+        h.setFixedWidth(18)
         h.setToolTip(tip)
         h.setCursor(Qt.WhatsThisCursor)
         return h
@@ -883,7 +886,7 @@ class NameDialog(GlassDialog):
     """Kotak kecil untuk mengetik nama (preset, dll.)."""
 
     def __init__(self, parent, title, current="", taken=()):
-        super().__init__(parent, title, "Nama bebas, mis. “Gemini utama” atau “OpenRouter cadangan”.", size=(380, 150),
+        super().__init__(parent, title, "Nama bebas, mis. “Gemini utama” atau “OpenRouter cadangan”.", size=(380, 128),
                          resizable=False)
         self.setStyleSheet(self.styleSheet() + SETTINGS_STYLE)
         self.taken = {t.lower() for t in taken}

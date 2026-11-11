@@ -20,8 +20,8 @@ RADIUS = 22
 MARGIN = 26                    # ruang di sekeliling panel untuk bayangan
 
 GLASS_STYLE = """
-QWidget#glassSheet, QWidget#glassSheet QWidget { background: transparent; }
-QWidget#glassSheet QScrollArea, QWidget#glassSheet QScrollArea > QWidget > QWidget { background: transparent; border: none; }
+QWidget { background: transparent; }
+QScrollArea { border: none; }
 QComboBox QAbstractItemView, QComboBox QAbstractItemView QWidget, QMenu { background: #1f2333; color: #eef0f7;
     border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 4px; selection-background-color: rgba(150,140,235,0.35); }
 QListWidget, QTableWidget, QTreeWidget { background: rgba(0,0,0,0.18); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; }
@@ -153,9 +153,9 @@ class GlassDialog(QDialog):
         path = QPainterPath()
         path.addRoundedRect(r, RADIUS, RADIUS)
         g = QLinearGradient(r.topLeft(), r.bottomRight())
-        g.setColorAt(0.0, QColor(34, 38, 56, 246))
-        g.setColorAt(0.55, QColor(24, 27, 40, 248))
-        g.setColorAt(1.0, QColor(28, 26, 44, 248))
+        g.setColorAt(0.0, QColor(34, 38, 56, 251))
+        g.setColorAt(0.55, QColor(24, 27, 40, 252))
+        g.setColorAt(1.0, QColor(28, 26, 44, 252))
         p.fillPath(path, QBrush(g))
         # cahaya warna logo yang samar di dalam kaca
         p.save()
