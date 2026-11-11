@@ -173,6 +173,18 @@ class EqualSplitter(QSplitter):
 
 
 # ====================================================================== window
+
+def _idx(seq, obj) -> int:
+    """Indeks berdasarkan identitas objek (bukan kesamaan isi)."""
+    for i, x in enumerate(seq):
+        if x is obj:
+            return i
+    return -1
+
+
+def _has(seq, obj) -> bool:
+    return obj is not None and _idx(seq, obj) >= 0
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -186,6 +198,7 @@ class MainWindow(QMainWindow):
         self.thread: QThread | None = None
         self.worker: Worker | None = None
         self.sel: TextBlock | None = None
+        self.multi: list = []                 # Ctrl+klik: beberapa balon dipilih sekaligus (termasuk self.sel)
         self._loading = False
         self._render_after_job = False
 
@@ -483,6 +496,7 @@ class MainWindow(QMainWindow):
         for cv in (self.cv_src, self.cv_out):
             other = self.cv_out if cv is self.cv_src else self.cv_src
             cv.block_selected.connect(self._on_canvas_select)
+            cv.block_toggled.connect(self._on_canvas_toggle)
             cv.edit_started.connect(self._on_edit_started)
             cv.block_moving.connect(lambda b, o=other: o.reload_boxes())
             cv.block_geometry_changed.connect(self._on_geom_changed)
@@ -598,6 +612,38 @@ class MainWindow(QMainWindow):
         self.props_hint.setAlignment(Qt.AlignCenter)
         self.props_hint.setWordWrap(True)
         v.addWidget(self.props_hint)
+
+        # --- bar pilihan ganda (Ctrl+klik beberapa balon)
+        self.multi_bar = QFrame()
+        self.multi_bar.setObjectName("multiBar")
+        self.multi_bar.setStyleSheet("#multiBar { background:#22273a; border:1px solid #7c6cff; border-radius:8px; }")
+        mb = QVBoxLayout(self.multi_bar)
+        mb.setContentsMargins(8, 6, 8, 6)
+        mb.setSpacing(4)
+        self.multi_lbl = QLabel("")
+        self.multi_lbl.setWordWrap(True)
+        mb.addWidget(self.multi_lbl)
+        mrow = QHBoxLayout()
+        mrow.setSpacing(4)
+        b_eq_font = QPushButton(" Samakan ukuran teks")
+        b_eq_font.setToolTip("Semua balon terpilih memakai ukuran teks balon aktif (yang bergaris pegangan)")
+        b_eq_font.clicked.connect(self._equal_font_size)
+        b_eq_box = QPushButton(" Samakan ukuran kotak")
+        b_eq_box.setToolTip("Semua kotak terpilih dibuat selebar & setinggi kotak aktif (posisi tengah tetap)")
+        b_eq_box.clicked.connect(self._equal_box_size)
+        mrow.addWidget(b_eq_font, 1)
+        mrow.addWidget(b_eq_box, 1)
+        mb.addLayout(mrow)
+        b_clear = QPushButton("Lepas pilihan ganda")
+        b_clear.setObjectName("flat")
+        b_clear.clicked.connect(lambda: self._select(self.sel))
+        mb.addWidget(b_clear)
+        hint = QLabel("Ctrl+klik balon di gambar / daftar untuk menambah atau melepas.")
+        hint.setObjectName("dim")
+        hint.setWordWrap(True)
+        mb.addWidget(hint)
+        self.multi_bar.setVisible(False)
+        v.addWidget(self.multi_bar)
 
         # --- Terjemahan
         s1 = Section("Terjemahan")
@@ -874,7 +920,7 @@ class MainWindow(QMainWindow):
         hh.setSectionResizeMode(1, QHeaderView.Stretch)
         hh.setSectionResizeMode(2, QHeaderView.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)   # Ctrl / Shift+klik = pilih banyak
         self.table.setWordWrap(True)
         self.table.verticalHeader().hide()
         self.table.itemChanged.connect(self._on_table_edit)
@@ -1606,8 +1652,12 @@ class MainWindow(QMainWindow):
         self._fill_table()
         keep = self.sel if self.sel in p.blocks else None
         self.sel = keep
+        self.multi = [m for m in self.multi if _has(p.blocks, m)] if keep else []
+        if len(self.multi) < 2:
+            self.multi = []
         for cv in (self.cv_src, self.cv_out):
-            cv.select_block(keep, ensure_visible=False)
+            cv.select_block(keep, ensure_visible=False, multi=self.multi)
+        self._sync_table_sel()
         self._load_props(keep)
 
     # ================================================================== daftar balon (tabel)
@@ -1642,22 +1692,74 @@ class MainWindow(QMainWindow):
 
     def _on_table_select(self):
         p = self.page()
+        if not p:
+            return
+        rows = sorted({i.row() for i in self.table.selectedItems() if 0 <= i.row() < len(p.blocks)})
+        if not rows:
+            return
         r = self.table.currentRow()
-        if p and 0 <= r < len(p.blocks) and self.table.selectedItems():
-            self._select(p.blocks[r], from_table=True)
+        prim = p.blocks[r] if r in rows else p.blocks[rows[-1]]
+        many = [p.blocks[i] for i in rows] if len(rows) > 1 else None
+        self._select(prim, from_table=True, multi=many)
+
+    def _sync_table_sel(self):
+        """Sorot baris tabel untuk semua balon terpilih."""
+        p = self.page()
+        if not p:
+            return
+        from PySide6.QtCore import QItemSelection, QItemSelectionModel
+        sm = self.table.selectionModel()
+        self.table.blockSignals(True)
+        sm.blockSignals(True)
+        self.table.clearSelection()
+        sel = QItemSelection()
+        for b in (self.multi or ([self.sel] if self.sel else [])):
+            r = _idx(p.blocks, b)
+            if r >= 0:
+                sel.select(self.table.model().index(r, 0), self.table.model().index(r, 2))
+        sm.select(sel, QItemSelectionModel.Select)
+        if _idx(p.blocks, self.sel) >= 0:
+            sm.setCurrentIndex(self.table.model().index(_idx(p.blocks, self.sel), 0), QItemSelectionModel.NoUpdate)
+        sm.blockSignals(False)
+        self.table.blockSignals(False)
+
+    def _targets(self) -> list:
+        """Balon yang diubah oleh panel properti: semua yang dipilih (Ctrl+klik), atau balon aktif saja."""
+        p = self.page()
+        if not p or not self.sel:
+            return []
+        many = [m for m in self.multi if _has(p.blocks, m)]
+        return many if len(many) > 1 else ([self.sel] if _has(p.blocks, self.sel) else [])
+
+    def _on_canvas_toggle(self, block):
+        """Ctrl+klik balon: tambahkan ke / lepaskan dari pilihan."""
+        p = self.page()
+        if not p or not _has(p.blocks, block):
+            return
+        cur = [m for m in (self.multi or ([self.sel] if self.sel else [])) if _has(p.blocks, m)]
+        if any(m is block for m in cur):
+            cur = [m for m in cur if m is not block]
+            prim = self.sel if self.sel is not block else (cur[-1] if cur else None)
+        else:
+            cur.append(block)
+            prim = block
+        if self.tabs.currentIndex() == 2:
+            self.tabs.setCurrentIndex(0)
+        self._select(prim, from_canvas=True, multi=cur if len(cur) > 1 else None)
+        if prim is None:
+            self.table.clearSelection()
+        elif len(cur) > 1:
+            self.status_lbl.setText(f"{len(cur)} balon dipilih · ubahan di panel kanan berlaku ke semuanya "
+                                    "· Ctrl+klik lagi untuk melepas")
 
     # ================================================================== seleksi & properti
-    def _select(self, b, from_table=False, from_canvas=False):
+    def _select(self, b, from_table=False, from_canvas=False, multi=None):
         self.sel = b
+        self.multi = list(multi) if (b is not None and multi and len(multi) > 1) else []
         for cv in (self.cv_src, self.cv_out):      # sorot balon yang sama di kedua sisi
-            if cv.selected is not b:
-                cv.select_block(b, ensure_visible=not from_canvas)
+            cv.select_block(b, ensure_visible=not from_canvas and not self.multi, multi=self.multi)
         if b and not from_table:
-            p = self.page()
-            if p and b in p.blocks:
-                self.table.blockSignals(True)
-                self.table.selectRow(p.blocks.index(b))
-                self.table.blockSignals(False)
+            self._sync_table_sel()
         self._load_props(b)
 
     def _on_canvas_select(self, block):
@@ -1681,7 +1783,11 @@ class MainWindow(QMainWindow):
             s.setEnabled(on)
         if b:
             idx = self.page().blocks.index(b) + 1 if self.page() and b in self.page().blocks else ""
-            self.sections[0].btn.setText(f"  TERJEMAHAN · BALON #{idx}")
+            n = len(self._targets())
+            self.sections[0].btn.setText(f"  TERJEMAHAN · BALON #{idx}" + (f"  (+{n - 1} dipilih)" if n > 1 else ""))
+            self.multi_bar.setVisible(n > 1)
+            if n > 1:
+                self.multi_lbl.setText(f"<b>{n} balon dipilih</b> — ubahan gaya berlaku ke semuanya")
             if self.e_src.toPlainText() != b.source:
                 self.e_src.setPlainText(b.source)
             if self.e_tr.toPlainText() != b.translation:
@@ -1714,6 +1820,7 @@ class MainWindow(QMainWindow):
             self.b_title.setVisible(b.kind == "title")
         else:
             self.sections[0].btn.setText("  TERJEMAHAN")
+            self.multi_bar.setVisible(False)
             self.e_src.clear()
             self.e_tr.clear()
             # tampilkan nilai netral (bukan batas minimum seperti -180° / -10)
@@ -1762,7 +1869,8 @@ class MainWindow(QMainWindow):
     def _set_align(self, k):
         if self.sel:
             self._snap()
-            self.sel.align = k
+            for t in self._targets():
+                t.align = k
             for kk, btn in self.p_al.items():
                 btn.setChecked(kk == k)
             self._schedule_render()
@@ -1852,10 +1960,29 @@ class MainWindow(QMainWindow):
             return
         self.p_size.setSpecialValueText(f"Auto · {b.fit_size}" if b.fit_size else "Auto")
 
+    PROP_FIELDS = ("font", "font_size", "bold", "stroke_width", "line_spacing", "letter_spacing", "rotation",
+                   "max_lines", "kind", "clean")
+
     def _on_prop_change(self, *_):
         b = self.sel
         if self._loading or not b:
             return
+        targets = self._targets()
+        before = {f: getattr(b, f, None) for f in self.PROP_FIELDS}
+        self._apply_props(b)
+        changed = {f: getattr(b, f, None) for f in self.PROP_FIELDS if getattr(b, f, None) != before[f]}
+        others = [t for t in targets if t is not b]
+        if changed and others:            # pilihan ganda: hanya nilai yang barusan diubah yang disalin
+            p = self.page()
+            for t in others:
+                old = (t.clean, t.kind)
+                for f, val in changed.items():
+                    setattr(t, f, val)
+                if (t.clean, t.kind) != old and p:
+                    self.need_clean.add(p.path)
+            self._schedule_render()
+
+    def _apply_props(self, b):
         self._snap(("prop", b.id))
         old = (b.clean, b.kind)
         new_font = self.p_font.currentData() or ""
@@ -1914,6 +2041,8 @@ class MainWindow(QMainWindow):
             return
         self._snap()
         b.case = None if b.case == k else k          # klik lagi = kembali ikut default
+        for t in self._targets():
+            t.case = b.case
         for kk, btn in self.p_case.items():
             btn.setChecked(b.case == kk)
         self._schedule_render()
@@ -1923,12 +2052,13 @@ class MainWindow(QMainWindow):
         if not b:
             return
         self._snap(("nudge", b.id))
-        if not dx and not dy:
-            b.dx = b.dy = 0
-        else:
-            step = 10 if QApplication.keyboardModifiers() & Qt.ShiftModifier else 2
-            b.dx = int(b.dx or 0) + dx * step
-            b.dy = int(b.dy or 0) + dy * step
+        step = 10 if QApplication.keyboardModifiers() & Qt.ShiftModifier else 2
+        for t in self._targets() or [b]:
+            if not dx and not dy:
+                t.dx = t.dy = 0
+            else:
+                t.dx = int(t.dx or 0) + dx * step
+                t.dy = int(t.dy or 0) + dy * step
         self._schedule_render()
 
     def _update_preset_tips(self):
@@ -1947,16 +2077,20 @@ class MainWindow(QMainWindow):
             self.status_lbl.setText(f"Pilih balon dulu untuk menerapkan Preset {n}")
             return
         self._snap()
-        pipeline.apply_preset(b, self.settings, n)
+        ts = self._targets() or [b]
+        for t in ts:
+            pipeline.apply_preset(t, self.settings, n)
         self._load_props(b)
         self._schedule_render()
-        self.status_lbl.setText(f"Preset {n} diterapkan ke balon #{self.page().blocks.index(b) + 1}")
+        self.status_lbl.setText(f"Preset {n} diterapkan ke {len(ts)} balon" if len(ts) > 1 else
+                                f"Preset {n} diterapkan ke balon #{self.page().blocks.index(b) + 1}")
 
     def _on_italic(self, on):
         if self._loading or not self.sel:
             return
         self._snap()
-        self.sel.italic = bool(on)      # pilihan khusus balon ini
+        for t in self._targets():
+            t.italic = bool(on)      # pilihan khusus balon ini
         self._schedule_render()
 
     def _pick_color(self, attr):
@@ -1966,7 +2100,8 @@ class MainWindow(QMainWindow):
         c = QColorDialog.getColor(QColor(getattr(b, attr) or b.color), self)
         if c.isValid():
             self._snap()
-            setattr(b, attr, c.name())
+            for t in self._targets() or [b]:
+                setattr(t, attr, c.name())
             if attr == "color2":
                 self._grad_btn(b)
             else:
@@ -1984,6 +2119,9 @@ class MainWindow(QMainWindow):
             self.log(f"Gagal membaca gambar: {e}")
             return
         self._snap()
+        for t in self._targets():
+            if t is not b:
+                textstyle.apply(img, t)      # pilihan ganda: tiap balon ambil warna aslinya sendiri
         old = (b.color, b.color2, b.stroke_color, b.stroke_width)
         if not textstyle.apply(img, b):
             self.status_lbl.setText("Warna teks asli tidak terbaca di kotak ini")
@@ -2003,7 +2141,12 @@ class MainWindow(QMainWindow):
         from .gradient_dialog import GradientDialog
         self._snap()
 
+        others = [t for t in self._targets() if t is not b]
+
         def changed():
+            for t in others:          # pilihan ganda: gradasi yang sama untuk semua
+                for f in ("color", "color2", "grad_type", "grad_angle", "grad_pos", "grad_soft"):
+                    setattr(t, f, getattr(b, f, None))
             self._grad_btn(b)
             self._color_btn(self.p_color, b.color)
             self._schedule_render()
@@ -2031,7 +2174,8 @@ class MainWindow(QMainWindow):
         if not b or not b.color2:
             return
         self._snap()
-        b.color2 = ""
+        for t in self._targets() or [b]:
+            t.color2 = ""
         self._grad_btn(b)
         self._schedule_render()
 
@@ -2351,8 +2495,10 @@ class MainWindow(QMainWindow):
         p, b = self.page(), self.sel
         if p and b in (p.blocks if p else []):
             self._snap()
-            p.blocks.remove(b)
+            ts = self._targets() or [b]
+            p.blocks[:] = [x for x in p.blocks if not _has(ts, x)]
             self.sel = None
+            self.multi = []
             self.need_clean.add(p.path)
             self._show_current()
             self._schedule_render()
@@ -2784,6 +2930,9 @@ class MainWindow(QMainWindow):
         p, b = self.page(), self.sel
         if not p or not b or self.thread:
             return
+        ts = self._targets()
+        if len(ts) > 1:
+            return self._multi_job(kind, ts)
         proj, st, i = self.project, dict(self.settings), self.cur
         self._snap()
         rendered = bool(p.cleaned_path and Path(p.cleaned_path).exists())
@@ -2808,6 +2957,66 @@ class MainWindow(QMainWindow):
             w.page_updated.emit(i)
 
         self._start(job, {"ocr": "OCR + terjemah balon", "ocr_only": "OCR balon"}.get(kind, "Terjemah ulang balon"))
+
+    def _multi_job(self, kind, blocks):
+        """OCR ulang / terjemah ulang beberapa balon sekaligus (satu permintaan terjemahan)."""
+        p, proj, st, i = self.page(), self.project, dict(self.settings), self.cur
+        self._snap()
+        rendered = bool(p.cleaned_path and Path(p.cleaned_path).exists())
+        recalc = p.path in self.need_clean
+        if rendered:
+            self.need_clean.discard(p.path)
+
+        def job(w: Worker):
+            from core import detector, ocr
+            if kind in ("ocr", "ocr_only"):
+                img = detector.load_image(p.path)
+                for b in blocks:
+                    b.source = ocr.ocr_block(img, b, st["ocr_engine"], proj.source_lang, st["gpu"])
+            todo = [b for b in blocks if b.source.strip()]
+            if todo and kind != "ocr_only":
+                res = pipeline.translate_texts([b.source for b in todo], p, proj, st, use_cache=(kind == "ocr"))
+                for b, t in zip(todo, res):
+                    b.translation = t
+                    w.log.emit(f"{b.source}  →  {t}")
+            if rendered:
+                pipeline.step_render(p, proj, st, recalc_clean=recalc)
+            w.page_updated.emit(i)
+
+        lbl = {"ocr": "OCR + terjemah", "ocr_only": "OCR"}.get(kind, "Terjemah ulang")
+        self._start(job, f"{lbl} {len(blocks)} balon")
+
+    def _equal_font_size(self):
+        b, ts = self.sel, self._targets()
+        if not b or len(ts) < 2:
+            return
+        size = b.font_size or b.fit_size
+        if not size:
+            self.status_lbl.setText("Render halaman dulu supaya ukuran Auto balon aktif diketahui")
+            return
+        self._snap()
+        for t in ts:
+            t.font_size = int(size)
+        self._load_props(b)
+        self._schedule_render()
+        self.status_lbl.setText(f"Ukuran teks {len(ts)} balon disamakan: {size}")
+
+    def _equal_box_size(self):
+        b, ts, p = self.sel, self._targets(), self.page()
+        if not b or len(ts) < 2 or not p:
+            return
+        self._snap()
+        for t in ts:
+            if t is b:
+                continue
+            cx, cy = t.x + t.w / 2, t.y + t.h / 2
+            t.w, t.h = int(b.w), int(b.h)
+            t.x, t.y = int(round(cx - t.w / 2)), int(round(cy - t.h / 2))
+        self.need_clean.add(p.path)
+        for cv in (self.cv_src, self.cv_out):
+            cv.reload_boxes()
+        self._schedule_render()
+        self.status_lbl.setText(f"Ukuran kotak {len(ts)} balon disamakan: {b.w}×{b.h}")
 
     # ================================================================== dialog & export
     def edit_settings(self):
