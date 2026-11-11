@@ -8,6 +8,11 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.3.1 · Patch update
+
+- Perbaikan: jendela Pengaturan & kotak pesan tidak lagi berkedip saat dibuka (muncul langsung dengan animasi pop-up)
+- Semua dropdown & menu bergaya Liquid Glass: kaca frosted (isi aplikasi di belakang tampak buram), sudut membulat, pilihan berbentuk pil, muncul halus
+
 ## 2.3.0 · Minor update
 
 - Pengaturan baru bergaya Liquid Glass: menu samping, isi dikelompokkan rapi, catatan kegunaan saat kursor diarahkan ke setiap pengaturan, konfirmasi Simpan / Kembali / Tutup tanpa simpan
@@ -33,12 +38,3 @@ Penomoran MAJOR.MINOR.PATCH:
 - Format jawaban JSON selalu diatur aplikasi, jadi prompt sendiri tidak bikin error
 - Terjemahan Indonesia lebih santai & tidak kaku (nggak, udah, aku/kamu, gue/lo; hindari "Anda", "tersebut") — kecuali Gaya bahasa Baku
 - Hasil terjemahan LLM lama di cache tidak dipakai lagi
-
-## 2.1.4 · Patch update
-
-- Animasi tombol Simpan: ikon disket berputar (ungu) selama proyek disimpan, minimal 2 putaran, lalu kembali normal
-
-## 2.1.3 · Patch update
-
-- Daftar font menampilkan nama tiap font dengan font itu sendiri (pratinjau langsung, gaya Bold/Italic ikut) — di panel Tipografi & Preset teks
-- Daftar pilihan (font, bahasa, preset, dll.) tidak lagi memanjang setinggi layar: maksimal ±14 baris, sisanya digulir
