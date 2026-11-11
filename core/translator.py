@@ -82,7 +82,66 @@ def translate_deepl(texts, src, tgt, glossary, api_key):
 SYSTEM_PROMPT = ("Translate manga speech bubbles {src}->{tgt}. Natural, concise dialogue; keep tone & "
                  "character voice; short SFX. Items are one page in reading order (use as "
                  "context). Source text comes from OCR and may contain misread letters (e.g. G/C, I/l/!, 0/O); "
-                 "silently fix obvious OCR mistakes before translating. {glossary}{context}{extra}Reply JSON only: {{\"id\":\"translation\"}}")
+                 "silently fix obvious OCR mistakes before translating. {natural}{glossary}{context}{extra}{fmt}")
+
+PROMPT_VERSION = "p2"
+
+FORMAT_RULE = ("Reply JSON only: {\"id\":\"translation\"} (same ids as the input). "
+               "This output format overrides any other format mentioned above.")
+
+# Arahan bahasa sehari-hari per bahasa tujuan (supaya hasil tidak kaku "bahasa AI").
+NATURAL = {
+    "id": ("Write Indonesian the way real fans talk in scanlations, not textbook Indonesian: casual spoken "
+           "forms (nggak, udah, aja, banget, kok, sih, dong, deh, kan) where they fit the character; aku/kamu or "
+           "gue/lo instead of saya/Anda unless the speaker is formal; avoid stiff words (Anda, tersebut, apakah, "
+           "sangatlah, oleh karena itu, merupakan); never translate word-for-word. "),
+}
+
+_VARS = {
+    "tgt": ("targetlanguage", "target_language", "target language", "targetlang", "target", "tgt", "bahasatujuan"),
+    "src": ("sourcelanguage", "source_language", "source language", "sourcelang", "source", "src", "bahasaasal"),
+}
+
+
+def fill_vars(text: str, src: str, tgt: str) -> str:
+    """Isi variabel di prompt buatan sendiri: {targetLanguage}, {sourceLanguage}, {{tgt}}, [target] …"""
+    names = {"tgt": LANG_NAMES.get(tgt, tgt), "src": LANG_NAMES.get(src, src)}
+
+    def rep(m):
+        key = re.sub(r"[\s_-]", "", m.group(2).lower())
+        for k, alts in _VARS.items():
+            if key in {re.sub(r"[\s_-]", "", a) for a in alts}:
+                return names[k]
+        return m.group(0)
+    return re.sub(r"(\{\{|\{|\[)\s*([A-Za-z][A-Za-z _-]{1,24}?)\s*(\}\}|\}|\])", rep, text or "")
+
+
+def is_full_prompt(extra: str) -> bool:
+    """Instruksi panjang / berbentuk persona ('You are…', 'Kamu adalah…') = system prompt utuh milik pengguna."""
+    e = (extra or "").strip()
+    return len(e) > 400 or bool(re.match(r"(?i)(you are|act as|kamu adalah|anda adalah|kamu ialah|role\s*:)", e))
+
+
+def build_system(src: str, tgt: str, glossary_txt: str = "", context: str = "", extra: str = "") -> str:
+    """Susun system prompt. Instruksi pengguna diberi prioritas tertinggi:
+    - persona / prompt panjang -> dipakai sebagai prompt utama (variabel diisi), aturan dasar jadi catatan;
+    - instruksi pendek -> ditaruh di AKHIR dengan label prioritas.
+    Format JSON selalu di paling akhir supaya tidak tertimpa format dari prompt pengguna."""
+    S, T = LANG_NAMES.get(src, src), LANG_NAMES.get(tgt, tgt)
+    nat = NATURAL.get((tgt or "").split("-")[0], "")
+    if "standard formal" in (context or ""):      # Gaya bahasa: Baku -> jangan dipaksa santai
+        nat = ""
+    ctx = (context.strip() + " ") if context.strip() else ""
+    extra = fill_vars((extra or "").strip(), src, tgt)
+    if extra and is_full_prompt(extra):
+        return (extra + "\n\n--- Task ---\nTranslate the manga speech bubbles below from " + S + " to " + T +
+                ". Items are one page in reading order (use as context). Text comes from OCR: silently fix "
+                "obvious misread letters. Follow the instructions above first; they have the highest priority. "
+                + nat + glossary_txt + ctx + "\n" + FORMAT_RULE)
+    user_rule = ("USER INSTRUCTIONS (highest priority, override the defaults above): "
+                 + extra.rstrip(".") + ". ") if extra else ""
+    return SYSTEM_PROMPT.format(src=S, tgt=T, natural=nat, glossary=glossary_txt, context=ctx,
+                                extra=user_rule, fmt=FORMAT_RULE)
 
 
 def _glossary_for(texts, glossary):
@@ -121,10 +180,7 @@ def translate_llm(texts, src, tgt, glossary, base_url, api_key, model, extra_pro
     items = [t for t in texts if t.strip()]
     if not items:
         return ["" for _ in texts]
-    sys = SYSTEM_PROMPT.format(src=LANG_NAMES.get(src, src), tgt=LANG_NAMES.get(tgt, tgt),
-                               glossary=_glossary_for(items, glossary),
-                               context=(context.strip() + " ") if context.strip() else "",
-                               extra=(extra_prompt.strip().rstrip(".") + ". ") if extra_prompt.strip() else "")
+    sys = build_system(src, tgt, _glossary_for(items, glossary), context, extra_prompt)
     numbered = {str(i + 1): t for i, t in enumerate(texts) if t.strip()}
     user = json.dumps(numbered, ensure_ascii=False, separators=(",", ":"))   # JSON padat, tanpa spasi
     content = _chat(base_url, api_key, model, sys, user, temperature)
@@ -203,6 +259,8 @@ def _key(engine, settings, src, tgt, glossary, text, ctx_key=""):
     if ctx_key:      # gaya bahasa / memori cerita ikut menentukan hasil LLM
         extra += "\x1e" + ctx_key
     gl = json.dumps(sorted((k, v) for k, v in (glossary or {}).items() if k in text), ensure_ascii=False)
+    if engine == "llm":
+        extra = PROMPT_VERSION + extra      # prompt bawaan berubah -> hasil lama dari cache tidak dipakai
     raw = "\x1f".join([engine, model, extra, src, tgt, gl, text])
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 

@@ -364,8 +364,11 @@ class SettingsDialog(QDialog):
         f.addRow("API key", self.key)
         self.temp = QDoubleSpinBox(); self.temp.setRange(0, 1.5); self.temp.setSingleStep(0.1)
         self.temp.setValue(float(self.s["llm_temperature"])); f.addRow("Temperature", self.temp)
-        self.extra = QTextEdit(self.s["llm_extra_prompt"]); self.extra.setFixedHeight(70)
-        self.extra.setPlaceholderText("Instruksi tambahan, mis. 'Pakai bahasa gaul Jakarta untuk karakter remaja'")
+        self.extra = QTextEdit(self.s["llm_extra_prompt"]); self.extra.setFixedHeight(110)
+        self.extra.setPlaceholderText("Instruksi tambahan, mis. 'Pakai bahasa gaul Jakarta untuk karakter remaja'.\n"
+                                      "Boleh juga system prompt utuh ('You are…'); {targetLanguage} / {sourceLanguage} diisi otomatis.")
+        self.extra.setToolTip("Instruksi ini diberi prioritas tertinggi. Prompt panjang / persona dipakai sebagai "
+                              "system prompt utama; format jawaban JSON tetap diatur aplikasi.")
         f.addRow("Instruksi tambahan", self.extra)
         from core import skills
         f.addRow(QLabel("<b>Skill AI</b> <small>(untuk LLM)</small>"))
