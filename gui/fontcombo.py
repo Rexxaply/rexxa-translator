@@ -79,7 +79,7 @@ class FontCombo(QComboBox):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setItemDelegate(_Delegate(self))
-        self.setMaxVisibleItems(16)
+        self.setMaxVisibleItems(14)          # sisanya digulir (scroll)
 
     def showPopup(self):
         for i in range(self.count()):
