@@ -57,6 +57,20 @@ def _spring(u: float) -> float:
     return 1 - math.exp(-6.5 * u) * math.cos(7.5 * u)
 
 
+def _no_os_animation(w):
+    """Matikan animasi bawaan Windows saat jendela muncul / hilang (bertabrakan dengan animasi pop-up kita)."""
+    import sys
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        hwnd = int(w.winId())
+        val = ctypes.c_int(1)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 3, ctypes.byref(val), ctypes.sizeof(val))  # TRANSITIONS_FORCEDISABLED
+    except Exception:
+        pass
+
+
 def frosted(host, rect=None, sigma: float = 7.0):
     """Ambil gambar `host` (seluruhnya atau area `rect` dalam koordinat host), buramkan & hidupkan warnanya.
     -> (QPixmap | None, titik kiri-atas global). Dipakai latar kaca dialog, menu & dropdown."""
@@ -308,15 +322,18 @@ class GlassDialog(QDialog):
                 self._finish_close()
 
     def setVisible(self, visible: bool):
-        # Semua persiapan (posisi, latar frosted, foto isi, sembunyikan isi) dikerjakan SEBELUM jendela muncul,
-        # jadi frame pertama di layar sudah frame awal animasi (tanpa kedipan / loncatan posisi).
+        # Urutan tanpa glitch:
+        #  1. posisi, latar frosted & lapisan redup disiapkan SEBELUM tampil (tidak ada loncatan posisi);
+        #  2. jendela ditampilkan dengan opasitas 0 -> Qt menyelesaikan tata letak (batang gulir, ukuran, dll.);
+        #  3. baru isi difoto & animasi dimulai, jadi foto animasi = tampilan akhir yang sebenarnya.
         if visible and not self.isVisible() and not self._popped:
             self._popped = True
             self._prepare_show()
+            self.setWindowOpacity(0.0)
+            super().setVisible(True)
+            QTimer.singleShot(0, self._begin_pop)
+            return
         super().setVisible(visible)
-        if visible and self._anim is not None and not self._timer.isActive():
-            self._clock.start()
-            self._timer.start()
 
     def _prepare_show(self):
         host = self.parentWidget().window() if self.parentWidget() is not None else None
@@ -330,13 +347,22 @@ class GlassDialog(QDialog):
             scr = QGuiApplication.primaryScreen()
             if scr is not None:
                 self.move(scr.availableGeometry().center() - QPoint(self.width() // 2, self.height() // 2))
-        self.ensurePolished()
-        self.sheet.ensurePolished()
+        _no_os_animation(self)
+
+    def _begin_pop(self):
+        if not self.isVisible() or self._closing is not None:
+            self.setWindowOpacity(1.0)
+            return
         self.layout().activate()
+        from PySide6.QtCore import QCoreApplication
+        QCoreApplication.sendPostedEvents()                # tata letak & gaya sudah final
         self._anim = {"dir": 1, "t0": 0, "pix": self.sheet.grab(), "rect": self.sheet.geometry()}
         self.sheet.setUpdatesEnabled(False)
         self.sheet.hide()
         self._clock.start()
+        self.repaint()                                     # frame 0 (masih transparan) ...
+        self.setWindowOpacity(1.0)                         # ... baru jendela dibuat terlihat
+        self._timer.start()
 
     def _grab_backdrop(self, host):
         """Foto jendela di belakang lalu diburamkan (efek kaca frosted). Gagal = kaca biasa."""
@@ -356,6 +382,7 @@ class GlassDialog(QDialog):
         if self._closing is not None:
             return
         self._closing = r
+        self.setWindowOpacity(1.0)
         if self._anim is not None:          # masih animasi masuk: langsung balik keluar
             self._timer.stop()
             self._anim = None

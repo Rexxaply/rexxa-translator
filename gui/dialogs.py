@@ -368,7 +368,8 @@ TIPS = {
     "fontall": "Setiap jenis teks (dialog, narasi, teriakan…) diberi font yang mirip aslinya, dan pilihanmu diingat untuk "
                "halaman berikutnya.",
     "preset": "Simpan beberapa pengaturan engine (mis. Gemini & OpenRouter). Kalau satu sedang gangguan, tinggal pindah "
-              "preset — dari sini atau dari menu panah di tombol Terjemahkan.",
+              "preset — dari sini atau dari menu panah di tombol Terjemahkan.\n+ Baru = salin pengaturan yang tampil jadi "
+              "preset baru · Ganti nama · Hapus (minimal tersisa satu preset).",
     "engine": "Mesin penerjemah.\n• Google: gratis, cepat, kualitas standar.\n• DeepL: lebih natural, butuh API key.\n"
               "• LLM / AI: paling natural & bisa diatur gayanya (Gemini, OpenAI, OpenRouter, lokal…).",
     "deepl": "API key dari akun DeepL (deepl.com → Akun → API key). Disimpan hanya di komputermu.",
@@ -423,7 +424,6 @@ class SettingsDialog(GlassDialog):
         self.stack = QStackedWidget()
         for name, ico, tip in self.NAV:
             it = QListWidgetItem(icon(ico), "  " + name)
-            it.setToolTip(tip)
             self.nav.addItem(it)
         row.addWidget(self.nav)
         row.addWidget(self.stack, 1)
@@ -585,11 +585,8 @@ class SettingsDialog(GlassDialog):
         g = card.grid
         r = g.rowCount()
         tip = TIPS.get(tip_key, "")
-        lab = QLabel(label)
+        lab = QLabel(label)                         # keterangan hanya di ikon (i), tidak di label / kolom
         lab.setObjectName("gLabel")
-        lab.setToolTip(tip)
-        if isinstance(widget, QWidget):
-            widget.setToolTip(tip)
         g.addWidget(lab, r, 0, Qt.AlignLeft | Qt.AlignVCenter)
         if isinstance(widget, QWidget):
             g.addWidget(widget, r, 1)
@@ -603,7 +600,6 @@ class SettingsDialog(GlassDialog):
         r = g.rowCount()
         cb = QCheckBox(text)
         cb.setChecked(bool(checked))
-        cb.setToolTip(TIPS.get(tip_key, ""))
         g.addWidget(cb, r, 0, 1, 2)
         g.addWidget(self._hint(TIPS.get(tip_key, "")), r, 2)
         return cb
@@ -657,13 +653,10 @@ class SettingsDialog(GlassDialog):
         btns.setSpacing(6)
         self.ep_new = QPushButton("+ Baru")
         self.ep_new.setObjectName("gSmall")
-        self.ep_new.setToolTip("Buat preset baru dari pengaturan yang sedang tampil (lalu ubah model / key-nya).")
         self.ep_ren = QPushButton("Ganti nama")
         self.ep_ren.setObjectName("gSmall")
-        self.ep_ren.setToolTip("Ubah nama preset ini.")
         self.ep_del = QPushButton("Hapus")
         self.ep_del.setObjectName("gDanger")
-        self.ep_del.setToolTip("Hapus preset ini (minimal harus ada satu preset).")
         for b in (self.ep_new, self.ep_ren, self.ep_del):
             btns.addWidget(b)
         btns.addStretch()
@@ -847,7 +840,6 @@ class SettingsDialog(GlassDialog):
         row2 = QHBoxLayout()
         self.outdir = QLineEdit(self.s["output_dir"])
         self.outdir.setPlaceholderText("kosong = folder tersembunyi aplikasi (disarankan)")
-        self.outdir.setToolTip(TIPS["outdir"])
         b2 = QPushButton("Pilih…")
         b2.setObjectName("gSmall")
         b2.clicked.connect(self._pick_out)
