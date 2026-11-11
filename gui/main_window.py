@@ -1285,15 +1285,69 @@ class MainWindow(QMainWindow):
             if not f.lower().endswith(".mtproj"):
                 f += ".mtproj"
             self.project.file = f
+        self._spin_save_start()
         try:
             self.project.save()
         except Exception as e:
+            self._spin_save_stop()
             QMessageBox.critical(self, APP_NAME, f"Gagal menyimpan proyek:\n{e}")
             return False
+        self._save_done = True          # animasi berhenti setelah minimal 2 putaran
         self._mark_saved()
         self.log(f"Tersimpan: {self.project.file}")
         self._add_recent(self.project.file)
         return True
+
+    # ------------------------------------------------------------------ animasi tombol simpan
+    SAVE_TURN_MS = 420      # 1 putaran
+    SAVE_MIN_TURNS = 2
+
+    def _spin_save_start(self):
+        """Ikon simpan berputar selama menyimpan (minimal 2 putaran), lalu kembali normal."""
+        from PySide6.QtCore import QEasingCurve, QVariantAnimation
+        from PySide6.QtGui import QPainter, QTransform
+        self._spin_save_stop()
+        size = 40
+        base = icon("save", "#9182ff").pixmap(QSize(size, size))
+        self._save_done = False
+        anim = QVariantAnimation(self)
+        anim.setStartValue(0.0)
+        anim.setEndValue(360.0)
+        anim.setDuration(self.SAVE_TURN_MS)
+        anim.setEasingCurve(QEasingCurve.Linear)
+        anim.setLoopCount(-1)
+
+        def frame(v):
+            pm = QPixmap(base.size())
+            pm.setDevicePixelRatio(base.devicePixelRatio())
+            pm.fill(Qt.transparent)
+            p = QPainter(pm)
+            p.setRenderHint(QPainter.SmoothPixmapTransform)
+            w, h = base.width() / base.devicePixelRatio(), base.height() / base.devicePixelRatio()
+            p.setTransform(QTransform().translate(w / 2, h / 2).rotate(float(v)).translate(-w / 2, -h / 2))
+            p.drawPixmap(0, 0, base)
+            p.end()
+            self.b_save.setIcon(QIcon(pm))
+
+        def loop(n):          # n = jumlah putaran yang sudah selesai
+            if self._save_done and n >= self.SAVE_MIN_TURNS:
+                self._spin_save_stop()
+
+        anim.valueChanged.connect(frame)
+        anim.currentLoopChanged.connect(loop)
+        self._save_anim = anim
+        self.b_save.setEnabled(True)
+        anim.start()
+
+    def _spin_save_stop(self):
+        anim = getattr(self, "_save_anim", None)
+        if anim is None:
+            return
+        self._save_anim = None
+        anim.stop()
+        anim.deleteLater()
+        self.b_save.setIcon(icon("save_dirty" if self._dirty else "save"))
+        self._refresh_state()
 
     # ------------------------------------------------------------------ status simpan & undo/redo
     def _project_sig(self) -> str:
@@ -1423,11 +1477,13 @@ class MainWindow(QMainWindow):
         dirty = has and self._project_sig() != self._saved_sig
         if dirty != self._dirty:
             self._dirty = dirty
-            self.b_save.setIcon(icon("save_dirty" if dirty else "save"))
+            if not getattr(self, "_save_anim", None):
+                self.b_save.setIcon(icon("save_dirty" if dirty else "save"))
             self.b_save.setToolTip("Simpan proyek (Ctrl+S) · ada perubahan yang belum disimpan" if dirty
                                    else "Simpan proyek (Ctrl+S) · semua perubahan sudah tersimpan")
             self._update_title()
-        self.b_save.setEnabled(dirty and not self.thread)
+        if not getattr(self, "_save_anim", None):          # selama animasi simpan: biarkan tombol menyala
+            self.b_save.setEnabled(dirty and not self.thread)
         p = self.page()
         h = self._hist(p) if p else {"undo": [], "redo": []}
         busy = bool(self.thread)
