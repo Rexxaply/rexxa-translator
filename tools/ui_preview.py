@@ -104,8 +104,12 @@ def main(out):
             dlg._preview()
             app.processEvents()
         dlg.grab().save(str(out / f"{name}.png"))
-        print(name, "ok")
+        print(name, "ok", flush=True)
         dlg.close()
+        dlg.deleteLater()
+        for _ in range(20):
+            app.processEvents()
+        print(name, "deleted", flush=True)
 
     snap("1_memori", StoryDialog(pm, dict(st)), 1080, 620)
     snap("2_proofread", ProofreadDialog(pm, dict(st), 0), 1080, 560)
@@ -114,6 +118,8 @@ def main(out):
     snap("4_export_kredit", d, 1180, 800)
     st2 = dict(st, export_opts={"fmt": "psd"})
     snap("5_export_psd", ExportDialog(pm, 0, st2), 1180, 760)
+    sys.stdout.flush()
+    os._exit(0)
 
 
 if __name__ == "__main__":
