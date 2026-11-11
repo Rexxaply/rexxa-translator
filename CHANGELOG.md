@@ -3,6 +3,14 @@
 Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
+## 2.0.7
+
+- Export As… (Ctrl+E): dialog seperti print — pratinjau dulu, pilih halaman saat ini / semua / rentang (mis. 1-5, 8)
+- PDF Manga (1 gambar = 1 halaman) atau Manhwa / Manhua (strip disambung, dipotong di celah antar panel)
+- CBZ + ComicInfo.xml (judul, chapter, penerjemah, genre, arah baca) untuk Mihon, Komga, Kavita, dll.
+- Paket Local Source Mihon: folder seri + cover + info, tinggal ekstrak ke Mihon/local/
+- Pilihan format gambar (Asli / JPG / WebP) & kualitas; halaman yang belum diterjemahkan bisa disertakan pakai gambar asli
+
 ## 2.0.6
 
 - Deteksi teks lebih kuat: balon kecil ("HUH?") tidak lagi tergabung dengan garis wajah/rambut
@@ -35,12 +43,3 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - Deteksi: baris pendek di bawah teks ("DAMN / IT...") ikut terbaca & terhapus.
 - Teks tidak lagi keluar dari kotak narasi yang sempit.
 - Perbaikan bug: halaman kosong setelah menambah / menghapus halaman; kotak manual buatan sendiri tidak lagi ikut terbuang oleh filter OCR; koreksi OCR tidak lagi mengubah logat yang disengaja ("BESHT").
-
-## 2.0.2
-- **Terjemahkan Semua lebih cepat, tetap ramah 4 CPU**:
-  - Dua tahap berjalan bersamaan: halaman berikutnya dideteksi & di-OCR sementara halaman ini diterjemahkan & dirender (waktu tunggu jaringan tidak lagi membuat CPU menganggur).
-  - OCR hanya membaca ulang (versi diluruskan / huruf berongga) bila hasil pertama benar-benar ragu.
-  - Google Translate mengirim beberapa teks sekaligus (maks. 4), bukan satu per satu.
-  - Gambar halaman disimpan sebentar di memori, tidak dibuka ulang dari disk berkali-kali.
-  - 1 inti CPU selalu dibiarkan bebas untuk tampilan aplikasi; antrean maks. 1 halaman supaya memori tetap kecil.
-- Mode Hemat kini otomatis hanya untuk RAM < 6 GB atau CPU 2 inti (bisa dipaksa di Pengaturan → Proses → Performa).
