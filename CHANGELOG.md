@@ -8,6 +8,17 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.3.0 · Minor update
+
+- Pengaturan baru bergaya Liquid Glass: menu samping, isi dikelompokkan rapi, catatan kegunaan saat kursor diarahkan ke setiap pengaturan, konfirmasi Simpan / Kembali / Tutup tanpa simpan
+- Preset engine: simpan beberapa pengaturan engine (awal "Default"), ganti nama, hapus, dan pindah cepat dari menu panah tombol Terjemahkan saat satu model gangguan
+- Semua kotak pesan bergaya Liquid Glass: kaca frosted (isi aplikasi di belakang tampak buram), lencana ikon sesuai jenis pesan, animasi pop-up masuk & keluar
+- Folder chapter tetap bersih: hasil kerja disimpan di folder tersembunyi aplikasi; gambar keluar lewat Export → "Gambar (ke folder)"
+- Hasil kerja per chapter bisa dihapus di Pengaturan → Data, dan otomatis dibersihkan bila tidak dibuka > 30 hari (bisa diatur)
+- Geser teks balon dengan tombol panah keyboard (Shift = 10 px)
+- Edit teks ±2,5× lebih cepat: hasil langsung tampil, file disimpan di belakang layar
+- Animasi tombol Simpan lebih santai & mulus ala iOS
+
 ## 2.2.0 · Minor update
 
 - Pilih banyak balon sekaligus: Ctrl+klik di gambar (Asli / Hasil) atau Ctrl / Shift+klik di tab Balon; Ctrl+klik lagi untuk melepas
@@ -31,12 +42,3 @@ Penomoran MAJOR.MINOR.PATCH:
 
 - Daftar font menampilkan nama tiap font dengan font itu sendiri (pratinjau langsung, gaya Bold/Italic ikut) — di panel Tipografi & Preset teks
 - Daftar pilihan (font, bahasa, preset, dll.) tidak lagi memanjang setinggi layar: maksimal ±14 baris, sisanya digulir
-
-## 2.1.2 · Patch update
-
-- Tema baru mengikuti warna logo: latar biru-gelap yang lembut di mata, aksen ungu-biru, tombol utama bergradasi biru → ungu
-- Warna kotak di gambar mengikuti logo: balon biru, teks bebas teal, kotak judul oranye; pesan error & tombol hapus tetap merah lembut
-- Font baru: Inter untuk teks & kontrol, Plus Jakarta Sans untuk judul
-- Ikon baru: tombol Terjemahkan (文 → A), pen tool (mata pena), dan file proyek .mtproj (logo R)
-- Layar awal menampilkan logo baru
-- Perbaikan: tombol "Atur kredit & watermark…" sebelumnya tampil sebagai "Atur kredit _watermark…"
