@@ -63,6 +63,36 @@ def main(out):
     m.popup(host.mapToGlobal(QPoint(40, 80)))
     pump(app, 1.0)
     snap(m, "2_menu.png", out)
+    m.hide()
+    host.hide()
+    # Pengaturan di atas jendela utama: foto layar berurutan sejak klik
+    w = mw.MainWindow()
+    w.resize(1100, 720)
+    w.move(40, 20)
+    w.show()
+    w.raise_()
+    w.activateWindow()
+    pump(app, 1.5)
+    from gui.dialogs import SettingsDialog
+    dlg = SettingsDialog(w.settings, w, project=w.project)
+    g = w.frameGeometry()
+    box = (g.left(), g.top(), g.right(), g.bottom())
+    shots = []
+    t0 = time.time()
+    dlg.show()
+    while time.time() - t0 < 0.6:
+        app.processEvents()
+        shots.append((round((time.time() - t0) * 1000), ImageGrab.grab(bbox=box, all_screens=True)))
+    print("foto selama membuka:", len(shots), [s_[0] for s_ in shots][:20], flush=True)
+    pick = [shots[i] for i in sorted({min(len(shots) - 1, k) for k in (0, 1, 2, 3, 4, 6, 9, len(shots) - 1)})]
+    sw, sh = 550, 360
+    sheet = Image.new("RGB", (sw * 4, sh * 2), "black")
+    for i, (ms, im) in enumerate(pick[:8]):
+        sheet.paste(im.resize((sw, sh)), ((i % 4) * sw, (i // 4) * sh))
+    sheet.save(out / "3_pengaturan_buka.png")
+    dlg.ocr.showPopup()
+    pump(app, 0.8)
+    snap(dlg.ocr.view().window(), "4_dropdown_di_pengaturan.png", out)
     print("ok", flush=True)
     os._exit(0)
 
