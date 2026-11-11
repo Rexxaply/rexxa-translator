@@ -73,17 +73,34 @@ def main(out):
     from gui.dialogs import NameDialog, SettingsDialog
     s["_settings_tab"] = 1
     dlg = SettingsDialog(s, w, project=w.project)
+    class Clock:                     # jam animasi dikendalikan: 1 frame tiap 16 ms (60 fps)
+        t = 0
+
+        def elapsed(self):
+            return self.t
+
+        def start(self):
+            self.t = 0
+
     frames = []
-    t0 = time.time()
+    clk = Clock()
+    dlg._clock = clk
     dlg.show()
-    nxt = 0
-    while time.time() - t0 < 0.75:
+    dlg._timer.stop()
+    for k in range(0, 34):
+        clk.t = k * 16
+        dlg._timer.stop()
+        dlg._tick()
+        dlg._timer.stop()
         app.processEvents()
-        if time.time() - t0 >= nxt:
-            frames.append(compose(w, dlg).resize((960, 600), Image.LANCZOS))
-            nxt += 0.025
+        frames.append(compose(w, dlg).resize((960, 600), Image.LANCZOS))
+    while dlg._anim is not None:
+        clk.t += 16
+        dlg._tick()
+    dlg._timer.stop()
     print("frame pop:", len(frames), flush=True)
-    frames[0].save(out / "pop.gif", save_all=True, append_images=frames[1:] + [frames[-1]] * 20, duration=25, loop=0)
+    frames[0].save(out / "pop.gif", save_all=True, append_images=frames[1:] + [frames[-1]] * 40, duration=16,
+                   loop=0, optimize=False)
     pump(app, 0.3)
     compose(w, dlg).save(out / "1_terjemahan.png")
     # tooltip catatan
