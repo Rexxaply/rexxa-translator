@@ -67,14 +67,23 @@ class _Dim(QWidget):
 
     def paintEvent(self, _e):
         p = QPainter(self)
-        p.fillRect(self.rect(), QColor(6, 8, 14, int(150 * self.alpha)))
+        col = QColor(6, 8, 14, int(150 * self.alpha))
+        host = self.parentWidget()
+        if isinstance(host, GlassDialog):            # dialog di atas dialog: redupkan panel kacanya saja
+            p.setRenderHint(QPainter.Antialiasing)
+            path = QPainterPath()
+            path.addRoundedRect(host._panel_rect(), RADIUS, RADIUS)
+            p.fillPath(path, col)
+        else:
+            p.fillRect(self.rect(), col)
 
 
 class GlassDialog(QDialog):
     POP_IN_MS = 420
     POP_OUT_MS = 190
 
-    def __init__(self, parent=None, title: str = "", subtitle: str = "", size=(760, 560), resizable=True):
+    def __init__(self, parent=None, title: str = "", subtitle: str = "", size=(760, 560), resizable=True,
+                 header: bool = True):
         super().__init__(parent)
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
@@ -91,6 +100,8 @@ class GlassDialog(QDialog):
         self._drag = None
         self._closing = None
         self._popped = False
+        self._bd = None              # latar frosted: gambar jendela di belakang yang sudah diburamkan
+        self._bd_origin = QPoint()
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
@@ -121,8 +132,13 @@ class GlassDialog(QDialog):
         close.setCursor(Qt.PointingHandCursor)
         close.clicked.connect(self.reject)
         head.addWidget(close, 0, Qt.AlignTop)
-        v.addLayout(head)
-        self._head_h = 54
+        if header:
+            v.addLayout(head)
+            self._head_h = 54
+        else:
+            for w in (self.title_lbl, self.sub_lbl, close):
+                w.hide()
+            self._head_h = 40
 
         self.body = QVBoxLayout()
         self.body.setSpacing(10)
@@ -152,10 +168,21 @@ class GlassDialog(QDialog):
             p.fillPath(path, QColor(0, 0, 0, max(0, a - 6)))
         path = QPainterPath()
         path.addRoundedRect(r, RADIUS, RADIUS)
+        frosted = self._bd is not None
+        if frosted:
+            # dasar gelap (untuk bagian di luar jendela utama), lalu isi aplikasi yang diburamkan
+            p.fillPath(path, QColor(18, 20, 30))
+            p.save()
+            dev = p.worldTransform().map(path)          # kaca boleh mengecil saat animasi, latar tetap diam
+            p.resetTransform()
+            p.setClipPath(dev)
+            p.drawPixmap(self.mapFromGlobal(self._bd_origin), self._bd)
+            p.restore()
+        a0, a1 = (196, 206) if frosted else (251, 252)
         g = QLinearGradient(r.topLeft(), r.bottomRight())
-        g.setColorAt(0.0, QColor(34, 38, 56, 251))
-        g.setColorAt(0.55, QColor(24, 27, 40, 252))
-        g.setColorAt(1.0, QColor(28, 26, 44, 252))
+        g.setColorAt(0.0, QColor(34, 38, 58, a0))
+        g.setColorAt(0.55, QColor(22, 25, 38, a1))
+        g.setColorAt(1.0, QColor(28, 25, 46, a1))
         p.fillPath(path, QBrush(g))
         # cahaya warna logo yang samar di dalam kaca
         p.save()
@@ -245,10 +272,49 @@ class GlassDialog(QDialog):
         self._popped = True
         host = self.parentWidget().window() if self.parentWidget() is not None else None
         if host is not None and host.isVisible():
+            self._grab_backdrop(host)
             self._dim = _Dim(host)
             pg = host.geometry()            # muncul di tengah jendela utama
             self.move(pg.center() - QPoint(self.width() // 2, self.height() // 2))
+        else:                               # belum ada jendela utama: tengah layar
+            from PySide6.QtGui import QGuiApplication
+            scr = QGuiApplication.primaryScreen()
+            if scr is not None:
+                self.move(scr.availableGeometry().center() - QPoint(self.width() // 2, self.height() // 2))
         self._start(1)
+
+    def _grab_backdrop(self, host):
+        """Foto jendela di belakang lalu diburamkan (efek kaca frosted). Gagal = kaca biasa."""
+        try:
+            import cv2
+            import numpy as np
+            from PySide6.QtGui import QImage, QPixmap
+            shot = host.grab()
+            dpr = shot.devicePixelRatio()
+            img = shot.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+            w, h = img.width(), img.height()
+            if w < 4 or h < 4:
+                return
+            arr = np.frombuffer(img.constBits(), np.uint8).reshape(h, img.bytesPerLine())[:, :w * 4].reshape(h, w, 4)
+            sw, sh = max(1, w // 4), max(1, h // 4)
+            small = cv2.resize(arr[:, :, :3], (sw, sh), interpolation=cv2.INTER_AREA)
+            small = cv2.GaussianBlur(small, (0, 0), 7)
+            hsv = cv2.cvtColor(small, cv2.COLOR_RGB2HSV).astype(np.float32)
+            hsv[:, :, 1] = np.clip(hsv[:, :, 1] * 1.35, 0, 255)       # warna sedikit lebih hidup, khas Liquid Glass
+            small = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2RGB)
+            big = np.ascontiguousarray(cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR))
+            q = QImage(big.data, w, h, big.strides[0], QImage.Format.Format_RGB888).copy()
+            pm = QPixmap.fromImage(q)
+            pm.setDevicePixelRatio(dpr)
+            self._bd = pm
+            self._bd_origin = host.mapToGlobal(QPoint(0, 0))
+        except Exception:
+            self._bd = None
+
+    def moveEvent(self, e):
+        super().moveEvent(e)
+        if self._bd is not None:
+            self.update()                       # latar ikut bergeser saat jendela diseret
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
