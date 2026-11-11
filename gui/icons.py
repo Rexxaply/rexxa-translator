@@ -16,7 +16,7 @@ ICONS = {
             '<path d="M10 15.5h4M10 18h2.5"/>',
     "save_dirty": '<path d="M4 6a2 2 0 0 1 2-2h10.2L20 7.8V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/>'
                   '<path d="M8 4v4.5h7V4"/><path d="M13 5.5v1.5"/><rect x="7.5" y="12.5" width="9" height="7.5" rx="1"/>'
-                  '<circle cx="19.5" cy="4.5" r="3" fill="#ff4d6d" stroke="#16171b" stroke-width="1.5"/>',
+                  '<circle cx="19.5" cy="4.5" r="3" fill="#ff9a62" stroke="#131722" stroke-width="1.5"/>',
     "export": '<path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/>',
     "settings": '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3'
                 'M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
@@ -54,7 +54,10 @@ ICONS = {
     "wand": '<path d="M4 20L15 9"/><path d="M15 4v3M13.5 5.5h3M19 9v2M18 10h2M11 3v1.5M10.25 3.75h1.5"/>',
     "gradient": '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 20L20 4M4 14l10-10M10 20l10-10"/>',
     "cursor": '<path d="M5 3l14 8-6 1.5L10 19z"/>',
-    "pen": '<path d="M12 3l7 7-4 4-3 7-3-3-3 1 1-3-3-3 7-3z"/><circle cx="12" cy="12" r="1.5"/>',
+    # pena (mata pena + celah + pegangan) — dari pen-mono.svg (512 px) diperkecil ke 24 px
+    "pen": '<g stroke-width="1.5"><path d="M12 2.8L17.34 11.72 14.91 18.75H9.09L6.66 11.72Z"/>'
+           '<path d="M12 2.8V10.78"/><rect x="8.44" y="18.75" width="7.13" height="2.63" rx=".47"/></g>'
+           '<circle cx="12" cy="12.28" r=".7" stroke-width="1.4"/>',
     "home": '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h5v-6h4v6h5V10"/>',
     "line": '<path d="M4 19c3-1 4-6 7-8s5 1 9-6"/><circle cx="4" cy="19" r="1.6"/><circle cx="20" cy="5" r="1.6"/>',
     "hand": '<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M11 10.5V4a1.5 1.5 0 0 1 3 0v6.5"/>'
@@ -74,11 +77,21 @@ ICONS = {
 }
 
 
-def svg(name: str, color: str = "#d6d8de") -> str:
+# ikon berwarna penuh (SVG utuh, bukan garis 24 px). {c} = warna ikon.
+# translate: dua kartu (文 -> A) + panah melingkar — dari terjemah-ungu.svg, dibuat transparan:
+# latar ungu dibuang, huruf "A" dilubangi supaya warna tombol terlihat di baliknya.
+RAW = {
+    "translate_go": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect x="88" y="88" width="200" height="200" rx="38" fill="{c}" fill-opacity=".28"/><path transform="translate(-10 -10)" fill="{c}" d="M178.08 126.94V146.4H128.93V164.58H146.98C153.76 182.37 161.95 197.73 172.58 210.4C159.9 219.62 144.42 226.27 126.11 230.88C129.82 235.36 135.71 244.32 137.89 249.06C156.83 243.3 173.09 235.23 186.78 224.48C199.97 235.36 216.22 243.42 236.45 248.67C239.26 243.3 245.41 234.34 249.89 229.98C231.07 225.89 215.33 218.98 202.66 209.63C213.66 197.22 222.5 182.37 229.02 164.58H247.07V146.4H197.28V126.94ZM187.94 196.58C179.36 187.23 172.7 176.61 167.84 164.58H207.01C202.27 176.99 195.87 187.62 187.94 196.58Z"/><path fill="{c}" fill-rule="evenodd" d="M262 224H386Q424 224 424 262V386Q424 424 386 424H262Q224 424 224 386V262Q224 224 262 224ZM270.51 374.93H301.61L306.6 358.18H340.65L345.5 374.93H377.49L342.97 273.07H304.69ZM313.17 336.3 313.44 335.42C317.13 323.11 320.55 311.22 323.9 298.84C327.18 311.22 330.53 323.11 334.08 335.42L334.36 336.3Z"/><g fill="none" stroke="{c}" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"><path d="M330 110q76 0 76 76"/><path d="M386 168l20 22 20-22"/><path d="M182 402q-76 0-76-76"/><path d="M126 344l-20-22-20 22"/></g></svg>',
+}
+
+
+def svg(name: str, color: str = "#d5dbea") -> str:
+    if name in RAW:
+        return RAW[name].replace("{c}", color)
     return _S.format(c=color, body=ICONS[name])
 
 
-DISABLED = "#3e4049"      # warna ikon saat tombol nonaktif (redup, hampir menyatu dengan latar)
+DISABLED = "#3e4558"      # warna ikon saat tombol nonaktif (redup, hampir menyatu dengan latar)
 
 
 def _render(name: str, color: str, size: int, dim: bool = False):
@@ -99,7 +112,7 @@ def _render(name: str, color: str, size: int, dim: bool = False):
 
 
 @lru_cache(maxsize=None)
-def icon(name: str, color: str = "#d6d8de", size: int = 40):
+def icon(name: str, color: str = "#d5dbea", size: int = 40):
     """QIcon dari SVG (butuh QtSvg — sudah termasuk di PySide6). Punya gambar khusus untuk keadaan
     nonaktif (redup), jadi tombol yang tidak bisa ditekan benar-benar terlihat mati."""
     from PySide6.QtGui import QIcon

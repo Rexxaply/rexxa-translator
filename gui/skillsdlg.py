@@ -11,12 +11,12 @@ from core import skills
 
 from .alert import MessageBox as QMessageBox
 
-PRIMARY = ("QPushButton{background:#ff4d6d;color:white;font-weight:600;border:none;border-radius:6px;"
-           "padding:6px 16px}QPushButton:hover{background:#ff6680}"
-           "QPushButton:disabled{background:#5a3640;color:#b9a3a9}")
+PRIMARY = ("QPushButton{background:qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f86ff, stop:1 #8a63f0);color:white;font-weight:600;border:none;border-radius:6px;"
+           "padding:6px 16px}QPushButton:hover{background:qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6596ff, stop:1 #9b78f5)}"
+           "QPushButton:disabled{background:#38365f;color:#a7a3cc}")
 CHECKS = ("QCheckBox{background:transparent}"
-          "QCheckBox::indicator{width:14px;height:14px;border:1px solid #555a66;background:#23252b;border-radius:3px}"
-          "QCheckBox::indicator:checked{background:#ff4d6d;border-color:#ff4d6d}")
+          "QCheckBox::indicator{width:14px;height:14px;border:1px solid #56607a;background:#202636;border-radius:3px}"
+          "QCheckBox::indicator:checked{background:#7c6cff;border-color:#7c6cff}")
 
 
 class _Job(QThread):
@@ -168,7 +168,7 @@ class StoryDialog(QDialog):
     def _learned(self, story, err):
         self.b_learn.setEnabled(True)
         if err:
-            self.status.setText(f"<span style='color:#ff6680'>Gagal: {err}</span>")
+            self.status.setText(f"<span style='color:#ff7a85'>Gagal: {err}</span>")
             return
         before = self.tbl.rowCount()
         self._fill(story)
@@ -305,7 +305,7 @@ class ProofreadDialog(QDialog):
     def _ai_done(self, res, err):
         self.b_ai.setEnabled(True)
         if err:
-            self.status.setText(f"<span style='color:#ff6680'>Gagal: {err}</span>")
+            self.status.setText(f"<span style='color:#ff7a85'>Gagal: {err}</span>")
             return
         self.issues = [i for i in self.issues if i["kind"] != "ai"] + (res or [])
         self.issues.sort(key=lambda i: (i["page"], i["num"]))
@@ -378,7 +378,7 @@ class CreditsDialog(QDialog):
         left.addLayout(f)
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
-        line.setStyleSheet("color:#2e3038")
+        line.setStyleSheet("color:#2e3547")
         left.addWidget(line)
         left.addWidget(QLabel("<b>Watermark</b> (teks kecil di setiap halaman)"))
         g = QFormLayout()
@@ -427,7 +427,7 @@ class CreditsDialog(QDialog):
         self.prev_wm = QLabel()
         self.prev_wm.setAlignment(Qt.AlignCenter)
         for l in (self.prev_credit, self.prev_wm):
-            l.setStyleSheet("background:#0f1013;border:1px solid #26282f;border-radius:6px")
+            l.setStyleSheet("background:#0c0f16;border:1px solid #252b3b;border-radius:6px")
             l.setMinimumSize(QSize(200, 200))
         h = QHBoxLayout()
         h.addWidget(self.prev_credit, 1)

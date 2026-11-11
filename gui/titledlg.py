@@ -43,9 +43,9 @@ class TitleDialog(QDialog):
         self.setAcceptDrops(True)
         self.resize(1040, 620)
         self.setStyleSheet(CHECKS + "QRadioButton{background:transparent}"
-                           "QRadioButton::indicator{width:14px;height:14px;border:1px solid #555a66;"
-                           "background:#23252b;border-radius:8px}"
-                           "QRadioButton::indicator:checked{background:#ff4d6d;border-color:#ff4d6d}")
+                           "QRadioButton::indicator{width:14px;height:14px;border:1px solid #56607a;"
+                           "background:#202636;border-radius:8px}"
+                           "QRadioButton::indicator:checked{background:#7c6cff;border-color:#7c6cff}")
         self.image_path = b.title_image if b.title_image and Path(b.title_image).exists() else ""
         self._seq = 0
         self._jobs = []
@@ -207,7 +207,7 @@ class TitleDialog(QDialog):
         for l in (self.before, self.after):
             l.setAlignment(Qt.AlignCenter)
             l.setMinimumHeight(200)
-            l.setStyleSheet("background:#0f1013;border:1px solid #26282f;border-radius:6px")
+            l.setStyleSheet("background:#0c0f16;border:1px solid #252b3b;border-radius:6px")
         right.addWidget(self.before, 1)
         right.addWidget(_dim("Sesudah"))
         right.addWidget(self.after, 1)
@@ -228,7 +228,7 @@ class TitleDialog(QDialog):
         try:
             self.image_path = titlelogo.store_image(src)
         except Exception as e:      # noqa: BLE001
-            self.status.setText(f"<span style='color:#ff6680'>Gambar tidak bisa dibaca: {e}</span>")
+            self.status.setText(f"<span style='color:#ff7a85'>Gambar tidak bisa dibaca: {e}</span>")
             return
         self.r_img.setChecked(True)
         self._changed()
@@ -324,7 +324,7 @@ class TitleDialog(QDialog):
     def _generated(self, imgs, err):
         self.b_gen.setEnabled(True)
         if err:
-            self.status.setText(f"<span style='color:#ff6680'>{err}</span>")
+            self.status.setText(f"<span style='color:#ff7a85'>{err}</span>")
             return
         for im in imgs or []:
             self._ai_imgs.append(im)
@@ -409,7 +409,7 @@ class TitleDialog(QDialog):
         if seq != self._seq:
             return
         if isinstance(res, str):
-            self.status.setText(f"<span style='color:#ff6680'>{res}</span>")
+            self.status.setText(f"<span style='color:#ff7a85'>{res}</span>")
             return
         self.status.setText("")
         self.after.setPixmap(self._pix(res, self.after))

@@ -56,8 +56,8 @@ class BoxItem(QGraphicsRectItem):
         if self.selected:
             return QColor("#ffbe0b")
         if self.block.kind == "title":
-            return QColor("#c77dff")
-        return QColor("#ff4d6d") if self.block.kind == "bubble" else QColor("#3a86ff")
+            return QColor("#ff9a62")
+        return QColor("#5b8cff") if self.block.kind == "bubble" else QColor("#2ec5c9")
 
     def refresh_style(self):
         col = self.color()
@@ -88,7 +88,7 @@ class BoxItem(QGraphicsRectItem):
             painter.fillRect(QRectF(0, 0, 20 / z, 17 / z), self.color())
         if self.selected:  # 8 pegangan
             s = self.handle_size()
-            painter.setPen(QPen(QColor("#1b1c21"), 0))
+            painter.setPen(QPen(QColor("#181d29"), 0))
             painter.setBrush(QBrush(QColor("white")))
             for x, y in self._handle_points():
                 painter.drawRect(QRectF(x - s / 2, y - s / 2, s, s))
@@ -240,7 +240,7 @@ class PageCanvas(QGraphicsView):
         self.setDragMode(QGraphicsView.NoDrag)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
-        self.setBackgroundBrush(QBrush(QColor("#111214")))
+        self.setBackgroundBrush(QBrush(QColor("#0e1118")))
         self.setFrameShape(QGraphicsView.NoFrame)
         self.setMouseTracking(True)
         self.viewport().setCursor(Qt.ArrowCursor)
@@ -500,7 +500,7 @@ class PageCanvas(QGraphicsView):
             return True
         if self.tool == "heal":
             self._stroke = [(x, y)]
-            pen = QPen(QColor(255, 77, 109, 120), 2 * self.brush, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+            pen = QPen(QColor(124, 108, 255, 130), 2 * self.brush, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
             self._stroke_item = self.scene().addPath(self._stroke_path(), pen)
             self._stroke_item.setZValue(30)
             return True
@@ -651,7 +651,7 @@ class PageCanvas(QGraphicsView):
         # bayangan putih tipis + garis putus-putus warna garis -> terlihat di latar gelap & terang
         under = QPen(QColor(255, 255, 255, 200), 3.5)
         under.setCosmetic(True)
-        dash = QPen(QColor(self.line_color if QColor(self.line_color).lightness() < 200 else "#ff4d6d"), 1.8,
+        dash = QPen(QColor(self.line_color if QColor(self.line_color).lightness() < 200 else "#7c6cff"), 1.8,
                     Qt.CustomDashLine)
         dash.setDashPattern([5, 4])
         dash.setCosmetic(True)
@@ -661,7 +661,7 @@ class PageCanvas(QGraphicsView):
             self._draft_items.append(it)
         for i, (x, y) in enumerate(pts):
             first = i == 0
-            it = sc.addRect(QRectF(-4, -4, 8, 8), self._pen("#ff4d6d" if first else "#06d6a0", 1.5),
+            it = sc.addRect(QRectF(-4, -4, 8, 8), self._pen("#7c6cff" if first else "#06d6a0", 1.5),
                             QBrush(QColor("#ffffff")))
             it.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)
             it.setPos(x, y)

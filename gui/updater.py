@@ -28,11 +28,11 @@ class UpdateDialog(QDialog):
         v = QVBoxLayout(self)
         v.setSpacing(10)
 
-        badge = {"major": "#ff4d6d", "minor": "#4d9dff", "patch": "#3fbf7f"}[version.release_type(remote)]
+        badge = {"major": "#ff8a5c", "minor": "#4f86ff", "patch": "#3fbf7f"}[version.release_type(remote)]
         head = QLabel(f"<span style='font-size:13pt; font-weight:600'>Rexxa Translator {remote}</span>"
                       f"&nbsp;&nbsp;<span style='background:{badge}; color:white; font-weight:600;'>"
                       f"&nbsp;{version.release_label(remote)}&nbsp;</span>"
-                      f"<br><span style='color:#8a8e9a'>Versi kamu: {version.__version__}</span>")
+                      f"<br><span style='color:#8b93ab'>Versi kamu: {version.__version__}</span>")
         v.addWidget(head)
 
         items = version.changelog_between(info)
@@ -42,7 +42,7 @@ class UpdateDialog(QDialog):
         log = QTextBrowser()
         log.setOpenExternalLinks(True)
         log.setMarkdown("\n".join(md) if md else "_Tidak ada catatan rilis._")
-        log.setStyleSheet("QTextBrowser { background:#1a1b20; border:1px solid #2e3038; border-radius:8px; padding:8px; }")
+        log.setStyleSheet("QTextBrowser { background:#171b27; border:1px solid #2e3547; border-radius:8px; padding:8px; }")
         v.addWidget(small("CHANGELOG"))
         v.addWidget(log, 1)
 
@@ -57,8 +57,8 @@ class UpdateDialog(QDialog):
         b_later = QPushButton("Nanti")
         b_go = QPushButton("Update sekarang" if kind != "manual" else "Buka halaman rilis")
         b_go.setDefault(True)
-        b_go.setStyleSheet("QPushButton { background:#ff4d6d; color:white; font-weight:600; border:none; padding:7px 16px; }"
-                           "QPushButton:hover { background:#ff6680; }")
+        b_go.setStyleSheet("QPushButton { background:qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f86ff, stop:1 #8a63f0); color:white; font-weight:600; border:none; padding:7px 16px; }"
+                           "QPushButton:hover { background:qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6596ff, stop:1 #9b78f5); }")
         row.addWidget(b_skip)
         row.addStretch()
         row.addWidget(b_later)
@@ -75,7 +75,7 @@ class UpdateDialog(QDialog):
 
 def small(text):
     l = QLabel(text)
-    l.setStyleSheet("color:#8a8e9a; font-size:8.5pt; font-weight:600;")
+    l.setStyleSheet("color:#8b93ab; font-size:8.5pt; font-weight:600;")
     return l
 
 

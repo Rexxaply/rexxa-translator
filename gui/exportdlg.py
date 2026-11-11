@@ -59,7 +59,8 @@ def _card(title: str):
     v = QVBoxLayout(f)
     v.setContentsMargins(10, 8, 10, 10)
     v.setSpacing(6)
-    t = QLabel(f"<b>{title}</b>")
+    t = QLabel(title)
+    t.setObjectName("cardTitle")
     v.addWidget(t)
     return f, v
 
@@ -82,14 +83,14 @@ class ExportDialog(QDialog):
 
         self.setStyleSheet(
             "QFrame#card QLabel, QFrame#card QRadioButton, QFrame#card QCheckBox { background: transparent; }"
-            "QRadioButton::indicator, QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid #555a66;"
-            " background: #23252b; }"
+            "QRadioButton::indicator, QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid #56607a;"
+            " background: #202636; }"
             "QRadioButton::indicator { border-radius: 8px; }"
             "QCheckBox::indicator { border-radius: 3px; }"
             "QRadioButton::indicator:checked { background: qradialgradient(cx:.5, cy:.5, radius:.5, fx:.5, fy:.5,"
-            " stop:0 #ff4d6d, stop:.45 #ff4d6d, stop:.55 #23252b, stop:1 #23252b); border-color: #ff4d6d; }"
-            "QCheckBox::indicator:checked { background: #ff4d6d; border-color: #ff4d6d; }"
-            "QRadioButton::indicator:hover, QCheckBox::indicator:hover { border-color: #ff8197; }")
+            " stop:0 #7c6cff, stop:.45 #7c6cff, stop:.55 #202636, stop:1 #202636); border-color: #7c6cff; }"
+            "QCheckBox::indicator:checked { background: #7c6cff; border-color: #7c6cff; }"
+            "QRadioButton::indicator:hover, QCheckBox::indicator:hover { border-color: #a598ff; }")
         root = QHBoxLayout(self)
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(10)
@@ -122,8 +123,8 @@ class ExportDialog(QDialog):
         self.single_lbl = QLabel()
         self.single_lbl.setAlignment(Qt.AlignCenter)
         self.single.setWidget(self.single_lbl)
-        self.single.setStyleSheet("QScrollArea{background:#0f1013;border:1px solid #26282f;border-radius:6px}"
-                                  "QLabel{background:#0f1013}")
+        self.single.setStyleSheet("QScrollArea{background:#0c0f16;border:1px solid #252b3b;border-radius:6px}"
+                                  "QLabel{background:#0c0f16}")
         # mode strip (manhwa/manhua): disambung, gulir vertikal
         self.strip = QScrollArea()
         self.strip.setWidgetResizable(True)
@@ -243,7 +244,7 @@ class ExportDialog(QDialog):
         self.c_credit.setChecked(bool(opts.get("credit_page", False)))
         self.c_wm = QCheckBox("Watermark di setiap halaman")
         self.c_wm.setChecked(bool(opts.get("watermark", False)))
-        b_cr = QPushButton("Atur kredit & watermark…")
+        b_cr = QPushButton("Atur kredit && watermark…")
         b_cr.clicked.connect(self._edit_credits)
         v.addWidget(self.c_credit)
         v.addWidget(self.c_wm)
@@ -269,9 +270,9 @@ class ExportDialog(QDialog):
         cancel.clicked.connect(self.reject)
         self.ok = QPushButton("Export…")
         self.ok.setDefault(True)
-        self.ok.setStyleSheet("QPushButton{background:#ff4d6d;color:white;font-weight:600;border:none;"
-                              "border-radius:6px;padding:7px 18px}QPushButton:hover{background:#ff6680}"
-                              "QPushButton:disabled{background:#5a3640;color:#b9a3a9}")
+        self.ok.setStyleSheet("QPushButton{background:qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f86ff, stop:1 #8a63f0);color:white;font-weight:600;border:none;"
+                              "border-radius:6px;padding:7px 18px}QPushButton:hover{background:qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6596ff, stop:1 #9b78f5)}"
+                              "QPushButton:disabled{background:#38365f;color:#a7a3cc}")
         self.ok.clicked.connect(self._do_export)
         btns.addWidget(cancel)
         btns.addWidget(self.ok)
@@ -357,7 +358,7 @@ class ExportDialog(QDialog):
         self.files = [(i, f) for i in idx if (f := exporter.page_file(self.project.pages[i], use))]
         missing = sum(1 for i in idx if not exporter.page_file(self.project.pages[i], False))
         if err:
-            self.sel_info.setText(f"<span style='color:#ff6680'>{err}</span>")
+            self.sel_info.setText(f"<span style='color:#ff7a85'>{err}</span>")
         else:
             t = f"{len(idx)} halaman dipilih"
             if missing:
@@ -371,7 +372,7 @@ class ExportDialog(QDialog):
         n = len(self.files)
         self.ok.setEnabled(n > 0)
         if not n:
-            self.summary.setText("<span style='color:#ff6680'>Tidak ada halaman yang bisa diekspor.</span>")
+            self.summary.setText("<span style='color:#ff7a85'>Tidak ada halaman yang bisa diekspor.</span>")
             return
         fmt, kind = self.fmt.currentData(), self._kind()
         nama = {"manga": "Manga", "manhwa": "Manhwa", "manhua": "Manhua"}[kind]

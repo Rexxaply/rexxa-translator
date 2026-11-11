@@ -13,30 +13,30 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QSizePolicy, QVBoxLayout,
                                QWidget)
 
-ACCENT = "#ff4d6d"
+ACCENT = "#7c6cff"
 KINDS = {   # warna lencana, simbol
-    "info": ("#3a86ff", "i"),
+    "info": ("#4f86ff", "i"),
     "success": ("#06d6a0", "✓"),
     "warn": ("#ffb020", "!"),
-    "error": ("#ff4d6d", "×"),
-    "question": ("#c77dff", "?"),
-    "save": ("#ff4d6d", "●"),
+    "error": ("#ff6e7d", "×"),
+    "question": ("#8e5cf6", "?"),
+    "save": ("#ff9a62", "●"),
 }
 
 STYLE = f"""
-QDialog#rexxaAlert {{ background: #17181d; }}
-QWidget#card {{ background: #1d1e24; border: 1px solid #2b2d35; border-radius: 12px; }}
+QDialog#rexxaAlert {{ background: #141824; }}
+QWidget#card {{ background: #1a1f2c; border: 1px solid #2b3243; border-radius: 12px; }}
 QLabel#badge {{ border-radius: 20px; font-size: 17pt; font-weight: 800; color: #111; }}
-QLabel#heading {{ color: #f1f2f5; font-size: 11pt; font-weight: 700; background: transparent; }}
-QLabel#detail {{ color: #8f93a0; font-size: 9pt; background: transparent; }}
+QLabel#heading {{ font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; color: #f1f4fa; font-size: 11.5pt; font-weight: 700; background: transparent; }}
+QLabel#detail {{ color: #9098b0; font-size: 9pt; background: transparent; }}
 QPushButton {{ min-height: 34px; border-radius: 8px; padding: 0 18px; font-weight: 600; font-size: 9.5pt; }}
-QPushButton#primary {{ background: {ACCENT}; color: white; border: none; }}
-QPushButton#primary:hover {{ background: #ff6b85; }}
-QPushButton#primary:pressed {{ background: #e63d5c; }}
-QPushButton#danger {{ background: rgba(255, 77, 109, 0.12); color: #ff8a9b; border: 1px solid rgba(255, 77, 109, 0.45); }}
-QPushButton#danger:hover {{ background: rgba(255, 77, 109, 0.22); color: #ffb3bf; }}
-QPushButton#neutral {{ background: #2a2c34; color: #d6d8de; border: 1px solid #353841; }}
-QPushButton#neutral:hover {{ background: #33363f; }}
+QPushButton#primary {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f86ff, stop:1 #8a63f0); color: white; border: none; }}
+QPushButton#primary:hover {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6596ff, stop:1 #9b78f5); }}
+QPushButton#primary:pressed {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4274e6, stop:1 #7752d8); }}
+QPushButton#danger {{ background: rgba(255, 110, 125, 0.12); color: #ff8a95; border: 1px solid rgba(255, 110, 125, 0.45); }}
+QPushButton#danger:hover {{ background: rgba(255, 110, 125, 0.22); color: #ffb8bf; }}
+QPushButton#neutral {{ background: #2a3142; color: #d5dbea; border: 1px solid #363e52; }}
+QPushButton#neutral:hover {{ background: #343c50; }}
 QPushButton:focus {{ outline: none; }}
 """
 
