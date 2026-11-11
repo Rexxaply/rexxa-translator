@@ -244,7 +244,7 @@ class ExportDialog(QDialog):
         self.c_credit.setChecked(bool(opts.get("credit_page", False)))
         self.c_wm = QCheckBox("Watermark di setiap halaman")
         self.c_wm.setChecked(bool(opts.get("watermark", False)))
-        b_cr = QPushButton("Atur kredit & watermark…")
+        b_cr = QPushButton("Atur kredit && watermark…")
         b_cr.clicked.connect(self._edit_credits)
         v.addWidget(self.c_credit)
         v.addWidget(self.c_wm)

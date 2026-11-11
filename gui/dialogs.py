@@ -336,7 +336,7 @@ class SettingsDialog(QDialog):
         self.sysfont.setChecked(bool(self.s.get("font_match_system", True))); f.addRow("", self.sysfont)
         self.gfont = QCheckBox("Cadangan: cari di Google Fonts bila font di perangkat kurang mirip (perlu internet)")
         self.gfont.setChecked(bool(self.s.get("font_match_online", True))); f.addRow("", self.gfont)
-        self.fontall = QCheckBox("Semua teks: pilih font yang mirip dengan aslinya & ingat untuk halaman berikutnya")
+        self.fontall = QCheckBox("Semua teks: pilih font yang mirip dengan aslinya && ingat untuk halaman berikutnya")
         self.fontall.setChecked(bool(self.s.get("font_match_all", True))); f.addRow("", self.fontall)
         from core import perf
         self.perf = QComboBox()
