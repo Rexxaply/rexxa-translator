@@ -677,7 +677,8 @@ class MainWindow(QMainWindow):
             b.setToolTip(tip)
             return shrink(b, minw=min(w, 20), maxw=w + 8)
 
-        self.p_font = QComboBox()
+        from .fontcombo import FontCombo
+        self.p_font = FontCombo()        # nama font tampil dengan font itu sendiri
         self.p_font.addItem("Font default", "")
         for f in typeset.list_fonts():
             self.p_font.addItem(typeset.font_name(f), f)
