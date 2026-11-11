@@ -3450,12 +3450,22 @@ QFrame#sep { color: #2e3547; max-width: 1px; margin: 4px 6px; }
 QLabel#pageLbl { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; font-weight: 700; }
 QLabel#dim { color: #8089a3; }
 QComboBox, QSpinBox, QPlainTextEdit, QLineEdit, QTextEdit, QDoubleSpinBox {
-  background: #202636; border: 1px solid #313849; border-radius: 6px; padding: 4px 6px; }
-QComboBox:hover, QSpinBox:hover { border-color: #455069; }
-QComboBox::drop-down { border: none; width: 18px; }
+  background: #202636; border: 1px solid #313849; border-radius: 8px; padding: 4px 8px; }
+QComboBox:hover, QSpinBox:hover { border-color: #4a5470; }
+QComboBox:on { border-color: rgba(160,150,235,0.8); }
+QComboBox::drop-down { border: none; width: 22px; }
 QComboBox { combobox-popup: 0; }   /* daftar pilihan bisa digulir (tidak memanjang setinggi layar) */
-QComboBox QAbstractItemView QScrollBar:vertical { width: 10px; }
-QComboBox QAbstractItemView { background: #202636; selection-background-color: #7c6cff; }
+/* --- daftar pilihan (dropdown): panel kaca membulat, pilihan berbentuk pil --- */
+QComboBoxPrivateContainer { background: transparent; border: none; }
+QComboBox QAbstractItemView { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(44,50,74,0.62), stop:1 rgba(26,29,44,0.70));
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 12px; padding: 5px; outline: 0; color: #e3e7f3; }
+QComboBox QAbstractItemView::item { min-height: 30px; padding: 2px 10px; border-radius: 8px; margin: 1px 0; }
+QComboBox QAbstractItemView::item:hover { background: rgba(255,255,255,0.07); }
+QComboBox QAbstractItemView::item:selected { color: white;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(111,143,232,0.62), stop:1 rgba(143,120,224,0.62)); }
+QComboBox QAbstractItemView QScrollBar:vertical { background: transparent; width: 8px; margin: 6px 2px; }
+QComboBox QAbstractItemView QScrollBar::handle:vertical { background: rgba(255,255,255,0.20); border-radius: 3px; min-height: 24px; }
+QComboBox QAbstractItemView QScrollBar::add-line, QComboBox QAbstractItemView QScrollBar::sub-line { height: 0; }
 QPlainTextEdit:focus, QLineEdit:focus { border-color: #7c6cff; }
 QWidget#panel { background: #171b27; }
 QWidget#pagesHdr { background: #171b27; border-bottom: 1px solid #252b3b; }
@@ -3521,10 +3531,14 @@ QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0
 QSplitter::handle { background: #252b3b; width: 1px; }
 QSplitter#viewsSplit::handle { background: #252b3b; }
 QSplitter#viewsSplit::handle:hover { background: #7c6cff; }
-QMenu { background: #202636; border: 1px solid #343c50; padding: 4px; }
-QMenu::item { padding: 6px 18px 6px 10px; border-radius: 4px; }
-QMenu::item:selected { background: #7c6cff; color: white; }
-QMenu::separator { height: 1px; background: #343c50; margin: 4px 6px; }
+QMenu { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(44,50,74,0.62), stop:1 rgba(26,29,44,0.70));
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 12px; padding: 6px; }
+QMenu::item { padding: 7px 20px 7px 12px; border-radius: 8px; margin: 1px 0; color: #e3e7f3; }
+QMenu::item:selected { color: white;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(111,143,232,0.62), stop:1 rgba(143,120,224,0.62)); }
+QMenu::item:disabled { color: #6b7391; }
+QMenu::separator { height: 1px; background: rgba(255,255,255,0.09); margin: 5px 8px; }
+QMenu::icon { padding-left: 6px; }
 QCheckBox { spacing: 8px; background: transparent; }
 QToolTip { background: #1f2434; color: #e9ecf6; border: 1px solid rgba(170,160,255,0.35); border-radius: 10px; padding: 7px 10px; font-size: 9pt; }
 """
@@ -3567,9 +3581,12 @@ def run():
     extra = ""
     if chev.exists():
         extra = ("QToolButton#splitBtn::menu-arrow { image: url(%s); width: 9px; height: 9px; }"
-                 % chev.as_posix())
+                 "QComboBox::down-arrow { image: url(%s); width: 10px; height: 10px; }"
+                 % (chev.as_posix(), chev.as_posix()))
     from . import uifonts
     uifonts.load()
+    from .glass import install_popup_fx
+    install_popup_fx(app)                 # dropdown & menu: sudut membulat transparan + muncul halus
     app.setStyleSheet(STYLE + extra)
     ic = code_dir() / "assets" / "icon.png"
     if ic.exists():
