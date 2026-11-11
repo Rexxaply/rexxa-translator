@@ -281,6 +281,8 @@ def export(project: Project, out_path: str, *, fmt: str, kind: str, indices: lis
            meta: dict | None = None, mihon_pack: bool = False, progress=None, stop=None,
            settings: dict | None = None, credit_page: bool = False, watermark: bool = False, log=None) -> dict:
     """Mengembalikan ringkasan {"files", "kind", "out", "pages_out"}."""
+    from . import detector
+    detector.flush_writes()                 # hasil edit terakhir sudah tertulis ke disk
     meta = dict(meta or {})
     meta.setdefault("series", project.series_title)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)

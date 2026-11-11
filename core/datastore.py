@@ -186,6 +186,8 @@ def touch_project(project, settings: dict | None = None):
 
 
 def delete_work(dirs) -> list[str]:
+    from . import detector
+    detector.flush_writes(15)
     failed = []
     for d in dirs:
         failed += remove(Path(d))

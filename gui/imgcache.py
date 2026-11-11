@@ -26,6 +26,10 @@ def _key(path: str):
 
 
 def key(path: str):
+    with _LOCK:
+        hit = _CACHE.get(path)
+        if hit is not None and hit[0] == PENDING:
+            return (PENDING, id(hit[1]))         # versi baru di memori -> tampilan ikut berganti
     return _key(path)
 
 
@@ -36,10 +40,14 @@ def _trim():
         tot -= im.sizeInBytes()
 
 
-def put_np(path: str, img) -> None:
-    """Simpan gambar BGR (numpy) yang BARU SAJA ditulis ke path (dipanggil dari thread proses)."""
+PENDING = "pending"          # gambar terbaru yang file-nya masih ditulis di belakang layar
+
+
+def put_np(path: str, img, pending: bool = False) -> None:
+    """Simpan gambar BGR (numpy) yang BARU SAJA ditulis ke path (dipanggil dari thread proses).
+    pending=True: file-nya belum selesai ditulis, versi memori ini yang berlaku."""
     try:
-        k = _key(path)
+        k = PENDING if pending else _key(path)
         if k is None or img is None or img.ndim != 3:
             return
         h, w = img.shape[:2]
@@ -58,7 +66,7 @@ def get(path: str) -> QImage:
     k = _key(path)
     with _LOCK:
         hit = _CACHE.get(path)
-        if hit is not None and hit[0] == k:
+        if hit is not None and (hit[0] == k or hit[0] == PENDING):
             _CACHE.move_to_end(path)
             return hit[1]
     qi = QImage(path)
@@ -74,7 +82,7 @@ def thumb(path: str, height: int = 128) -> QImage | None:
     k = _key(path)
     with _LOCK:
         hit = _CACHE.get(path)
-    if hit is None or hit[0] != k:
+    if hit is None or (hit[0] != k and hit[0] != PENDING):
         return None
     from PySide6.QtCore import Qt
     return hit[1].scaledToHeight(height, Qt.TransformationMode.SmoothTransformation)

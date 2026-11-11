@@ -69,6 +69,8 @@ def _card(title: str):
 class ExportDialog(QDialog):
     def __init__(self, project, cur: int, settings: dict, parent=None):
         super().__init__(parent)
+        from core import detector
+        detector.flush_writes(15)            # pratinjau memakai hasil edit terbaru
         self.setWindowTitle("Export As")
         self.project, self.cur, self.settings = project, max(0, cur), settings
         self.out_path = ""

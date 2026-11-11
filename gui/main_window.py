@@ -202,13 +202,15 @@ class MainWindow(QMainWindow):
         self._loading = False
         self._render_after_job = False
 
-        self.render_timer = QTimer(self, singleShot=True, interval=450)
+        self.render_timer = QTimer(self, singleShot=True, interval=250)
         self.render_timer.timeout.connect(self._auto_render)
         # hasil render langsung diserahkan ke tampilan (tanpa membaca ulang file dari disk)
         from core import perf
         from . import imgcache
         imgcache.MAX_MB = 60 if perf.low_end(self.settings) else 160
         pipeline.ON_SAVED = imgcache.put_np
+        from core import detector as _det
+        _det.ON_WRITTEN = imgcache.put_np            # file selesai ditulis -> kunci cache disamakan
         try:
             perf.apply(self.settings)       # batas cache & thread juga berlaku untuk edit / render biasa
         except Exception:
@@ -3321,6 +3323,8 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, e):
         if getattr(self, "_closing_confirmed", False) or self.confirm_unsaved():
+            from core import detector
+            detector.flush_writes(30)           # hasil render terakhir benar-benar tersimpan
             e.accept()
         else:
             e.ignore()

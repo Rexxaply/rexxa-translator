@@ -506,10 +506,10 @@ def step_clean(page: Page, settings: dict, incremental: bool = True):
 ON_SAVED = None        # diisi tampilan: dipanggil (path, gambar) setelah hasil disimpan
 
 
-def _saved(path, img):
+def _saved(path, img, pending=False):
     if ON_SAVED is not None:
         try:
-            ON_SAVED(path, img)
+            ON_SAVED(path, img, pending) if pending else ON_SAVED(path, img)
         except Exception:
             pass
 
@@ -601,10 +601,15 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
                                 default_bold=bool(settings.get("default_bold", False)),
                                 line_spacing=float(settings.get("line_spacing", 1.2) or 1.2))
     final = _apply_titles(page, project, settings, final)
-    p = output_dir(page, settings) / output_name(page, project, settings)
-    detector.save_image(str(p), final)
-    page.output_path = str(p)
-    _saved(str(p), final)
+    p = str(output_dir(page, settings) / output_name(page, project, settings))
+    page.output_path = p
+    if Path(p).exists():
+        # tampilkan dari memori sekarang, file ditulis di belakang layar (bagian terlama render)
+        _saved(p, final, pending=True)
+        detector.save_image_later(p, final)
+    else:
+        detector.save_image(p, final)
+        _saved(p, final)
     page.status = "selesai"
     return final
 
