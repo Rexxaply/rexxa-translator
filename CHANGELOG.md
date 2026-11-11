@@ -8,6 +8,14 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.1.5 · Patch update
+
+- Instruksi tambahan LLM kini prioritas tertinggi: prompt panjang / persona ("You are…") dipakai sebagai system prompt utama, instruksi pendek ditaruh di akhir
+- Variabel di prompt diisi otomatis: {targetLanguage}, {sourceLanguage}
+- Format jawaban JSON selalu diatur aplikasi, jadi prompt sendiri tidak bikin error
+- Terjemahan Indonesia lebih santai & tidak kaku (nggak, udah, aku/kamu, gue/lo; hindari "Anda", "tersebut") — kecuali Gaya bahasa Baku
+- Hasil terjemahan LLM lama di cache tidak dipakai lagi
+
 ## 2.1.4 · Patch update
 
 - Animasi tombol Simpan: ikon disket berputar (ungu) selama proyek disimpan, minimal 2 putaran, lalu kembali normal
@@ -29,12 +37,3 @@ Penomoran MAJOR.MINOR.PATCH:
 ## 2.1.1 · Patch update
 
 - Ikon & logo baru Rexxa Translator (jendela aplikasi & layar pembuka). Ikon file .exe ikut berganti saat update penuh / instal baru
-
-## 2.1.0 · Minor update
-
-- Menu Skill baru: Memori cerita — AI mengingat tokoh, gender, panggilan (aku/kamu, gue/lo, kak…) & gaya bicara; disimpan per seri, bisa "Pelajari dari chapter ini (AI)"
-- Gaya bahasa terjemahan (santai, gaul, baku, kocak, dramatis) + honorifik dipertahankan / diganti (kak, bang, pak)
-- Proofread: cek lokal (belum diterjemahkan, kata dobel, tanda tanya, teks kepanjangan, nama tokoh) + cek AI dengan saran perbaikan
-- Kotak judul: buat logo judul dari teks, tempel judul buatan sendiri (Ctrl+V), atau generate dengan AI gambar (API kompatibel OpenAI)
-- Export PSD berlapis (Raw · Bersih · tiap balon teks) dan halaman kredit tim + watermark saat export
-- Logo judul otomatis lebih rapi: isi huruf gradasi warna logo asli + garis tepi, jumlah baris mengikuti bentuk kotak
