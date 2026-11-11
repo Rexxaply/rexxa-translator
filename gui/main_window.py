@@ -625,10 +625,11 @@ class MainWindow(QMainWindow):
         mb.addWidget(self.multi_lbl)
         mrow = QHBoxLayout()
         mrow.setSpacing(4)
-        b_eq_font = QPushButton(" Samakan ukuran teks")
+        mrow.addWidget(small_label("Samakan:"))
+        b_eq_font = QPushButton("Ukuran teks")
         b_eq_font.setToolTip("Semua balon terpilih memakai ukuran teks balon aktif (yang bergaris pegangan)")
         b_eq_font.clicked.connect(self._equal_font_size)
-        b_eq_box = QPushButton(" Samakan ukuran kotak")
+        b_eq_box = QPushButton("Ukuran kotak")
         b_eq_box.setToolTip("Semua kotak terpilih dibuat selebar & setinggi kotak aktif (posisi tengah tetap)")
         b_eq_box.clicked.connect(self._equal_box_size)
         mrow.addWidget(b_eq_font, 1)
@@ -1787,7 +1788,7 @@ class MainWindow(QMainWindow):
             self.sections[0].btn.setText(f"  TERJEMAHAN · BALON #{idx}" + (f"  (+{n - 1} dipilih)" if n > 1 else ""))
             self.multi_bar.setVisible(n > 1)
             if n > 1:
-                self.multi_lbl.setText(f"<b>{n} balon dipilih</b> — ubahan gaya berlaku ke semuanya")
+                self.multi_lbl.setText(f"<b>{n} balon dipilih</b> — ubahan gaya berlaku ke semua")
             if self.e_src.toPlainText() != b.source:
                 self.e_src.setPlainText(b.source)
             if self.e_tr.toPlainText() != b.translation:
