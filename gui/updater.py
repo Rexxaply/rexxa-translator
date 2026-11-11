@@ -28,14 +28,17 @@ class UpdateDialog(QDialog):
         v = QVBoxLayout(self)
         v.setSpacing(10)
 
+        badge = {"major": "#ff4d6d", "minor": "#4d9dff", "patch": "#3fbf7f"}[version.release_type(remote)]
         head = QLabel(f"<span style='font-size:13pt; font-weight:600'>Rexxa Translator {remote}</span>"
+                      f"&nbsp;&nbsp;<span style='background:{badge}; color:white; font-weight:600;'>"
+                      f"&nbsp;{version.release_label(remote)}&nbsp;</span>"
                       f"<br><span style='color:#8a8e9a'>Versi kamu: {version.__version__}</span>")
         v.addWidget(head)
 
         items = version.changelog_between(info)
         md = []
         for c in items:
-            md.append(f"### {c['version']}\n\n{c['notes'] or '-'}\n")
+            md.append(f"### {c['version']} · {version.release_label(c['version'])}\n\n{c['notes'] or '-'}\n")
         log = QTextBrowser()
         log.setOpenExternalLinks(True)
         log.setMarkdown("\n".join(md) if md else "_Tidak ada catatan rilis._")

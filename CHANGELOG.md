@@ -1,9 +1,14 @@
 # Catatan rilis
 
-Format: setiap rilis punya bagian `## X.Y.Z`. Isi bagian ini otomatis tampil
+Format: setiap rilis punya bagian `## X.Y.Z · Jenis update`. Isi bagian ini otomatis tampil
 di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terbaru saja.
 
-## 2.0.7
+Penomoran MAJOR.MINOR.PATCH:
+- **Major update** (X.0.0) — perubahan besar / rombak; bisa ada yang tidak cocok dengan versi lama
+- **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
+- **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
+
+## 2.0.7 · Patch update
 
 - Export As… (Ctrl+E): dialog seperti print — pratinjau dulu, pilih halaman saat ini / semua / rentang (mis. 1-5, 8)
 - PDF Manga (1 gambar = 1 halaman) atau Manhwa / Manhua (strip disambung, dipotong di celah antar panel)
@@ -11,14 +16,14 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - Paket Local Source Mihon: folder seri + cover + info, tinggal ekstrak ke Mihon/local/
 - Pilihan format gambar (Asli / JPG / WebP) & kualitas; halaman yang belum diterjemahkan bisa disertakan pakai gambar asli
 
-## 2.0.6
+## 2.0.6 · Patch update
 
 - Deteksi teks lebih kuat: balon kecil ("HUH?") tidak lagi tergabung dengan garis wajah/rambut
 - Satu huruf + titik-titik ("I...", "A...") sekarang terdeteksi & terbaca benar
 - Tulisan tangan tipis huruf kecil di latar terang ("Is that it...") tidak lagi terlewat
 - OCR: titik-titik di ujung baris ikut terbaca ("TALK..." bukan "TALK."), spasi setelah "..." tidak hilang
 
-## 2.0.5
+## 2.0.5 · Patch update
 
 - Hapus teks lebih rapi di latar raster/berbintik: bekas teks diisi tekstur aslinya (tanpa gumpalan putih / tambalan terang)
 - Teks bergaris tepi putih (mis. di atas tembok) dihapus bersih beserta tepinya; terjemahan ikut diberi garis tepi putih
@@ -27,7 +32,7 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - Sambung otomatis tepi balon yang terputus saat teks dihapus (garis objek seperti tembok/rambut dibiarkan)
 - Font hiasan aneh (Goudy Stout, Algerian, dll.) tidak dipakai lagi untuk dialog & narasi
 
-## 2.0.4
+## 2.0.4 · Patch update
 
 - Edit teks jauh lebih cepat (±3×): hanya balon yang diubah yang dihitung & digambar ulang, geser teks langsung tampil
 - Hasil render langsung tampil dari memori (tanpa membaca ulang file), jeda render otomatis lebih singkat
@@ -37,7 +42,7 @@ di jendela "Update tersedia" dan di halaman Release GitHub. Simpan 5 versi terba
 - Hapus teks di halaman webtoon panjang lebih hemat memori
 - Mode hemat: memori sementara lebih kecil; batas thread juga berlaku saat edit & render
 
-## 2.0.3
+## 2.0.3 · Patch update
 - **Hapus teks 4 tahap (lebih rapi)**: (1) mask dibuat hanya dari bentuk huruf yang terbaca -- bintik raster / butiran kertas tidak ikut; (2) bekas teks diisi sesuai latarnya: warna polos, butiran balon bertekstur, "pulau putih" di belakang teks tetap putih, sisanya dibuat ulang AI (LaMa); (3) garis balon / bingkai narasi / arsiran yang ikut terpotong dikembalikan dari gambar asli; (4) sisa huruf & sambungan dirapikan lagi oleh AI.
 - Balon putih berbintik tidak lagi meninggalkan tambalan abu-abu buram.
 - Deteksi: baris pendek di bawah teks ("DAMN / IT...") ikut terbaca & terhapus.
