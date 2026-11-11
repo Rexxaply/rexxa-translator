@@ -10,7 +10,7 @@ Penomoran MAJOR.MINOR.PATCH:
 
 ## 2.1.1 · Patch update
 
-- Ikon & logo baru Rexxa Translator (jendela aplikasi, layar pembuka, file proyek). Ikon file .exe ikut berganti saat update penuh / instal baru
+- Ikon & logo baru Rexxa Translator (jendela aplikasi & layar pembuka). Ikon file .exe ikut berganti saat update penuh / instal baru
 
 ## 2.1.0 · Minor update
 
