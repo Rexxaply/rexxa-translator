@@ -8,6 +8,10 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.1.4 · Patch update
+
+- Animasi tombol Simpan: ikon disket berputar (ungu) selama proyek disimpan, minimal 2 putaran, lalu kembali normal
+
 ## 2.1.3 · Patch update
 
 - Daftar font menampilkan nama tiap font dengan font itu sendiri (pratinjau langsung, gaya Bold/Italic ikut) — di panel Tipografi & Preset teks
@@ -34,7 +38,3 @@ Penomoran MAJOR.MINOR.PATCH:
 - Kotak judul: buat logo judul dari teks, tempel judul buatan sendiri (Ctrl+V), atau generate dengan AI gambar (API kompatibel OpenAI)
 - Export PSD berlapis (Raw · Bersih · tiap balon teks) dan halaman kredit tim + watermark saat export
 - Logo judul otomatis lebih rapi: isi huruf gradasi warna logo asli + garis tepi, jumlah baris mengikuti bentuk kotak
-
-## 2.0.8 · Patch update
-
-- Jenis update kini tertulis jelas: Major / Minor / Patch update (badge berwarna di jendela "Update tersedia", juga di catatan rilis & changelog)
