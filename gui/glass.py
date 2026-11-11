@@ -273,17 +273,20 @@ class GlassDialog(QDialog):
             self._paint_glass(p, r)
             return
         u = min(1.0, (self._clock.elapsed() - a["t0"]) / (self.POP_IN_MS if a["dir"] > 0 else self.POP_OUT_MS))
+        def ramp(x, a0, a1):                       # 0 -> 1 halus antara a0..a1
+            t = min(1.0, max(0.0, (x - a0) / (a1 - a0)))
+            return t * t * (3 - 2 * t)
         if a["dir"] > 0:
-            # kaca & isi langsung pekat (±90 ms) supaya halaman di belakang tidak sempat "tembus" ke isi dialog;
-            # gerak mengembang ala pegas tetap berjalan penuh
+            # ala iOS: kaca buram muncul DULU, isi menyusul saat kaca sudah pekat -> isi dialog tidak pernah
+            # bertumpuk dengan halaman yang tajam di belakang. Gerak mengembang (pegas) tetap penuh.
             scale = 0.92 + 0.08 * _spring(u)
-            g = min(1.0, u / 0.22)
-            op_glass = g * g * (3 - 2 * g)
-            c_ = min(1.0, u / 0.28)
-            op_content = 1 - (1 - c_) ** 2
+            op_glass = ramp(u, 0.0, 0.18)
+            op_content = ramp(u, 0.12, 0.34)
         else:
+            # tutup: isi hilang dulu, lalu kacanya
             scale = 1.0 - 0.04 * u
-            op_glass = op_content = (1 - u) ** 2        # hilang cepat, tanpa bayangan ganda yang lama
+            op_content = 1 - ramp(u, 0.0, 0.35)
+            op_glass = 1 - ramp(u, 0.25, 1.0)
         c = r.center()
         p.translate(c)
         p.scale(scale, scale)
