@@ -189,8 +189,17 @@ class MainWindow(QMainWindow):
         self._loading = False
         self._render_after_job = False
 
-        self.render_timer = QTimer(self, singleShot=True, interval=700)
+        self.render_timer = QTimer(self, singleShot=True, interval=450)
         self.render_timer.timeout.connect(self._auto_render)
+        # hasil render langsung diserahkan ke tampilan (tanpa membaca ulang file dari disk)
+        from core import perf
+        from . import imgcache
+        imgcache.MAX_MB = 60 if perf.low_end(self.settings) else 160
+        pipeline.ON_SAVED = imgcache.put_np
+        try:
+            perf.apply(self.settings)       # batas cache & thread juga berlaku untuk edit / render biasa
+        except Exception:
+            pass
 
         self._build_toolbar()
         self._build_center()
@@ -950,6 +959,10 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _thumb(path) -> QIcon:
+        from . import imgcache
+        t = imgcache.thumb(path)
+        if t is not None:                      # baru dirender: pakai gambar di memori
+            return QIcon(QPixmap.fromImage(t))
         r = QImageReader(path)
         r.setAutoTransform(True)
         s = r.size()

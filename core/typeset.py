@@ -7,6 +7,8 @@ from functools import lru_cache
 from pathlib import Path
 
 import cv2
+import math
+
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
@@ -159,6 +161,7 @@ def install_font(src: str) -> str:
         dst = d / f"{sp.stem}-{n}{sp.suffix}"
     shutil.copy2(sp, dst)
     _font.cache_clear()
+    clear_render_cache()
     return str(dst)
 
 
@@ -168,6 +171,7 @@ def remove_font(path: str):
         raise FontError("Hanya font yang diinstal lewat aplikasi yang bisa dihapus di sini.")
     p.unlink(missing_ok=True)
     _font.cache_clear()
+    clear_render_cache()
 
 
 def windows_comic_fonts() -> list[str]:
@@ -380,14 +384,14 @@ def _light_area(img: np.ndarray, b: TextBlock):
     Boleh melebihi kotak (kotak sering lebih sempit dari balonnya), tapi sisi yang 'bocor'
     ke luar (balon terbuka / latar halaman) dipotong di batas kotak.
     Mengembalikan (mask, fx, fy) dalam bingkai yang mungkin lebih besar dari kotak, atau None."""
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    H, W = gray.shape
+    H, W = img.shape[:2]
     e = int(max(b.w, b.h) * 0.35)
     fx0, fy0 = max(0, b.x - e), max(0, b.y - e)
     fx1, fy1 = min(W, b.x + b.w + e), min(H, b.y + b.h + e)
     if fx1 - fx0 < 10 or fy1 - fy0 < 10:
         return None
-    light = (gray[fy0:fy1, fx0:fx1] >= 200).astype(np.uint8)
+    gray = cv2.cvtColor(img[fy0:fy1, fx0:fx1], cv2.COLOR_BGR2GRAY)     # hanya bagian sekitar teks
+    light = (gray >= 200).astype(np.uint8)
     light = cv2.morphologyEx(light, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
     n, lbl, st, _ = cv2.connectedComponentsWithStats(light, connectivity=4)
     if n <= 1:
@@ -472,10 +476,12 @@ class _Shape:
         self.h, self.w = mask.shape
         self.x0 = np.full(self.h, -1, np.int32)
         self.x1 = np.full(self.h, -1, np.int32)
-        rows = np.nonzero(mask.any(axis=1))[0]
-        for y in rows:
-            xs = np.nonzero(mask[y])[0]
-            self.x0[y], self.x1[y] = xs[0], xs[-1]
+        nz = mask > 0
+        has = nz.any(axis=1)
+        rows = np.nonzero(has)[0]
+        if rows.size:
+            self.x0[rows] = nz[rows].argmax(axis=1)
+            self.x1[rows] = self.w - 1 - nz[rows][:, ::-1].argmax(axis=1)
         self.ymin, self.ymax = (int(rows[0]), int(rows[-1])) if rows.size else (0, self.h - 1)
         dist = cv2.distanceTransform(mask, cv2.DIST_L2, 5)
         cy, cx = np.unravel_index(int(np.argmax(dist)), dist.shape)
@@ -489,17 +495,25 @@ class _Shape:
         self.cx = (self.x0[cy] + self.x1[cy]) / 2.0 if self.x0[cy] >= 0 else self.w / 2
         self.margin = extra_margin
         self.ay = None
+        self._rc = {}
         self.max_w = int(max(1, (self.x1 - self.x0).max())) if rows.size else self.w
 
     def rooms(self, y0: float, y1: float) -> tuple[float, float]:
         """Ruang ke kiri & ke kanan dari pusat cx (terkecil pada rentang baris y0..y1)."""
-        a, b = int(max(0, np.floor(y0))), int(min(self.h - 1, np.ceil(y1)))
+        a, b = int(max(0, math.floor(y0))), int(min(self.h - 1, math.ceil(y1)))
         if a > b:
             return -1, -1
-        x0, x1 = self.x0[a:b + 1], self.x1[a:b + 1]
-        if (x0 < 0).any():
+        k = (a, b)
+        r = self._rc.get(k)
+        if r is None:              # (x0 terbesar, x1 terkecil) pada rentang; disimpan per rentang
+            x0, x1 = self.x0[a:b + 1], self.x1[a:b + 1]
+            r = None if (x0 < 0).any() else (int(x0.max()), int(x1.min()))
+            self._rc[k] = r or (None,)
+        elif r == (None,):
+            r = None
+        if r is None:
             return -1, -1
-        return float((self.cx - x0).min()) - self.margin, float((x1 - self.cx).min()) - self.margin
+        return float(self.cx - r[0]) - self.margin, float(r[1] - self.cx) - self.margin
 
     def half_room(self, y0: float, y1: float) -> float:
         l, r = self.rooms(y0, y1)
@@ -599,7 +613,21 @@ def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, m
     """Ukuran font terbesar yang muat di bentuk balon. Mengembalikan (size, lines, top, lh).
     shear: kemiringan italic palsu -- baris atas bergeser ke kanan, baris bawah ke kiri,
     jadi ruang kiri/kanan tiap baris diperiksa terpisah."""
+    place_memo, wrap_memo = {}, {}
+
     def place(lines, f, size):
+        k = (tuple(lines), size, mode[0], shape.cx)
+        if k not in place_memo:
+            place_memo[k] = _place(lines, f, size)
+        return place_memo[k]
+
+    def wrap(f, size, w, allow_break):
+        k = (size, w, allow_break)
+        if k not in wrap_memo:
+            wrap_memo[k] = wrap_text(draw, text, f, w, stroke, allow_break, ls)
+        return wrap_memo[k]
+
+    def _place(lines, f, size):
         lh = size * line_spacing
         total = lh * (len(lines) - 1) + size * 1.05
         widths = [_text_w(draw, l, f, stroke, ls) for l in lines]
@@ -636,7 +664,7 @@ def _fit_shape(draw, text, font_path, shape: _Shape, stroke, ls, line_spacing, m
             return (lines, pl) if pl else None
         best = None
         for frac in (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.42):
-            lines = wrap_text(draw, text, f, int(shape.max_w * frac), stroke, allow_break, ls)
+            lines = wrap(f, size, int(shape.max_w * frac), allow_break)
             if not lines:
                 continue
             pl = place(lines, f, size)
@@ -777,14 +805,123 @@ def render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str =
     return _render_page(*args, dry=False)
 
 
+_LAYOUT_CACHE: "OrderedDict" = None
+_LAYER_CACHE: "OrderedDict" = None
+_LAYER_BYTES = [0]
+LAYER_CACHE_MB = 64          # diperkecil otomatis di mode hemat (perf.apply)
+
+
+def clear_render_cache():
+    global _LAYOUT_CACHE, _LAYER_CACHE
+    _LAYOUT_CACHE, _LAYER_CACHE = None, None
+    _LAYER_BYTES[0] = 0
+    _W_CACHE.clear()
+
+
+import threading as _th
+_RC_LOCK = _th.Lock()
+
+
+def _cache_get(cache, key):
+    if cache is None:
+        return None
+    with _RC_LOCK:
+        v = cache.get(key)
+        if v is not None:
+            cache.move_to_end(key)
+    return v
+
+
+def _layout_put(key, val):
+    global _LAYOUT_CACHE
+    from collections import OrderedDict
+    with _RC_LOCK:
+        if _LAYOUT_CACHE is None:
+            _LAYOUT_CACHE = OrderedDict()
+        _LAYOUT_CACHE[key] = val
+        while len(_LAYOUT_CACHE) > 600:
+            _LAYOUT_CACHE.popitem(last=False)
+
+
+def _layer_put(key, layer, pad):
+    global _LAYER_CACHE
+    from collections import OrderedDict
+    if _LAYER_CACHE is None:
+        _LAYER_CACHE = OrderedDict()
+    nb = layer.width * layer.height * 4
+    limit = LAYER_CACHE_MB * 1024 * 1024
+    if nb > limit // 4:
+        return
+    with _RC_LOCK:
+        old = _LAYER_CACHE.pop(key, None)
+        if old is not None:
+            _LAYER_BYTES[0] -= old[0].width * old[0].height * 4
+        _LAYER_CACHE[key] = (layer, pad)
+        _LAYER_BYTES[0] += nb
+        while _LAYER_BYTES[0] > limit and _LAYER_CACHE:
+            _, (ly, _p) = _LAYER_CACHE.popitem(last=False)
+            _LAYER_BYTES[0] -= ly.width * ly.height * 4
+
+
+def _region_sig(img: np.ndarray, b: TextBlock) -> int:
+    """Sidik isi gambar di sekitar teks bebas (bentuk area terangnya bergantung pada gambar)."""
+    import zlib
+    H, W = img.shape[:2]
+    e = int(max(b.w, b.h) * 0.35)
+    crop = img[max(0, b.y - e):min(H, b.y + b.h + e), max(0, b.x - e):min(W, b.x + b.w + e)]
+    return zlib.crc32(np.ascontiguousarray(crop).data) if crop.size else 0
+
+
+def _layout(measure, b, text, font_path, stroke, ls, lsp, cap, max_size, fixed, shear, img_bgr):
+    """Ukuran & susunan baris satu balon -> (size, lines, top, lh, cx, fx, fy, fw, fh)."""
+    smask, fx, fy = _shape_mask(b, stroke, img_bgr)
+    shape = _Shape(smask)
+    fh, fw = smask.shape
+    if b.text_rect and len(b.text_rect) == 4:     # pusatkan di posisi teks asli
+        tx, ty, tw, th = b.text_rect
+        shape.anchor(tx + tw / 2 - fx, ty + th / 2 - fy)
+    if shear:
+        shape.margin = 1.0
+    n_lines = max(0, int(getattr(b, "max_lines", 0) or 0))
+    size, lines, top, lh = _fit_shape(measure, text, font_path, shape, stroke, ls, lsp,
+                                      (cap if getattr(b, "sfx", False) else min(cap, max(max_size, 8))),
+                                      fixed=fixed, shear=shear, n_lines=n_lines)
+    if not fixed and b.src_h and size < (0.72 if b.kind == "bubble" else 0.85) * b.src_h \
+            and b.kind in ("bubble", "free"):
+        # bentuk balon yang terdeteksi terlalu sempit (mis. hanya cahaya putih di sekitar teks):
+        # pakai seluruh kotak supaya huruf tidak jauh lebih kecil dari teks aslinya
+        rect = np.zeros_like(smask)
+        # hanya di dalam kotak blok (bingkai area terang bisa lebih besar dari kotaknya)
+        rx0, ry0 = max(0, b.x - fx), max(0, b.y - fy)
+        rx1, ry1 = min(fw, b.x + b.w - fx), min(fh, b.y + b.h - fy)
+        mh, mw = max(1, int((ry1 - ry0) * 0.05)), max(1, int((rx1 - rx0) * 0.06))
+        rect[ry0 + mh:max(ry0 + mh + 1, ry1 - mh), rx0 + mw:max(rx0 + mw + 1, rx1 - mw)] = 255
+        shape2 = _Shape(rect)
+        if b.text_rect and len(b.text_rect) == 4:
+            tx, ty, tw, th = b.text_rect
+            shape2.anchor(tx + tw / 2 - fx, ty + th / 2 - fy)
+        if shear:
+            shape2.margin = 1.0
+        cap2 = min(cap, max(max_size, 8))
+        alt = _fit_shape(measure, text, font_path, shape2, stroke, ls, lsp,
+                         cap2, fixed=0, shear=shear, n_lines=n_lines)
+        if alt[0] > size * 1.15:
+            size, lines, top, lh = alt
+            shape = shape2
+    return int(size), tuple(lines), float(top), float(lh), float(shape.cx), int(fx), int(fy), fw, fh
+
+
 def _render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str = "id",
                  default_font_path: str = "", uppercase: bool = True, max_size: int = 64,
                  italic: bool = True, line_spacing: float = LINE_SPACING, default_size: int = 0,
                  default_bold: bool = False, dry: bool = False) -> np.ndarray | None:
-    pil = Image.fromarray(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)).convert("RGBA")
-    measure = ImageDraw.Draw(pil)
+    """Cepat saat menyunting: tata letak (ukuran font + baris) dan gambar teks tiap balon disimpan
+    di cache -- balon yang tidak berubah tidak dihitung / digambar ulang, dan menggeser teks (dx/dy)
+    hanya menempel ulang. Teks ditempel langsung ke gambar (tanpa konversi seluruh halaman)."""
+    measure = ImageDraw.Draw(Image.new("RGB", (8, 8)))
     base_font = default_font_path or default_font(target_lang)
     latin = target_lang not in ("ja", "zh", "zh-tw", "ko")
+    out = None if dry else img_bgr.copy()
 
     for b in blocks:
         text = (b.translation or "").strip()
@@ -814,14 +951,6 @@ def _render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str 
         stroke = b.stroke_width
         ls = float(b.letter_spacing or 0)
         lsp = float(b.line_spacing or (1.0 if getattr(b, "sfx", False) else line_spacing))
-        smask, fx, fy = _shape_mask(b, stroke, img_bgr)
-        shape = _Shape(smask)
-        fh, fw = smask.shape
-        if b.text_rect and len(b.text_rect) == 4:     # pusatkan di posisi teks asli
-            tx, ty, tw, th = b.text_rect
-            shape.anchor(tx + tw / 2 - fx, ty + th / 2 - fy)
-        if shear:
-            shape.margin = 1.0
         fixed = b.font_size if b.font_size > 0 else int(default_size or 0)
         cap = max(max_size, int(min(b.w, b.h) * 0.45)) if not fixed else max_size
         if not fixed and b.src_h:
@@ -832,80 +961,103 @@ def _render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str 
                 cap = max(cap, min(int(b.src_h * 1.45), 400))   # SFX boleh melebihi batas ukuran maksimum
         if getattr(b, "_cap", 0) and not fixed:
             cap = min(cap, b._cap)
-        size, lines, top, lh = _fit_shape(measure, text, font_path, shape, stroke, ls, lsp,
-                                          (cap if getattr(b, "sfx", False) else min(cap, max(max_size, 8))),
-                                          fixed=fixed, shear=shear,
-                                          n_lines=max(0, int(getattr(b, "max_lines", 0) or 0)))
-        if not fixed and b.src_h and size < (0.72 if b.kind == "bubble" else 0.85) * b.src_h \
-                and b.kind in ("bubble", "free"):
-            # bentuk balon yang terdeteksi terlalu sempit (mis. hanya cahaya putih di sekitar teks):
-            # pakai seluruh kotak supaya huruf tidak jauh lebih kecil dari teks aslinya
-            rect = np.zeros_like(smask)
-            # hanya di dalam kotak blok (bingkai area terang bisa lebih besar dari kotaknya)
-            rx0, ry0 = max(0, b.x - fx), max(0, b.y - fy)
-            rx1, ry1 = min(fw, b.x + b.w - fx), min(fh, b.y + b.h - fy)
-            mh, mw = max(1, int((ry1 - ry0) * 0.05)), max(1, int((rx1 - rx0) * 0.06))
-            rect[ry0 + mh:max(ry0 + mh + 1, ry1 - mh), rx0 + mw:max(rx0 + mw + 1, rx1 - mw)] = 255
-            shape2 = _Shape(rect)
-            if b.text_rect and len(b.text_rect) == 4:
-                tx, ty, tw, th = b.text_rect
-                shape2.anchor(tx + tw / 2 - fx, ty + th / 2 - fy)
-            if shear:
-                shape2.margin = 1.0
-            cap2 = min(cap, max(max_size, 8))
-            alt = _fit_shape(measure, text, font_path, shape2, stroke, ls, lsp,
-                             cap2, fixed=0, shear=shear,
-                             n_lines=max(0, int(getattr(b, "max_lines", 0) or 0)))
-            if alt[0] > size * 1.15:
-                size, lines, top, lh = alt
-                shape = shape2
+        dark = _is_dark(b.color)
+        sig = _region_sig(img_bgr, b) if (b.kind not in ("bubble",) and dark
+                                          and not (getattr(b, "sfx", False) and b.text_rect)) else 0
+        poly = hash(tuple(tuple(p) for p in b.mask_poly)) if b.mask_poly else 0
+        lkey = (text, font_path, stroke, ls, lsp, fixed, cap, max_size, shear,
+                int(getattr(b, "max_lines", 0) or 0), b.kind, bool(getattr(b, "sfx", False)),
+                b.x, b.y, b.w, b.h, tuple(b.text_rect or ()), poly, b.src_h, dark, sig)
+        lay = _cache_get(_LAYOUT_CACHE, lkey)
+        if lay is None:
+            lay = _layout(measure, b, text, font_path, stroke, ls, lsp, cap, max_size, fixed, shear, img_bgr)
+            _layout_put(lkey, lay)
+        size, lines, top, lh, scx, fx, fy, fw, fh = lay
         b.fit_size = int(size)
         b._fit_lines = len(lines)          # info untuk panel (tombol +/− baris)
         if dry:
             continue
-        font = _font(font_path, size)
-
-        # gambar di lapisan transparan seukuran balon (+ jarak), lalu miring/putar & geser
-        pad = int(size * 1.5) + stroke
-        W, H = fw + 2 * pad, fh + 2 * pad
-        layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        d = ImageDraw.Draw(layer)
-        widths = [_text_w(d, l, font, stroke, ls) for l in lines]
-        block_w = max(widths) if widths else 0
-        cx = pad + shape.cx
-        grad = _gradient_colors(b)
-        fill_mask = Image.new("L", (W, H), 0) if grad else None
-        fm = ImageDraw.Draw(fill_mask) if grad else None
-        boxes = []
-        for i, (line, wl) in enumerate(zip(lines, widths)):
-            if b.align == "left":
-                x = cx - block_w / 2
-            elif b.align == "right":
-                x = cx + block_w / 2 - wl
-            else:
-                x = cx - wl / 2
-            y = pad + top + i * lh
-            # koreksi offset bbox font supaya posisi visual tepat
-            l0, t0, _, _ = d.textbbox((0, 0), line, font=font, stroke_width=stroke)
-            _draw_line(d, (x - l0, y - t0 * 0.5), line, font, b.color, stroke,
-                       b.stroke_color if stroke else None, ls, bold, size)
-            if grad:   # isi huruf saja (tanpa stroke) untuk diwarnai gradasi
-                _draw_line(fm, (x - l0, y - t0 * 0.5), line, font, 255, 0, None, ls, bold, size)
-                sx = shear * size * 0.6
-                boxes.append((x - sx, y + size * 0.08, x + wl + sx, y + size * 0.95))
-        line_tops = [pad + top + i * lh for i in range(len(lines))]
-        if shear:   # miringkan tiap baris di sekitar titik tengahnya sendiri (tetap rata tengah)
-            layer = _shear_lines(layer, line_tops, size, lh, shear)
-            if grad:
-                fill_mask = _shear_lines(fill_mask, line_tops, size, lh, shear)
-        if grad:
-            layer = _apply_gradient(layer, fill_mask, grad, boxes, b)
         rot = float(b.rotation or 0)
-        if rot:
-            cy_l = pad + top + (lh * (len(lines) - 1) + size) / 2
-            layer = layer.rotate(rot, resample=Image.BICUBIC, center=(cx, cy_l))
-        _paste_clipped(pil, layer, int(fx - pad + (b.dx or 0)), int(fy - pad + (b.dy or 0)))
-    return cv2.cvtColor(np.array(pil.convert("RGB")), cv2.COLOR_RGB2BGR)
+        ckey = (lkey, lay, b.color, b.color2, b.grad_type, b.grad_angle, b.grad_pos, b.grad_soft,
+                b.grad_scope, b.stroke_color if stroke else "", b.align, bool(bold), rot)
+        got = _cache_get(_LAYER_CACHE, ckey)
+        if got is None:
+            layer, pad = _draw_block(b, lines, font_path, size, top, lh, scx, fw, fh, stroke, ls, bold, shear, rot)
+            _layer_put(ckey, layer, pad)
+        else:
+            layer, pad = got
+        _paste_np(out, layer, int(fx - pad + (b.dx or 0)), int(fy - pad + (b.dy or 0)))
+    return out
+
+
+def _draw_block(b, lines, font_path, size, top, lh, scx, fw, fh, stroke, ls, bold, shear, rot):
+    """Gambar teks satu balon di lapisan transparan seukuran balon (+ jarak), lalu miring/putar."""
+    font = _font(font_path, size)
+    pad = int(size * 1.5) + stroke
+    W, H = fw + 2 * pad, fh + 2 * pad
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    widths = [_text_w(d, l, font, stroke, ls) for l in lines]
+    block_w = max(widths) if widths else 0
+    cx = pad + scx
+    grad = _gradient_colors(b)
+    fill_mask = Image.new("L", (W, H), 0) if grad else None
+    fm = ImageDraw.Draw(fill_mask) if grad else None
+    boxes = []
+    for i, (line, wl) in enumerate(zip(lines, widths)):
+        if b.align == "left":
+            x = cx - block_w / 2
+        elif b.align == "right":
+            x = cx + block_w / 2 - wl
+        else:
+            x = cx - wl / 2
+        y = pad + top + i * lh
+        # koreksi offset bbox font supaya posisi visual tepat
+        l0, t0, _, _ = d.textbbox((0, 0), line, font=font, stroke_width=stroke)
+        _draw_line(d, (x - l0, y - t0 * 0.5), line, font, b.color, stroke,
+                   b.stroke_color if stroke else None, ls, bold, size)
+        if grad:   # isi huruf saja (tanpa stroke) untuk diwarnai gradasi
+            _draw_line(fm, (x - l0, y - t0 * 0.5), line, font, 255, 0, None, ls, bold, size)
+            sx = shear * size * 0.6
+            boxes.append((x - sx, y + size * 0.08, x + wl + sx, y + size * 0.95))
+    line_tops = [pad + top + i * lh for i in range(len(lines))]
+    if shear:   # miringkan tiap baris di sekitar titik tengahnya sendiri (tetap rata tengah)
+        layer = _shear_lines(layer, line_tops, size, lh, shear)
+        if grad:
+            fill_mask = _shear_lines(fill_mask, line_tops, size, lh, shear)
+    if grad:
+        layer = _apply_gradient(layer, fill_mask, grad, boxes, b)
+    if rot:
+        cy_l = pad + top + (lh * (len(lines) - 1) + size) / 2
+        layer = layer.rotate(rot, resample=Image.BICUBIC, center=(cx, cy_l))
+    # simpan hanya bagian yang berisi huruf (lebih hemat memori & cepat ditempel)
+    bbox = layer.getbbox()
+    if not bbox:
+        return Image.new("RGBA", (1, 1), (0, 0, 0, 0)), pad
+    if bbox != (0, 0, W, H):
+        layer = layer.crop(bbox)
+        layer._off = (bbox[0], bbox[1])
+    return layer, pad
+
+
+def _paste_np(base: np.ndarray, layer: Image.Image, x: int, y: int):
+    """Tempel lapisan RGBA ke gambar BGR (numpy), dipotong di tepi gambar."""
+    ox, oy = getattr(layer, "_off", (0, 0))
+    x, y = x + ox, y + oy
+    H, W = base.shape[:2]
+    lw, lh = layer.size
+    cx, cy = max(0, -x), max(0, -y)
+    ex, ey = min(lw, W - x), min(lh, H - y)
+    if ex <= cx or ey <= cy:
+        return
+    arr = np.asarray(layer)[cy:ey, cx:ex]
+    a = arr[..., 3:4]
+    if not a.any():
+        return
+    roi = base[y + cy:y + ey, x + cx:x + ex]
+    rgb = arr[..., 2::-1].astype(np.uint16)         # RGB -> BGR
+    af = a.astype(np.uint16)
+    roi[...] = ((rgb * af + roi.astype(np.uint16) * (255 - af) + 127) // 255).astype(np.uint8)
 
 
 def _shear_lines(img: Image.Image, line_tops, size, lh, shear) -> Image.Image:
@@ -920,9 +1072,18 @@ def _shear_lines(img: Image.Image, line_tops, size, lh, shear) -> Image.Image:
         if z <= a:
             continue
         strip = img.crop((0, a, img.width, z))
-        sh = strip.transform(strip.size, Image.AFFINE, (1, shear, -shear * (c - a), 0, 1, 0),
-                             resample=Image.BICUBIC)
-        out.paste(sh, (0, a))
+        bb = strip.getbbox()
+        if not bb:
+            continue
+        # hanya bagian yang berisi huruf (+ jarak geser) yang dimiringkan -> jauh lebih cepat
+        m = int(abs(shear) * (z - a)) + 4
+        l, r = max(0, bb[0] - m), min(img.width, bb[2] + m)
+        part = strip.crop((l, 0, r, z - a))
+        sh = part.transform(part.size, Image.AFFINE, (1, shear, -shear * (c - a), 0, 1, 0),
+                            resample=Image.BICUBIC)
+        out.paste(Image.new("RGBA", (r - l, z - a), (0, 0, 0, 0)) if img.mode == "RGBA" else
+                  Image.new(img.mode, (r - l, z - a), 0), (l, a))
+        out.paste(sh, (l, a))
     return out
 
 

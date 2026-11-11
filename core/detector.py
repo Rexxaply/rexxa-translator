@@ -50,6 +50,20 @@ def load_image(path: str) -> np.ndarray:
     return img
 
 
+def remember_image(path: str, img: np.ndarray):
+    """Gambar yang baru disimpan ke path dimasukkan ke cache (pembacaan berikutnya tanpa decode)."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return
+    if IMG_CACHE_MB > 0 and img.nbytes <= IMG_CACHE_MB * 1024 * 1024 // 2:
+        with _IMG_CACHE_LOCK:
+            _IMG_CACHE.pop(path, None)
+            _IMG_CACHE[path] = ((st.st_mtime_ns, st.st_size), img.copy())
+            while sum(v[1].nbytes for v in _IMG_CACHE.values()) > IMG_CACHE_MB * 1024 * 1024:
+                _IMG_CACHE.pop(next(iter(_IMG_CACHE)))
+
+
 def clear_image_cache():
     with _IMG_CACHE_LOCK:
         _IMG_CACHE.clear()
@@ -75,7 +89,19 @@ def _ref_size(shape) -> float:
     return float(min(H, W * 1.45))
 
 
+_CAND_LAST = [None, None]          # (gray, (kuat, lemah)) -- satu halaman terakhir
+
+
 def _letter_candidates(gray, weak=False):
+    """Kandidat huruf. Hasil 'kuat' & 'lemah' dihitung sekaligus dan disimpan untuk gambar yang
+    sama (deteksi memanggil keduanya berurutan)."""
+    last = _CAND_LAST
+    if last[0] is not gray:
+        last[0], last[1] = gray, _letter_candidates_both(gray)
+    return last[1][1] if weak else last[1][0]
+
+
+def _letter_candidates_both(gray):
     H, W = gray.shape
     # gelap relatif terhadap latar lokal (tangkap huruf tipis/abu-abu)
     bg = cv2.dilate(gray, np.ones((9, 9), np.uint8))
@@ -86,7 +112,7 @@ def _letter_candidates(gray, weak=False):
     hmax = int(ref * 0.05)
     light = gray > 190
     mid = (gray > 170) & (gray <= 190) | ((gray >= 60) & (gray <= 170) & (dark == 0))
-    out = []
+    out, out_weak = [], []
     for i in range(1, n):
         x, y, w, h, a = stats[i]
         if h < hmin or h > hmax or w > hmax * 2.5 or a < 6:
@@ -103,14 +129,13 @@ def _letter_candidates(gray, weak=False):
             continue
         lf = (light[y0:y1, x0:x1] & others).sum() / tot
         mf = (mid[y0:y1, x0:x1] & others).sum() / tot
-        if weak:
-            # huruf di pita abu-abu balon transparan: hanya dipakai untuk MEMPERPANJANG baris yang sudah ada
-            if lf + mf < 0.6:
-                continue
-        elif lf < 0.45 or mf > 0.35:
-            continue
-        out.append((int(x), int(y), int(w), int(h)))
-    return out
+        r = (int(x), int(y), int(w), int(h))
+        # huruf di pita abu-abu balon transparan: hanya dipakai untuk MEMPERPANJANG baris yang sudah ada
+        if lf + mf >= 0.6:
+            out_weak.append(r)
+        if not (lf < 0.45 or mf > 0.35):
+            out.append(r)
+    return out, out_weak
 
 
 class DSU:
@@ -356,31 +381,89 @@ def _split_by_bubble(g, lbl, stats, shape):
 
 
 def _find_bubble(gray, rect, closek, line_rects=None):
-    """Area putih tertutup yang membungkus kelompok teks."""
+    """Area putih tertutup yang membungkus kelompok teks.
+    Cepat: dihitung di jendela sekitar teks saja; bila area putihnya mendekati tepi jendela
+    (balon besar / area terbuka), dihitung ulang di seluruh halaman -- hasilnya sama persis."""
     H, W = gray.shape
     x, y, w, h = rect
-    white = (gray > 185).astype(np.uint8) * 255
-    pad = 3
-    for lx, ly, lw, lh in line_rects or [rect]:  # tutup huruf per baris (jangan tembus garis balon)
-        white[max(0, ly - pad):ly + lh + pad, max(0, lx - pad):lx + lw + pad] = 255
-    white = cv2.erode(white, np.ones((closek, closek), np.uint8))  # putus sambungan tipis
-    n, lbl, st, _ = cv2.connectedComponentsWithStats(white, connectivity=4)
-    cy, cx = y + h // 2, x + w // 2
-    i = lbl[cy, cx]
-    if i == 0:
+    m = int(max(w, h) * 1.6) + closek + 8
+    win = (max(0, x - m), max(0, y - m), min(W, x + w + m), min(H, y + h + m))
+    r = _bubble_label(gray, rect, closek, line_rects, win)
+    if r is None:
         return None
+    if r == "full":
+        r = _bubble_label(gray, rect, closek, line_rects, (0, 0, W, H))
+        if r is None or r == "full":
+            return None
+    lbl, i, st, ox, oy = r
     bx, by, bw, bh, area = st[i]
+    bx, by = bx + ox, by + oy
     touches = bx <= 1 or by <= 1 or bx + bw >= W - 1 or by + bh >= H - 1
     if touches or area > 14 * w * h or area > 0.2 * _ref_size(gray.shape) * W:
         return None
-    mask = (lbl == i).astype(np.uint8) * 255
-    if not _text_centered(mask[by:by + bh, bx:bx + bw], (x - bx, y - by, w, h)):
+    sub = (lbl[by - oy:by - oy + bh, bx - ox:bx - ox + bw] == i).astype(np.uint8) * 255
+    if not _text_centered(sub, (x - bx, y - by, w, h)):
         return None     # area putih panel/langit yang kebetulan tertutup, bukan balon
+    # dilatasi di potongan + bingkai secukupnya (sama dengan dilatasi seluruh halaman)
+    e = closek
+    mask = np.zeros((bh + 2 * e, bw + 2 * e), np.uint8)
+    mask[e:e + bh, e:e + bw] = sub
     mask = cv2.dilate(mask, np.ones((closek, closek), np.uint8))
     cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    c = max(cnts, key=cv2.contourArea)
+    c = max(cnts, key=cv2.contourArea) + np.array([bx - e, by - e], np.int32)
+    c[..., 0] = np.clip(c[..., 0], 0, W - 1)
+    c[..., 1] = np.clip(c[..., 1], 0, H - 1)
     hull = cv2.convexHull(c)
     return cv2.boundingRect(hull), hull.reshape(-1, 2)
+
+
+def _bubble_label(gray, rect, closek, line_rects, win):
+    """Label area putih di jendela win=(x0,y0,x1,y1). 'full' = terlalu dekat tepi jendela."""
+    H, W = gray.shape
+    x0, y0, x1, y1 = win
+    x, y, w, h = rect
+    white = (gray[y0:y1, x0:x1] > 185).astype(np.uint8) * 255
+    pad = 3
+    for lx, ly, lw, lh in line_rects or [rect]:  # tutup huruf per baris (jangan tembus garis balon)
+        ax, ay = max(x0, lx - pad), max(y0, ly - pad)
+        bx_, by_ = min(x1, lx + lw + pad), min(y1, ly + lh + pad)
+        if ax < bx_ and ay < by_:
+            white[ay - y0:by_ - y0, ax - x0:bx_ - x0] = 255
+    if (x0, y0, x1, y1) != (0, 0, W, H):
+        # tepi jendela di dalam halaman dianggap hitam (erosi tidak pernah "menambah" putih palsu),
+        # tepi halaman tetap seperti aslinya
+        k = closek
+        white = cv2.copyMakeBorder(white, k, k, k, k, cv2.BORDER_CONSTANT, value=0)
+        if x0 == 0:
+            white[:, :k] = 255
+        if y0 == 0:
+            white[:k, :] = 255
+        if x1 == W:
+            white[:, -k:] = 255
+        if y1 == H:
+            white[-k:, :] = 255
+        white = cv2.erode(white, np.ones((closek, closek), np.uint8))[k:-k, k:-k]
+    else:
+        white = cv2.erode(white, np.ones((closek, closek), np.uint8))  # putus sambungan tipis
+    n, lbl, st, _ = cv2.connectedComponentsWithStats(white, connectivity=4)
+    cy, cx = y + h // 2 - y0, x + w // 2 - x0
+    if not (0 <= cy < lbl.shape[0] and 0 <= cx < lbl.shape[1]):
+        return None
+    i = lbl[cy, cx]
+    if i == 0:
+        return None
+    if (x0, y0, x1, y1) != (0, 0, W, H):
+        bx, by, bw, bh, _ = st[i]
+        g = closek + 2
+        if (x0 > 0 and bx <= g) or (y0 > 0 and by <= g) or \
+                (x1 < W and bx + bw >= (x1 - x0) - g) or (y1 < H and by + bh >= (y1 - y0) - g):
+            # area putih terbuka yang (di bagian dalam jendela saja) sudah terlalu luas untuk balon
+            # -> pasti ditolak, tidak perlu dihitung ulang di seluruh halaman
+            inner = int(np.count_nonzero(lbl[g:-g, g:-g] == i)) if min(lbl.shape) > 2 * g else 0
+            if inner > 14 * w * h or inner > 0.2 * _ref_size(gray.shape) * W:
+                return None
+            return "full"
+    return lbl, i, st, x0, y0
 
 
 def _text_centered(region, trect) -> bool:

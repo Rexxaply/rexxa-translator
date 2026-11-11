@@ -277,7 +277,13 @@ def _is_darkish(c: str) -> bool:
 def page_letters(img: np.ndarray):
     """Kandidat huruf untuk SELURUH halaman (ukuran huruf dinilai relatif ke halaman, bukan kotak)."""
     from .detector import _letter_candidates
-    return _letter_candidates(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
+    sig = (img.shape, int(img[::97, ::89].sum()))
+    if _PL[0] is not img or _PL[1] != sig:          # sekali per gambar (dipanggil berkali-kali)
+        _PL[:] = [img, sig, _letter_candidates(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))]
+    return _PL[2]
+
+
+_PL = [None, None, None]
 
 
 def gap_ok(U, r, lh):
@@ -524,7 +530,30 @@ def _safe_contrast_mask(img, region):
 
 
 def _inpaint_opencv(img, mask):
-    return cv2.inpaint(img, mask, 7, cv2.INPAINT_TELEA)
+    """Telea, dikerjakan per kelompok area (potongan kecil) -- hasil sama dengan seluruh halaman,
+    tapi jauh lebih cepat & hemat memori di halaman besar (webtoon)."""
+    H, W = mask.shape[:2]
+    if H * W < 600_000:
+        return cv2.inpaint(img, mask, 7, cv2.INPAINT_TELEA)
+    grouped = cv2.dilate(mask, np.ones((25, 25), np.uint8))
+    n, lbl, st, _ = cv2.connectedComponentsWithStats(grouped, connectivity=8)
+    if n <= 1:
+        return img.copy()
+    if st[1:, 4].sum() > 0.35 * H * W:
+        return cv2.inpaint(img, mask, 7, cv2.INPAINT_TELEA)
+    out = img.copy()
+    pad = 16
+    for i in range(1, n):
+        x, y, w, h, _a = st[i]
+        x0, y0, x1, y1 = max(0, x - pad), max(0, y - pad), min(W, x + w + pad), min(H, y + h + pad)
+        m = mask[y0:y1, x0:x1].copy()
+        m[lbl[y0:y1, x0:x1] != i] = 0
+        if not m.any():
+            continue
+        res = cv2.inpaint(np.ascontiguousarray(img[y0:y1, x0:x1]), m, 7, cv2.INPAINT_TELEA)
+        sel = m > 0
+        out[y0:y1, x0:x1][sel] = res[sel]
+    return out
 
 
 def _inpaint_lama(img, mask):

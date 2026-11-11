@@ -97,9 +97,10 @@ def apply(settings: dict | None = None, stages: int = 1):
             torch.set_num_threads(use)
     except Exception:
         pass
-    from . import detector, inpaint
+    from . import detector, inpaint, typeset
     inpaint.LAMA_MAX_SIDE = 640 if low_end(settings) else 1024
     detector.IMG_CACHE_MB = 60 if low_end(settings) else 160
+    typeset.LAYER_CACHE_MB = 24 if low_end(settings) else 64
 
 
 def release(page=None, keep_current: bool = False):

@@ -445,9 +445,22 @@ def step_clean(page: Page, settings: dict, incremental: bool = True):
     out.mkdir(exist_ok=True)
     p = out / (Path(page.path).stem + "_clean.png")
     detector.save_image(str(p), cleaned, fast=True)
+    detector.remember_image(str(p), cleaned)      # dibaca lagi saat render: tak perlu decode ulang
     page.cleaned_path = str(p)
+    _saved(str(p), cleaned)
     page._clean_sigs = sigs_new
     return cleaned
+
+
+ON_SAVED = None        # diisi tampilan: dipanggil (path, gambar) setelah hasil disimpan
+
+
+def _saved(path, img):
+    if ON_SAVED is not None:
+        try:
+            ON_SAVED(path, img)
+        except Exception:
+            pass
 
 
 def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool = False):
@@ -486,6 +499,7 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
     p = output_dir(page, settings) / output_name(page, project, settings)
     detector.save_image(str(p), final)
     page.output_path = str(p)
+    _saved(str(p), final)
     page.status = "selesai"
     return final
 

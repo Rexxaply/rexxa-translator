@@ -288,7 +288,13 @@ class PageCanvas(QGraphicsView):
         self.pix_item = None
         if not image_path:
             return
-        pm = QPixmap.fromImage(QImage(image_path))
+        from . import imgcache
+        k = (image_path, imgcache.key(image_path))
+        if getattr(self, "_pm_key", None) == k and getattr(self, "_pm", None) is not None:
+            pm = self._pm                      # gambar yang sama: tidak perlu dibaca / diubah ulang
+        else:
+            pm = QPixmap.fromImage(imgcache.get(image_path))
+            self._pm, self._pm_key = pm, k
         self.pix_item = self.scene().addPixmap(pm)
         self.pix_item.setZValue(0)
         self.scene().setSceneRect(QRectF(pm.rect()))

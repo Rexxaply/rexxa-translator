@@ -190,6 +190,11 @@ def _easy_read(reader, crop: np.ndarray, lang: str):
                               else 1.0, **kw)
     except TypeError:                          # versi EasyOCR lama
         res = reader.readtext(crop, detail=1, paragraph=False)
+    return _group_items(res)
+
+
+def _group_items(res):
+    """Hasil EasyOCR [(kotak, teks, conf)] -> (teks per baris atas->bawah, conf rata-rata)."""
     if not res:
         return "", 0.0
     items = []
@@ -259,6 +264,48 @@ def _denoise(crop: np.ndarray):
     return cv2.cvtColor(clean, cv2.COLOR_GRAY2BGR)
 
 
+def _allow(lang):
+    if lang == "en":
+        return ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+                " .,!?'\"-…:;()&%$#*~/")
+    return None
+
+
+def _fast_lines(reader, img: np.ndarray, b: TextBlock, lang: str):
+    """CEPAT: baca langsung tiap baris hasil deteksi dengan pengenal huruf EasyOCR (recognize),
+    tanpa tahap pencarian teks (CRAFT) yang paling berat di CPU. Semua baris dibaca sekaligus
+    (satu batch). None bila tidak bisa (tidak ada posisi baris / versi EasyOCR lain)."""
+    lines = sorted(getattr(b, "_lines", None) or [], key=lambda r: r[1] + r[3] / 2)
+    if not lines or b.vertical or not hasattr(reader, "recognize"):
+        return None
+    H, W = img.shape[:2]
+    hs = sorted(r[3] for r in lines)
+    mh = max(4, hs[len(hs) // 2])
+    boxes = []
+    for x, y, w, h in lines:
+        px, py = int(h * 0.6) + 2, int(h * 0.3) + 2
+        boxes.append((max(0, x - px), max(0, y - py), min(W, x + w + px), min(H, y + h + py)))
+    X0, Y0 = min(r[0] for r in boxes), min(r[1] for r in boxes)
+    X1, Y1 = max(r[2] for r in boxes), max(r[3] for r in boxes)
+    piece = img[Y0:Y1, X0:X1]
+    if piece.size == 0:
+        return None
+    gray = cv2.cvtColor(piece, cv2.COLOR_BGR2GRAY) if piece.ndim == 3 else piece
+    k = min(3.0, 48.0 / mh) if mh < 40 else 1.0      # huruf kecil diperbesar (model memakai tinggi 64)
+    if k > 1.0:
+        gray = cv2.resize(gray, None, fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
+    hl = [[int((x0 - X0) * k), int((x1 - X0) * k), int((y0 - Y0) * k), int((y1 - Y0) * k)]
+          for x0, y0, x1, y1 in boxes]
+    kw = {"allowlist": _allow(lang)} if _allow(lang) else {}
+    try:
+        res = reader.recognize(gray, horizontal_list=hl, free_list=[], detail=1, paragraph=False,
+                               batch_size=max(1, len(hl)), **kw)
+    except Exception:
+        return None
+    t, c = _group_items(res)
+    return (t, c) if t.strip() else None
+
+
 def _line_read(reader, img: np.ndarray, b: TextBlock, lang: str):
     """Baca per BARIS memakai posisi baris dari deteksi: urutan baca pasti atas -> bawah dan
     setiap potongan hanya berisi satu baris (lebih akurat untuk balon oval / teks rapat)."""
@@ -292,8 +339,15 @@ def _best_read(reader, img: np.ndarray, b: TextBlock, crop: np.ndarray, lang: st
     from . import perf
     good = 0.72
     max_tries = 3 if perf.low_end() else 5
-    base = _upscale(crop)
     expect = _expected_chars(b)
+    n_lines = len(getattr(b, "_lines", None) or [])
+    fast = _fast_lines(reader, img, b, lang)
+    if fast:
+        sc = _score(fast[0], fast[1], lang, expect)
+        got = sum(1 for ln in fast[0].split("\n") if any(ch.isalnum() for ch in ln))
+        if sc >= good + 0.05 and got >= n_lines:
+            return fast                     # sudah meyakinkan: tidak perlu deteksi teks (CRAFT)
+    base = _upscale(crop)
     t, c = _easy_read(reader, base, lang)
     best = (t, c, _score(t, c, lang, expect))
     tries = 1
@@ -308,10 +362,11 @@ def _best_read(reader, img: np.ndarray, b: TextBlock, crop: np.ndarray, lang: st
             if sc > best[2] + 0.02 or not best[0].strip():
                 best = (res[0], res[1], sc)
 
-    n_lines = len(getattr(b, "_lines", None) or [])
-    got_lines = sum(1 for ln in t.split("\n") if any(ch.isalnum() for ch in ln))
+    if fast:
+        consider(fast)                      # hasil baca per baris (cepat) ikut dibandingkan
+    got_lines = sum(1 for ln in best[0].split("\n") if any(ch.isalnum() for ch in ln))
     missed = n_lines >= 2 and got_lines < n_lines
-    if best[2] < good or missed:
+    if not fast and (best[2] < good or missed):
         # ada baris yang tidak terbaca (mis. baris pendek "IT..." / "AH...") -> baca per baris
         consider(_line_read(reader, img, b, lang))
         tries += 1
@@ -364,12 +419,35 @@ def _merge_words(main: str, others: list[str]) -> str:
     return " ".join(tok)
 
 
+_OCR_CACHE: dict = {}
+
+
+def clear_cache():
+    _OCR_CACHE.clear()
+
+
 def ocr_block(img: np.ndarray, b: TextBlock, engine: str, lang: str, gpu: bool = False) -> str:
     crop = _crop(img, b)
     if crop.size == 0:
         return ""
     if engine == "auto":
         engine = "manga-ocr" if lang == "ja" else "easyocr"
+    # area yang sama sudah pernah dibaca (OCR ulang, Terjemahkan Semua setelah Deteksi, dst.)
+    import hashlib
+    key = (hashlib.blake2b(np.ascontiguousarray(crop).data, digest_size=16).hexdigest(), crop.shape,
+           engine, lang, str(getattr(b, "_lines", None)), bool(b.vertical))
+    hit = _OCR_CACHE.get(key)
+    if hit is not None:
+        b._ocr_conf = hit[1]
+        return hit[0]
+    text = _ocr_block(img, b, crop, engine, lang, gpu)
+    if len(_OCR_CACHE) > 600:
+        _OCR_CACHE.clear()
+    _OCR_CACHE[key] = (text, float(getattr(b, "_ocr_conf", 0.0) or 0.0))
+    return text
+
+
+def _ocr_block(img, b, crop, engine, lang, gpu) -> str:
 
     if engine == "manga-ocr":
         mocr = _get_manga_ocr()
