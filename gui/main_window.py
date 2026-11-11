@@ -1395,6 +1395,7 @@ class MainWindow(QMainWindow):
         hi = QSize(int(isz.width() * dpr * 3), int(isz.height() * dpr * 3))   # sumber resolusi tinggi
         self._save_src = {"acc": icon("save", "#9182ff").pixmap(hi), "norm": icon("save").pixmap(hi)}
         self._save_geo = (isz, dpr)
+        self._save_hi = hi
         self._save_done = False
         self._save_state = {"final_at": None, "final_from": 0.0, "settle_at": None}
         self._save_clock = QElapsedTimer()
@@ -1440,6 +1441,9 @@ class MainWindow(QMainWindow):
                 self.b_save.setIcon(self._save_frame(ang))
                 return
             st["settle_at"] = t
+            # warna akhir = tampilan tombol setelah tersimpan (abu-abu bila tidak ada perubahan lagi)
+            mode = QIcon.Mode.Normal if self._dirty else QIcon.Mode.Disabled
+            self._save_src["norm"] = icon("save_dirty" if self._dirty else "save").pixmap(self._save_hi, mode)
         u = min(1.0, (t - st["settle_at"]) / self.SAVE_SETTLE_MS)
         import math
         scale = 1.0 + 0.12 * math.sin(math.pi * u)          # mengembang sedikit lalu kembali
