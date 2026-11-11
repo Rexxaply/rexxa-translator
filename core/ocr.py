@@ -206,10 +206,162 @@ def _easy_read(reader, crop: np.ndarray, lang: str):
         cur.append(it)
     if cur:
         lines.append(cur)
-    text = " ".join(" ".join(t[3] for t in sorted(l, key=lambda t: t[2])) for l in lines)
+    # baris dipisah "\n" (jumlah baris dipakai untuk memeriksa apakah ada baris yang terlewat)
+    text = "\n".join(" ".join(t[3] for t in sorted(l, key=lambda t: t[2])) for l in lines)
     n = sum(len(t[3]) for t in items) or 1
     conf = sum(t[4] * len(t[3]) for t in items) / n
     return text, conf
+
+
+def _expected_chars(b: TextBlock) -> float:
+    """Perkiraan jumlah huruf di blok dari panjang baris-baris teksnya (0 = tidak diketahui)."""
+    n = getattr(b, "_letters", 0) or 0          # huruf yang terlihat saat deteksi
+    if n:
+        return float(n)
+    lines = getattr(b, "_lines", None) or []
+    if lines:
+        return sum(w / max(1.0, h * 0.62) for _, _, w, h in lines)
+    return 0.0
+
+
+def _score(text: str, conf: float, lang: str, expect: float = 0.0) -> float:
+    """Nilai mutu hasil baca: keyakinan OCR + (untuk Inggris) seberapa banyak kata yang dikenal,
+    dikurangi bila jumlah hurufnya jauh lebih sedikit dari panjang teks di gambar (baris hilang)."""
+    t = clean_text(text or "", lang)
+    if not t:
+        return 0.0
+    cover = 1.0
+    if expect >= 3:
+        n = sum(1 for c in t if c.isalnum())
+        cover = min(1.0, n / (expect * 0.95))
+    if lang != "en":
+        return float(conf) * cover
+    from . import ocrfix
+    words = [w for w in re.findall(r"[A-Za-z']+", t) if len(w.strip("'")) >= 2]
+    if not words:
+        return float(conf) * 0.8 * cover
+    known = sum(1 for w in words if ocrfix._known(w.strip("'")) or ocrfix._known(ocrfix.fix(w).strip("'!")))
+    return (0.55 * float(conf) + 0.45 * known / len(words)) * cover
+
+
+def _denoise(crop: np.ndarray):
+    """Latar raster / arsiran / butiran: bintik kecil dihapus, huruf dipertegas (hitam di atas putih)."""
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    g = cv2.medianBlur(gray, 3)
+    m = _text_mask(g)
+    n, lbl, st, _ = cv2.connectedComponentsWithStats(m, 8)
+    h = crop.shape[0]
+    keep = np.zeros(n, bool)
+    for i in range(1, n):
+        x, y, w, hh, a = st[i]
+        keep[i] = a >= max(6, h * h * 0.0004) or hh >= h * 0.08
+    clean = np.where(keep[lbl], 0, 255).astype(np.uint8)
+    return cv2.cvtColor(clean, cv2.COLOR_GRAY2BGR)
+
+
+def _line_read(reader, img: np.ndarray, b: TextBlock, lang: str):
+    """Baca per BARIS memakai posisi baris dari deteksi: urutan baca pasti atas -> bawah dan
+    setiap potongan hanya berisi satu baris (lebih akurat untuk balon oval / teks rapat)."""
+    lines = sorted(getattr(b, "_lines", None) or [], key=lambda r: r[1] + r[3] / 2)
+    if len(lines) < 2 or b.vertical:
+        return None
+    H, W = img.shape[:2]
+    texts, confs, total = [], [], 0
+    for x, y, w, h in lines:
+        px, py = int(h * 0.9), int(h * 0.35)
+        x0, y0 = max(0, x - px), max(0, y - py)
+        x1, y1 = min(W, x + w + px), min(H, y + h + py)
+        piece = img[y0:y1, x0:x1]
+        if piece.size == 0:
+            continue
+        t, c = _easy_read(reader, _upscale(piece), lang)
+        t = " ".join(t.split())
+        if t.strip():
+            texts.append(t.strip())
+            confs.append(c * len(t))
+            total += len(t)
+    if not texts:
+        return None
+    return "\n".join(texts), sum(confs) / max(1, total)
+
+
+def _best_read(reader, img: np.ndarray, b: TextBlock, crop: np.ndarray, lang: str):
+    """Baca bertahap, berhenti segera setelah hasilnya meyakinkan:
+    1) seluruh blok  2) per baris  3) diluruskan (teks miring)  4) bintik raster dibuang
+    5) huruf berongga diisi. Dipilih hasil dengan nilai mutu (_score) tertinggi."""
+    from . import perf
+    good = 0.72
+    max_tries = 3 if perf.low_end() else 5
+    base = _upscale(crop)
+    expect = _expected_chars(b)
+    t, c = _easy_read(reader, base, lang)
+    best = (t, c, _score(t, c, lang, expect))
+    tries = 1
+
+    pool = [(t, c)]
+
+    def consider(res):
+        nonlocal best
+        if res and res[0].strip():
+            pool.append(res)
+            sc = _score(res[0], res[1], lang, expect)
+            if sc > best[2] + 0.02 or not best[0].strip():
+                best = (res[0], res[1], sc)
+
+    n_lines = len(getattr(b, "_lines", None) or [])
+    got_lines = sum(1 for ln in t.split("\n") if any(ch.isalnum() for ch in ln))
+    missed = n_lines >= 2 and got_lines < n_lines
+    if best[2] < good or missed:
+        # ada baris yang tidak terbaca (mis. baris pendek "IT..." / "AH...") -> baca per baris
+        consider(_line_read(reader, img, b, lang))
+        tries += 1
+    ang = None
+    if best[2] < good and tries < max_tries:
+        ang = text_angle(crop)
+        if ang:
+            consider(_easy_read(reader, _upscale(deskew(crop, ang)), lang))
+            tries += 1
+    straight = _upscale(deskew(crop, ang)) if ang else base
+    if best[2] < good and tries < max_tries:
+        consider(_easy_read(reader, _denoise(straight), lang))
+        tries += 1
+    if best[2] < good and tries < max_tries:
+        filled = fill_hollow(straight)
+        if filled is not None:
+            consider(_easy_read(reader, filled, lang))
+    text = best[0]
+    if lang == "en" and len(pool) > 1:
+        text = _merge_words(text, [p[0] for p in pool if p[0] != best[0]])
+    return text, best[1]
+
+
+def _merge_words(main: str, others: list[str]) -> str:
+    """Gabungkan hasil beberapa kali baca: kata di hasil terbaik yang TIDAK dikenal kamus diganti
+    kata pada posisi yang sama dari hasil lain bila kata itu dikenal (mis. "ARAMLUNP" -> dari
+    hasil lain). Kata yang sudah dikenal tidak pernah diubah."""
+    import difflib
+    from . import ocrfix
+    if not ocrfix.available():
+        return main
+    tok = re.findall(r"\S+", main)
+    core = lambda w: re.sub(r"^[^A-Za-z0-9']+|[^A-Za-z0-9']+$", "", w)
+    for other in others:
+        ot = re.findall(r"\S+", other)
+        a = [core(w).upper() for w in tok]
+        bb = [core(w).upper() for w in ot]
+        sm = difflib.SequenceMatcher(None, a, bb, autojunk=False)
+        for op, i1, i2, j1, j2 in sm.get_opcodes():
+            if op != "replace" or (i2 - i1) != (j2 - j1):
+                continue
+            for k in range(i2 - i1):
+                w, alt = core(tok[i1 + k]), core(ot[j1 + k])
+                if not w or not alt or ocrfix._known(w.lower()) or not ocrfix._known(alt.lower()):
+                    continue
+                if difflib.SequenceMatcher(None, w.upper(), alt.upper()).ratio() < 0.6:
+                    continue          # terlalu berbeda: bukan kata yang sama yang salah baca
+                rep = alt.upper() if w.isupper() else alt
+                tok[i1 + k] = tok[i1 + k].replace(w, rep, 1)
+    return " ".join(tok)
 
 
 def ocr_block(img: np.ndarray, b: TextBlock, engine: str, lang: str, gpu: bool = False) -> str:
@@ -227,25 +379,7 @@ def ocr_block(img: np.ndarray, b: TextBlock, engine: str, lang: str, gpu: bool =
     elif engine == "easyocr":
         from .detector import get_easyocr
         reader = get_easyocr(lang, gpu)
-        base = _upscale(crop)
-        best = _easy_read(reader, base, lang)
-        need_retry = best[1] < 0.55 or not best[0].strip()
-        if not need_retry and lang == "en":
-            from . import ocrfix
-            need_retry = best[1] < 0.8 and not ocrfix.plausible(clean_text(best[0], lang), lang)
-        if need_retry:
-            # hasil kurang yakin: coba versi yang diluruskan (teks miring) dan versi huruf berongga
-            # yang diisi gelap (judul / SFX bergaris tepi), lalu ambil yang paling yakin
-            ang = text_angle(crop)
-            straight = _upscale(deskew(crop, ang)) if ang else base
-            tries = [straight] if ang else []
-            filled = fill_hollow(straight)
-            if filled is not None:
-                tries.append(filled)
-            for v in tries:
-                t, c = _easy_read(reader, v, lang)
-                if t and (c > best[1] + 0.03 or not best[0]):
-                    best = (t, c)
+        best = _best_read(reader, img, b, crop, lang)
         text = best[0]
         b._ocr_conf = float(best[1])
     else:
@@ -266,7 +400,36 @@ def clean_text(text: str, lang: str) -> str:
         # sisa garis balon / panel yang ikut terbaca: "|", "\\", "[", "~" yang berdiri sendiri
         text = re.sub(r"(?:(?<=\s)|^)[|\\/\[\]{}~_=—–<>]+(?=\s|$)", " ", text)
         text = re.sub(r"\s+", " ", text).strip()
+        text = _tidy_latin(text)
     return text
+
+
+def _tidy_latin(text: str) -> str:
+    """Rapikan teks Latin hasil OCR:
+    - kata yang dipotong ke baris berikut ("FOL- LOWING", "SUP- POSE") disambung kembali bila hasil
+      sambungannya kata yang dikenal; tanda hubung asli ("HEART- WARMING") tetap tanpa spasi
+    - spasi sebelum tanda baca dihapus ("WHAT ?" -> "WHAT?"), apostrof dirapikan ("I ' M" -> "I'M")
+    - ".." / ". . ." / "…" -> "..."
+    - teks yang hampir semuanya huruf kapital (komik) dijadikan kapital seluruhnya"""
+    t = text.replace("’", "'").replace("‘", "'").replace("`", "'")
+    t = re.sub(r"\s*'\s*(?=(?:S|M|LL|RE|VE|D|T)\b)", "'", t, flags=re.I)
+    t = re.sub(r"(?:\.\s?){2,}\.?|…", "...", t)
+    t = re.sub(r"\s+([,.!?;:])", r"\1", t)
+
+    def join(m):
+        a, bpart = m.group(1), m.group(2)
+        try:
+            from . import ocrfix
+            if ocrfix.available() and ocrfix._known((a + bpart).lower()):
+                return a + bpart
+        except Exception:
+            pass
+        return a + "-" + bpart
+    t = re.sub(r"([A-Za-z]{2,})-\s+([A-Za-z]{2,})", join, t)
+    letters = [c for c in t if c.isalpha()]
+    if len(letters) >= 4 and sum(c.isupper() for c in letters) >= 0.75 * len(letters):
+        t = t.upper()
+    return t.strip()
 
 
 def ocr_page(img: np.ndarray, blocks: list[TextBlock], engine: str, lang: str, gpu: bool = False,

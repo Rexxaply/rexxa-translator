@@ -559,6 +559,17 @@ def detect_bubbles(img: np.ndarray, vertical: bool = True) -> list[TextBlock]:
 
     blocks: list[TextBlock] = []
     for g in good:
+        n_before = len(blocks)
+        _add_block_from_group(g, blocks, gray, lobes, closek, W, H)
+        if len(blocks) > n_before:
+            # posisi tiap baris teks (dipakai OCR per baris: urutan baca pasti benar)
+            blocks[-1]._lines = [[int(v) for v in l["rect"]] for l in g["line_list"]]
+            blocks[-1]._letters = int(sum(len(l["mem"]) for l in g["line_list"]))
+    return _finish_blocks(blocks, gray)
+
+
+def _add_block_from_group(g, blocks, gray, lobes, closek, W, H):
+    if True:
         x, y, w, h = g["rect"]
         ring = g["ring"]
         text_rect = [int(v) for v in g["rect"]]
@@ -569,7 +580,7 @@ def detect_bubbles(img: np.ndarray, vertical: bool = True) -> list[TextBlock]:
         x, y, w, h = g["rect"]
         if g["n"] < 3 and (ring < (0.8 if b is not None else 0.97)
                            or (gray[y:y + h, x:x + w] < 120).mean() < 0.3):
-            continue                  # 2 huruf ("OH.", "WH...") hanya diterima bila latarnya bersih
+            return                    # 2 huruf ("OH.", "WH...") hanya diterima bila latarnya bersih
         if b is not None:
             (bx, by, bw, bh), hull = b
             tx, ty, tw, th = text_rect
@@ -599,6 +610,10 @@ def detect_bubbles(img: np.ndarray, vertical: bool = True) -> list[TextBlock]:
             blocks.append(TextBlock(x=x0, y=y0, w=x1 - x0, h=y1 - y0, kind="free",
                                     vertical=bool(g["vertical"]), text_rect=text_rect,
                                     src_h=int(round(g["med_h"]))))
+
+
+def _finish_blocks(blocks, gray):
+    H, W = gray.shape[:2]
     # teks bebas yang hurufnya jauh lebih besar dari teks dialog = SFX -> biarkan
     sizes = [b.src_h for b in blocks if b.kind == "bubble" and b.src_h]
     if len(sizes) >= 2:
@@ -694,6 +709,8 @@ def _scale_block(b: TextBlock, f: float) -> TextBlock:
         b.text_rect = [int(round(v * f)) for v in b.text_rect]
     if b.mask_poly:
         b.mask_poly = [[int(round(px * f)), int(round(py * f))] for px, py in b.mask_poly]
+    if getattr(b, "_lines", None):
+        b._lines = [[int(round(v * f)) for v in r] for r in b._lines]
     b.src_h = int(round(b.src_h * f))
     return b
 

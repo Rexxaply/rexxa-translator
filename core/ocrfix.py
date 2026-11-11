@@ -30,7 +30,8 @@ ENDS_I = set("hi taxi samurai sushi hawaii wasabi senpai sensei kai mai yui ai a
              "safari spaghetti salami tsunami origami kiwi mini semi sashimi kanji yuki mari teriyaki sukiyaki "
              "ramen udon gyoza onigiri kami oni yokai hentai kawaii itadakimasu uchi chi pi xi psi".split())
 # singkatan yang apostrofnya hilang saat OCR (huruf kapital komik)
-CONTRACT = {"tll": "i'll", "1ll": "i'll", "|ll": "i'll", "im": "i'm", "ive": "i've", "dont": "don't",
+CONTRACT = {"tll": "i'll", "1ll": "i'll", "|ll": "i'll", "im": "i'm", "tm": "i'm", "1m": "i'm", "lm": "i'm",
+            "ive": "i've", "tve": "i've", "1ve": "i've", "td": None, "ive": "i've", "dont": "don't",
             "cant": "can't", "wont": "won't", "thats": "that's", "youre": "you're", "theyre": "they're",
             "isnt": "isn't", "didnt": "didn't", "doesnt": "doesn't", "wasnt": "wasn't", "arent": "aren't",
             "couldnt": "couldn't", "wouldnt": "wouldn't", "shouldnt": "shouldn't", "havent": "haven't",
