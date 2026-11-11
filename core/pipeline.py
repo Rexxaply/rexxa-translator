@@ -352,6 +352,9 @@ def free_text_ok(text: str) -> bool:
     if not t:
         return False
     letters = sum(c.isalpha() and c.isascii() for c in t)
+    import re
+    if letters == 1 and re.fullmatch(r"[A-Za-z](\.\.\.|[!?]+|…)", t):
+        return True                        # "I...", "A!"
     return letters >= 2 and letters >= 0.55 * len(t)
 
 

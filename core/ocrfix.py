@@ -205,6 +205,8 @@ def plausible(text: str, lang: str = "en") -> bool:
     """Apakah hasil OCR terlihat seperti teks sungguhan (bukan rambut / raster yang terbaca huruf)?"""
     t = (text or "").strip()
     letters = sum(c.isalpha() for c in t)
+    if letters == 1 and re.fullmatch(r"[A-Za-z](\.\.\.|[!?]+|…)", t):
+        return True                    # "I...", "A!", "O?"
     if letters < 2:
         return False
     if lang != "en" or not available():

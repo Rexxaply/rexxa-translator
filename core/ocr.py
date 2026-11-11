@@ -447,6 +447,28 @@ def ocr_block(img: np.ndarray, b: TextBlock, engine: str, lang: str, gpu: bool =
     return text
 
 
+def _dots_text(text: str, img, b) -> str:
+    """Blok '1 huruf + titik-titik' ("I...", "A...", "N..."): hasil OCR huruf tunggal sering kacau
+    ("Te.", "l..", "|.."). Ambil satu huruf yang paling masuk akal lalu tambahkan '...'."""
+    core = re.sub(r"[^A-Za-z0-9|!]", "", text or "")
+    if not core:
+        return text
+    ch = core[0]
+    x, y, w, h = b._dots
+    if ch in "lI1|!iTtJj":
+        # "I" (berkait atas & bawah) vs "T" (bawahnya hanya batang tipis): bandingkan lebar tinta
+        # di bagian atas & bawah huruf
+        H, W = img.shape[:2]
+        g = cv2.cvtColor(img[max(0, y):min(H, y + h), max(0, x):min(W, x + w)], cv2.COLOR_BGR2GRAY)
+        if g.size:
+            ink = g < 120
+            k = max(1, h // 5)
+            top = ink[:k].any(axis=0).sum()
+            bot = ink[-k:].any(axis=0).sum()
+            ch = "I" if (w < 0.45 * h or bot >= 0.55 * max(1, top)) else "T"
+    return ch.upper() + "..."
+
+
 def _ocr_block(img, b, crop, engine, lang, gpu) -> str:
 
     if engine == "manga-ocr":
@@ -466,6 +488,8 @@ def _ocr_block(img, b, crop, engine, lang, gpu) -> str:
     if lang == "en":
         from . import ocrfix
         text = ocrfix.fix(text, lang)
+    if getattr(b, "_dots", None) and lang in ("en", "id"):
+        text = _dots_text(text, img, b)
     return text
 
 
@@ -491,7 +515,7 @@ def _tidy_latin(text: str) -> str:
     - teks yang hampir semuanya huruf kapital (komik) dijadikan kapital seluruhnya"""
     t = text.replace("’", "'").replace("‘", "'").replace("`", "'")
     t = re.sub(r"\s*'\s*(?=(?:S|M|LL|RE|VE|D|T)\b)", "'", t, flags=re.I)
-    t = re.sub(r"(?:\.\s?){2,}\.?|…", "...", t)
+    t = re.sub(r"\.(?:\s?\.)+|…", "...", t)          # spasi SETELAH titik-tiga tetap ada
     t = re.sub(r"\s+([,.!?;:])", r"\1", t)
 
     def join(m):

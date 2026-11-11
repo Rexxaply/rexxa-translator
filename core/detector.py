@@ -240,11 +240,16 @@ def _group_letters(cands, shape, allow_v: bool = True):
             return False
         gx = max(ax, bx) - min(ax + aw, bx + bw)
         gy = max(ay, by) - min(ay + ah, by + bh)
-        if gx < 0.8 * s and gy < 0.8 * s:
+        # jarak antar baris diukur dari huruf yang LEBIH KECIL: baris teks pendek ("HUH?") tidak
+        # tersambung ke garis wajah / rambut besar di bawahnya
+        smin = min(a["size"], b["size"])
+        if max(a["size"], b["size"]) <= 1.3 * smin:
+            smin = s                  # ukuran huruf sama: aturan lama
+        if gx < 0.8 * s and gy < 0.8 * smin + 2:
             return True
         # teks rata tengah dengan satu baris pendek yang tak terbaca di antaranya ("AS" yang hurufnya menempel)
         acx, bcx = ax + aw / 2, bx + bw / 2
-        return (a["n"] >= 3 and b["n"] >= 3 and gx < 0 and gy < 1.6 * s
+        return (a["n"] >= 3 and b["n"] >= 3 and gx < 0 and gy < 1.6 * smin
                 and abs(acx - bcx) < 0.25 * max(aw, bw) + 0.5 * s)
 
     blocks = []
@@ -261,6 +266,51 @@ def _block_from_lines(mem):
                 cv=float(np.mean([l["cv"] for l in mem])),
                 vertical=sum(l["kind"] == "v" for l in mem) > len(mem) / 2,
                 line_list=mem)
+
+
+def _single_with_dots(groups, cands, gray):
+    """Satu huruf + titik-titik ("I...", "A..."): bukan baris (minimal 2 huruf), titiknya terlalu kecil
+    untuk jadi kandidat huruf. Diterima bila ada >= 2 titik bulat kecil sejajar dasar huruf."""
+    used = {c for g in groups for l in g["line_list"] for c in l["mem"]}
+    H, W = gray.shape
+    out = []
+    for c in cands:
+        if c in used:
+            continue
+        x, y, w, h = c
+        m = h * 1.6                   # dekat kelompok teks lain = bagian baris / balon itu
+        if any(g["rect"][0] - m <= x + w and x <= g["rect"][0] + g["rect"][2] + m and
+               g["rect"][1] - m <= y + h and y <= g["rect"][1] + g["rect"][3] + m for g in groups):
+            continue
+        rx0, ry0 = x + w, int(y + h * 0.55)
+        rx1, ry1 = min(W, x + w + int(h * 2.6)), min(H, int(y + h * 1.2))
+        if rx1 - rx0 < 4 or ry1 - ry0 < 3:
+            continue
+        sub = (gray[ry0:ry1, rx0:rx1] < 120).astype(np.uint8)
+        n, lbl, st, _ = cv2.connectedComponentsWithStats(sub, connectivity=8)
+        dots = []
+        for i in range(1, n):
+            dx, dy, dw, dh, da = st[i]
+            if 0.08 * h <= max(dw, dh) <= 0.38 * h and 0.45 <= dw / max(1, dh) <= 2.2 and da >= 2:
+                dots.append((dx + rx0, dy + ry0, dw, dh))
+        dots.sort()
+        # titik berurutan, jarak rapat, tinggi dasarnya sama
+        seq = []
+        for d in dots:
+            if not seq:
+                if d[0] - (x + w) <= h * 0.9:
+                    seq.append(d)
+            elif d[0] - (seq[-1][0] + seq[-1][2]) <= h * 0.6 and abs(d[1] - seq[-1][1]) <= h * 0.2:
+                seq.append(d)
+        if len(seq) < 2:
+            continue
+        r = _bbox([c] + seq)
+        line = dict(rect=r, n=2, size=float(h), kind="h", cv=0.0, mem=[c])
+        g = _block_from_lines([line])
+        g["n"] = 2
+        g["dots"] = True
+        out.append(g)
+    return out
 
 
 def _absorb_single(groups, cands):
@@ -598,6 +648,7 @@ def detect_bubbles(img: np.ndarray, vertical: bool = True) -> list[TextBlock]:
     strong = _letter_candidates(gray)
     groups = _group_letters(strong, gray.shape, allow_v=vertical)   # huruf latin: selalu baris mendatar
     groups = _absorb_single(groups, strong)
+    groups += _single_with_dots(groups, strong, gray)      # "I...", "A...", "N-NO..." (1 huruf + titik)
     groups = _extend_lines(groups, list(set(_letter_candidates(gray, weak=True)) - set(strong)))
     closek = max(3, int(min(_ref_size(gray.shape), W) * 0.004)) | 1
     _, lbl, stats, _ = _white_regions(gray, groups, closek)
@@ -611,8 +662,13 @@ def detect_bubbles(img: np.ndarray, vertical: bool = True) -> list[TextBlock]:
         cv_max = 0.42 if g["n"] >= 8 else 0.3
         if g["n"] < 2 or g["cv"] > cv_max:
             continue
-        if (gray[y:y + h, x:x + w] < 120).mean() < 0.12:
-            continue
+        ink = (gray[y:y + h, x:x + w] < 120).mean()
+        if ink < 0.12 and not g.get("dots"):
+            # tulisan tangan tipis huruf kecil ("Is that it...") di latar terang: tinta memang sedikit
+            thin_ok = (ink >= 0.06 and g["n"] >= 5 and g["lines"] >= 2 and g["cv"] <= 0.22
+                       and _ring_light(gray, g["rect"], int(g["med_h"] * 0.8)) >= 0.93)
+            if not thin_ok:
+                continue
         g["ring"] = _ring_light(gray, g["rect"], int(g["med_h"] * 0.8))
         # baris teks yang sangat rapi (tinggi huruf seragam, cukup banyak huruf) boleh berada di latar
         # yang lebih ramai: narasi kecil di panel abu-abu / raster ("I feel chilly..."). Bila ternyata
@@ -624,6 +680,32 @@ def detect_bubbles(img: np.ndarray, vertical: bool = True) -> list[TextBlock]:
             continue
         g["neat"] = neat
         good.append(g)
+
+    # "1 huruf + titik" yang berada di area putih yang sama dengan teks lain = baris dari balon itu
+    # ("DAMN / IT...") -> digabung, bukan blok sendiri
+    dg = [g for g in good if g.get("dots")]
+    if dg:
+        rest = [g for g in good if not g.get("dots")]
+        reg = {id(g): _region_of(g, lbl) for g in rest}
+        merged = []
+        for d in dg:
+            r = _region_of(d, lbl)
+            host = next((g for g in rest if r and reg[id(g)] == r), None)
+            if host is None:
+                merged.append(d)
+                continue
+            hx, hy, hw, hh = host["rect"]
+            dx_, dy_, dw_, dh_ = d["rect"]
+            gy = max(hy, dy_) - min(hy + hh, dy_ + dh_)
+            dcx, hcx = dx_ + dw_ / 2, hx + hw / 2
+            if not (gy < 1.5 * host["med_h"] and abs(dcx - hcx) < 0.5 * hw + host["med_h"]):
+                continue              # bukan baris balon itu (garis gambar + titik): dibuang
+            nh = _block_from_lines(list(host["line_list"]) + list(d["line_list"]))
+            for k in ("ring", "neat"):
+                nh[k] = host.get(k)
+            rest[rest.index(host)] = nh
+            reg[id(nh)] = reg.pop(id(host))
+        good = rest + merged
 
     # balon yang menyatu: beberapa kelompok teks di SATU area putih tertutup -> belah per kelompok
     shared = {}
@@ -648,6 +730,9 @@ def detect_bubbles(img: np.ndarray, vertical: bool = True) -> list[TextBlock]:
             # posisi tiap baris teks (dipakai OCR per baris: urutan baca pasti benar)
             blocks[-1]._lines = [[int(v) for v in l["rect"]] for l in g["line_list"]]
             blocks[-1]._letters = int(sum(len(l["mem"]) for l in g["line_list"]))
+            if g.get("dots"):            # 1 huruf + titik-titik ("I...")
+                c = g["line_list"][0]["mem"][0]
+                blocks[-1]._dots = [int(v) for v in c]
     return _finish_blocks(blocks, gray)
 
 
@@ -661,8 +746,13 @@ def _add_block_from_group(g, blocks, gray, lobes, closek, W, H):
         else:
             b = _find_bubble(gray, g["rect"], closek, [l["rect"] for l in g["line_list"]])
         x, y, w, h = g["rect"]
-        if g["n"] < 3 and (ring < (0.8 if b is not None else 0.97)
-                           or (gray[y:y + h, x:x + w] < 120).mean() < 0.3):
+        if g.get("dots"):
+            # 1 huruf + titik: hanya di latar putih bersih (balon tertutup, atau balon terbuka /
+            # terpotong tepi panel yang sekelilingnya benar-benar putih)
+            if ring < (0.9 if b is not None else 0.97):
+                return
+        elif g["n"] < 3 and (ring < (0.8 if b is not None else 0.97)
+                             or (gray[y:y + h, x:x + w] < 120).mean() < 0.3):
             return                    # 2 huruf ("OH.", "WH...") hanya diterima bila latarnya bersih
         if b is not None:
             (bx, by, bw, bh), hull = b
@@ -794,6 +884,8 @@ def _scale_block(b: TextBlock, f: float) -> TextBlock:
         b.mask_poly = [[int(round(px * f)), int(round(py * f))] for px, py in b.mask_poly]
     if getattr(b, "_lines", None):
         b._lines = [[int(round(v * f)) for v in r] for r in b._lines]
+    if getattr(b, "_dots", None):
+        b._dots = [int(round(v * f)) for v in b._dots]
     b.src_h = int(round(b.src_h * f))
     return b
 
