@@ -24,7 +24,7 @@ from PIL import Image
 from .models import Project
 
 KINDS = ("auto", "manga", "manhwa", "manhua")
-FORMATS = ("pdf", "cbz", "zip")
+FORMATS = ("pdf", "cbz", "zip", "psd")
 STATUS = {  # teks tampilan -> (nilai ComicInfo Mihon, kode details.json)
     "Tidak diketahui": ("Unknown", "0"),
     "Berlanjut (ongoing)": ("Ongoing", "1"),
@@ -226,19 +226,80 @@ def _cbz_bytes(files, meta, kind, lang, img_fmt, quality, log=None, stop=None) -
     return buf.getvalue(), sizes
 
 
+def export_psd(project: Project, out_path: str, indices: list[int], settings: dict, progress=None, stop=None,
+               log=None) -> dict:
+    """Satu .psd per halaman (lapisan: Raw, Bersih, tiap balon teks). Lebih dari satu halaman -> .zip."""
+    import tempfile
+    from . import detector, pipeline, psd
+    done = []
+    tmp = Path(tempfile.mkdtemp(prefix="rexxa_psd_"))
+    pad = max(3, len(str(len(project.pages))))
+    for k, i in enumerate(indices, 1):
+        if stop and stop():
+            raise RuntimeError("Dibatalkan.")
+        p = project.pages[i]
+        try:
+            clean, final, layers = pipeline.render_layers(p, project, settings)
+        except ValueError as e:
+            if log:
+                log(str(e))
+            continue
+        tl = []
+        for b, im, x, y in layers:
+            n = p.blocks.index(b) + 1 if b in p.blocks else 0
+            txt = " ".join((b.translation or project.series_title or "").split())
+            label = "Judul seri" if b.kind == "title" else f"Teks {n}"
+            tl.append((f"{label}: {txt[:40]}", im, x, y))
+        name = f"{i + 1:0{pad}d}_{safe_name(Path(p.path).stem, 'halaman')}.psd"
+        f = tmp / name
+        try:
+            raw = detector.load_image(p.path)
+        except Exception:
+            raw = None
+        psd.page_psd(str(f), raw, clean, final, tl)
+        done.append(f)
+        if progress:
+            progress(k, len(indices))
+    if not done:
+        raise ValueError("Tidak ada halaman yang sudah dirender untuk dijadikan PSD.")
+    if len(done) == 1 and out_path.lower().endswith(".psd"):
+        Path(out_path).write_bytes(done[0].read_bytes())
+    else:
+        with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as z:
+            for f in done:
+                z.write(f, f.name)
+    for f in done:
+        try:
+            f.unlink()
+        except OSError:
+            pass
+    return {"files": len(done), "kind": "manga", "out": out_path, "pages_out": len(done)}
+
+
 def export(project: Project, out_path: str, *, fmt: str, kind: str, indices: list[int],
            use_original: bool = False, img_fmt: str = "asli", quality: int = 90,
-           meta: dict | None = None, mihon_pack: bool = False, progress=None, stop=None) -> dict:
+           meta: dict | None = None, mihon_pack: bool = False, progress=None, stop=None,
+           settings: dict | None = None, credit_page: bool = False, watermark: bool = False, log=None) -> dict:
     """Mengembalikan ringkasan {"files", "kind", "out", "pages_out"}."""
     meta = dict(meta or {})
+    meta.setdefault("series", project.series_title)
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    if fmt == "psd":
+        return export_psd(project, out_path, indices, settings or {}, progress, stop, log)
     files = collect(project, indices, use_original)
     if not files:
         raise ValueError("Tidak ada halaman yang bisa diekspor (belum diterjemahkan).")
     if kind == "auto":
         kind = detect_kind(files)
-    meta.setdefault("series", project.series_title)
     lang = project.target_lang
-    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    cover_src = files[0]
+    if credit_page or watermark:
+        import tempfile
+        from . import skills
+        cfg = skills.credits_cfg(settings or {})
+        cfg["page"], cfg["watermark"] = bool(credit_page), bool(watermark)
+        files = skills.apply_credits(files, cfg, meta, tempfile.mkdtemp(prefix="rexxa_credit_"),
+                                     "manga" if kind == "manga" else "webtoon")
 
     if fmt == "pdf":
         from . import pdfexport
@@ -268,7 +329,7 @@ def export(project: Project, out_path: str, *, fmt: str, kind: str, indices: lis
         z.writestr(f"{series}/{chapter_filename(meta)}.cbz", data)
         z.writestr(f"{series}/ComicInfo.xml", comicinfo_series(meta, kind))
         z.writestr(f"{series}/details.json", details_json(meta))
-        with Image.open(files[0]) as im:
+        with Image.open(cover_src) as im:
             im = _to_rgb(im)
             if im.height > im.width * 1.6:          # strip webtoon: ambil potongan atas saja
                 im = im.crop((0, 0, im.width, int(im.width * 1.45)))

@@ -20,7 +20,8 @@ from core import exporter
 
 from .icons import icon
 
-FORMATS = [("PDF", "pdf"), ("CBZ + ComicInfo.xml (Mihon)", "cbz"), ("ZIP gambar saja", "zip")]
+FORMATS = [("PDF", "pdf"), ("CBZ + ComicInfo.xml (Mihon)", "cbz"), ("ZIP gambar saja", "zip"),
+           ("PSD berlapis (Photoshop)", "psd")]
 KINDS = [("Otomatis (deteksi)", "auto"), ("Manga — per halaman", "manga"),
          ("Manhwa — strip disambung", "manhwa"), ("Manhua — strip disambung", "manhua")]
 IMG = [("Asli (tanpa kompres ulang)", "asli"), ("JPG (lebih kecil)", "jpg"), ("WebP (paling kecil)", "webp")]
@@ -69,7 +70,9 @@ class ExportDialog(QDialog):
         self.setWindowTitle("Export As")
         self.project, self.cur, self.settings = project, max(0, cur), settings
         self.out_path = ""
+        self.credits_changed = False
         self.files: list[tuple[int, str]] = []
+        self.view: list[tuple[int, str]] = []
         self.view_i = 0
         self._strip_labels: list[QLabel] = []
         self._load_q: list = []
@@ -234,6 +237,18 @@ class ExportDialog(QDialog):
                               "lalu buka Browse → Local source.")
         v.addWidget(self.mihon)
         pv.addWidget(self.meta_card)
+
+        self.extra_card, v = _card("Tambahan")
+        self.c_credit = QCheckBox("Halaman kredit tim")
+        self.c_credit.setChecked(bool(opts.get("credit_page", False)))
+        self.c_wm = QCheckBox("Watermark di setiap halaman")
+        self.c_wm.setChecked(bool(opts.get("watermark", False)))
+        b_cr = QPushButton("Atur kredit & watermark…")
+        b_cr.clicked.connect(self._edit_credits)
+        v.addWidget(self.c_credit)
+        v.addWidget(self.c_wm)
+        v.addWidget(b_cr)
+        pv.addWidget(self.extra_card)
         pv.addStretch(1)
 
         sc = QScrollArea()
@@ -272,6 +287,8 @@ class ExportDialog(QDialog):
         self.kind.currentIndexChanged.connect(lambda _i: self._refresh())
         self.img.currentIndexChanged.connect(lambda _i: self._update_ui())
         self.mihon.toggled.connect(lambda _b: self._update_ui())
+        self.c_credit.toggled.connect(lambda _b: (self._update_ui(), self._build_preview()))
+        self.c_wm.toggled.connect(lambda _b: (self._update_ui(), self._build_preview()))
         self._loader = QTimer(self, interval=0, timeout=self._load_step)
         self._resize_t = QTimer(self, singleShot=True, interval=150, timeout=self._relayout)
         self._update_ui()
@@ -305,15 +322,24 @@ class ExportDialog(QDialog):
     # ---------------------------------------------------------------- tampilan
     def _update_ui(self):
         fmt = self.fmt.currentData()
-        self.meta_card.setVisible(fmt == "cbz")
-        self.img.setEnabled(fmt != "pdf")
-        self.q.setEnabled(fmt == "pdf" or self.img.currentData() != "asli")
+        psd = fmt == "psd"
+        self.extra_card.setVisible(not psd)
+        self.meta_card.setVisible(fmt == "cbz" or (self.c_credit.isChecked() and not psd))
+        self.mihon.setVisible(fmt == "cbz")
+        self.img.setEnabled(fmt not in ("pdf", "psd"))
+        self.kind.setEnabled(not psd)
+        self.use_orig.setEnabled(not psd)
+        self.q.setEnabled(fmt == "pdf" or (not psd and self.img.currentData() != "asli"))
         info = {
             "pdf": "Satu file .pdf. Manga = 1 gambar per halaman; manhwa/manhua = semua halaman disambung "
                    "lalu dipotong di celah antar panel supaya panel tidak terbelah.",
             "cbz": "Arsip komik standar: gambar 001, 002, … + ComicInfo.xml (judul, chapter, arah baca). "
                    "Bisa dibaca Mihon (Local source), Komga, Kavita, CDisplayEx, dll.",
             "zip": "Hanya gambar bernomor urut, tanpa info tambahan.",
+            "psd": "Satu .psd per halaman (lebih dari 1 halaman → dibungkus .zip). Lapisan: Raw (asli, "
+                   "disembunyikan) · Bersih (tanpa teks) · satu lapisan per balon teks (bisa digeser / "
+                   "diwarnai ulang, tapi berupa gambar, bukan teks yang bisa diketik ulang). "
+                   "Bisa dibuka Photoshop, Photopea, GIMP, Krita.",
         }[fmt]
         if fmt == "cbz" and self.mihon.isChecked():
             info += "\nPaket Mihon: ekstrak .zip ke Mihon/local/ di HP → Browse → Local source."
@@ -354,19 +380,84 @@ class ExportDialog(QDialog):
             t = f"<b>{n} gambar → ±{out} halaman PDF</b> · {nama}"
         elif fmt == "cbz":
             t = f"<b>{n} gambar → 1 file {'.zip (paket Mihon)' if self.mihon.isChecked() else '.cbz'}</b> · {nama}"
+        elif fmt == "psd":
+            t = f"<b>{n} halaman → {'1 file .psd' if n == 1 else f'{n} file .psd (dalam .zip)'}</b>"
         else:
             t = f"<b>{n} gambar → 1 file .zip</b>"
+        if fmt != "psd":
+            plus = [x for x, on in (("halaman kredit", self.c_credit.isChecked()),
+                                    ("watermark", self.c_wm.isChecked())) if on]
+            if plus:
+                t += " · + " + " & ".join(plus)
         self.summary.setText(t)
+
+    # ---------------------------------------------------------------- kredit & watermark di pratinjau
+    def _extras_on(self):
+        fmt = self.fmt.currentData()
+        return fmt != "psd" and self.c_credit.isChecked(), fmt != "psd" and self.c_wm.isChecked()
+
+    def _preview_files(self):
+        view = list(self.files)
+        page_on, _wm = self._extras_on()
+        if page_on and view:
+            from core import skills
+            import hashlib
+            import json
+            import tempfile
+            cfg = skills.credits_cfg(self.settings)
+            kind = self._kind()
+            from PIL import Image
+            with Image.open(view[0][1]) as im:
+                W, H = im.size
+            if kind != "manga" or H > W * 2.2:
+                H = int(W * 1.4)
+            key = hashlib.md5(json.dumps([cfg, self.meta(), W, H], sort_keys=True, default=str).encode()).hexdigest()
+            f = Path(tempfile.gettempdir()) / f"rexxa_kredit_{key[:12]}.png"
+            if not f.exists():
+                skills.credit_page(cfg, (W, H), self.meta()).save(f)
+            pos = cfg.get("position", "end")
+            if pos in ("start", "both"):
+                view = [(-1, str(f))] + view
+            if pos in ("end", "both"):
+                view = view + [(-1, str(f))]
+        return view
+
+    def _pm(self, k, w, h):
+        i, f = self.view[k]
+        _page, wm = self._extras_on()
+        if not wm or i < 0 or (w and w < 200):          # thumbnail kecil: watermark tidak terbaca
+            return _load(f, w, h)
+        from core import skills
+        cfg = skills.credits_cfg(self.settings)
+        key = ("wm", f, w, h, repr(sorted((a, str(b)) for a, b in cfg.items() if a.startswith("wm") or a == "team")))
+        pm = _PIX.get(key)
+        if pm is None:
+            from PIL import Image
+            try:
+                with Image.open(f) as im:
+                    im = im.convert("RGB")
+                    sc = min(w / im.width if w else 9e9, h / im.height if h else 9e9, 1.0)
+                    if sc < 1.0:
+                        im = im.resize((max(1, int(im.width * sc)), max(1, int(im.height * sc))))
+                    im = skills.watermark(im, cfg)
+                data = im.tobytes("raw", "RGB")
+                from PySide6.QtGui import QImage
+                pm = QPixmap.fromImage(QImage(data, im.width, im.height, im.width * 3, QImage.Format_RGB888).copy())
+            except Exception:
+                pm = _load(f, w, h)
+            _PIX[key] = pm
+        return pm
 
     def _build_preview(self):
         self._loader.stop()
+        self.view = self._preview_files()
         kind = self._kind()
         strip = kind in ("manhwa", "manhua")
         self.stack.setCurrentIndex(1 if strip else 0)
         self.thumbs.blockSignals(True)
         self.thumbs.clear()
-        for k, (i, f) in enumerate(self.files):
-            it = QListWidgetItem(str(i + 1))
+        for k, (i, f) in enumerate(self.view):
+            it = QListWidgetItem(str(i + 1) if i >= 0 else "Kredit")
             it.setTextAlignment(Qt.AlignHCenter)
             it.setSizeHint(QSize(76, 116))
             self.thumbs.addItem(it)
@@ -379,7 +470,7 @@ class ExportDialog(QDialog):
         self._strip_labels = []
         if strip:
             W = self._strip_width()
-            for _i, f in self.files:
+            for _i, f in self.view:
                 lb = QLabel()
                 lb.setAlignment(Qt.AlignCenter)
                 r = QImageReader(f)
@@ -388,13 +479,13 @@ class ExportDialog(QDialog):
                 lb.setFixedSize(W, max(1, hh))
                 self.strip_v.addWidget(lb)
                 self._strip_labels.append(lb)
-        self._load_q = [("t", k) for k in range(len(self.files))]
+        self._load_q = [("t", k) for k in range(len(self.view))]
         if strip:
-            self._load_q = [("s", k) for k in range(len(self.files))] + self._load_q
-        self.view_i = 0 if not (0 <= self.view_i < len(self.files)) else self.view_i
-        if not strip and self.files:
+            self._load_q = [("s", k) for k in range(len(self.view))] + self._load_q
+        self.view_i = 0 if not (0 <= self.view_i < len(self.view)) else self.view_i
+        if not strip and self.view:
             # mulai dari halaman saat ini bila ikut terpilih
-            for k, (i, _f) in enumerate(self.files):
+            for k, (i, _f) in enumerate(self.view):
                 if i == self.cur:
                     self.view_i = k
                     break
@@ -409,19 +500,19 @@ class ExportDialog(QDialog):
             self._loader.stop()
             return
         what, k = self._load_q.pop(0)
-        if k >= len(self.files):
+        if k >= len(self.view):
             return
-        f = self.files[k][1]
+        f = self.view[k][1]
         if what == "t":
             it = self.thumbs.item(k)
             if it is not None:
-                it.setIcon(QIcon(_load(f, 64, 92)))
+                it.setIcon(QIcon(self._pm(k, 64, 92)))
         elif k < len(self._strip_labels):
             lb = self._strip_labels[k]
-            lb.setPixmap(_load(f, lb.width(), 0))
+            lb.setPixmap(self._pm(k, lb.width(), 0))
 
     def _go(self, k: int):
-        n = len(self.files)
+        n = len(self.view)
         if not n:
             self.single_lbl.setPixmap(QPixmap())
             self.single_lbl.setText("Tidak ada halaman")
@@ -438,10 +529,11 @@ class ExportDialog(QDialog):
         self.thumbs.setCurrentRow(k)
         self.thumbs.blockSignals(False)
         if self.stack.currentIndex() == 0:
-            self.prev_lbl.setText(f"Pratinjau · halaman asli #{self.files[k][0] + 1}")
+            i = self.view[k][0]
+            self.prev_lbl.setText(f"Pratinjau · halaman asli #{i + 1}" if i >= 0 else "Pratinjau · halaman kredit")
             vp = self.single.viewport().size()
             self.single_lbl.setText("")
-            self.single_lbl.setPixmap(_load(self.files[k][1], max(100, vp.width() - 16), max(100, vp.height() - 16)))
+            self.single_lbl.setPixmap(self._pm(k, max(100, vp.width() - 16), max(100, vp.height() - 16)))
         else:
             self.prev_lbl.setText("Pratinjau · strip disambung (gulir)")
             if k < len(self._strip_labels):
@@ -455,9 +547,9 @@ class ExportDialog(QDialog):
             if lb.y() + lb.height() > y:
                 if k != self.view_i:
                     self.view_i = k
-                    self.pos_lbl.setText(f"{k + 1} / {len(self.files)}")
+                    self.pos_lbl.setText(f"{k + 1} / {len(self.view)}")
                     self.b_prev.setEnabled(k > 0)
-                    self.b_next.setEnabled(k < len(self.files) - 1)
+                    self.b_next.setEnabled(k < len(self.view) - 1)
                     self.thumbs.blockSignals(True)
                     self.thumbs.setCurrentRow(k)
                     self.thumbs.blockSignals(False)
@@ -503,13 +595,24 @@ class ExportDialog(QDialog):
         return {"scope": scope, "range": self.rng.text().strip(), "use_original": self.use_orig.isChecked(),
                 "fmt": self.fmt.currentData(), "kind": self.kind.currentData(),
                 "img_fmt": self.img.currentData(), "quality": self.q.value(),
-                "mihon_pack": self.mihon.isChecked()}
+                "mihon_pack": self.mihon.isChecked(), "credit_page": self.c_credit.isChecked(),
+                "watermark": self.c_wm.isChecked()}
 
     def config(self) -> dict:
         o = self.options()
         return dict(out=self.out_path, fmt=o["fmt"], kind=o["kind"], indices=[i for i, _ in self.files],
                     use_original=o["use_original"], img_fmt=o["img_fmt"], quality=o["quality"],
-                    meta=self.meta(), mihon_pack=o["mihon_pack"] and o["fmt"] == "cbz")
+                    meta=self.meta(), mihon_pack=o["mihon_pack"] and o["fmt"] == "cbz",
+                    credit_page=o["credit_page"] and o["fmt"] != "psd", watermark=o["watermark"] and o["fmt"] != "psd")
+
+    def _edit_credits(self):
+        from .skillsdlg import CreditsDialog
+        sample = self.files[0][1] if self.files else None
+        d = CreditsDialog(self.settings, self.meta(), sample, self)
+        if d.exec():
+            self.credits_changed = True
+            self._update_ui()
+            self._build_preview()
 
     def _do_export(self):
         if not self.files:
@@ -527,6 +630,11 @@ class ExportDialog(QDialog):
             ext, flt = ".zip", "Paket Mihon (*.zip)"
         elif fmt == "cbz":
             ext, flt = ".cbz", "Arsip komik (*.cbz)"
+        elif fmt == "psd" and len(self.files) == 1:
+            ext, flt = ".psd", "Photoshop (*.psd)"
+            base = exporter.safe_name(f"{base} hal {self.files[0][0] + 1}")
+        elif fmt == "psd":
+            ext, flt = ".zip", "ZIP berisi PSD (*.zip)"
         else:
             ext, flt = ".zip", "ZIP (*.zip)"
         p0 = self.project.pages[self.files[0][0]]

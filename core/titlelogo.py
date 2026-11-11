@@ -85,20 +85,51 @@ def style_of(img, rect, mask) -> dict:
     return {"color": color, "rough": rough, "slant": slant, "light_bg": light_bg}
 
 
+def _fill_stroke(px: np.ndarray):
+    """Pisahkan warna isi huruf & warna garis tepi (2 kelompok warna). (isi_mask, warna_tepi | None)."""
+    if len(px) < 50:
+        return np.ones(len(px), bool), None
+    data = px.astype(np.float32)
+    crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
+    _c, lab, cen = cv2.kmeans(data, 2, None, crit, 2, cv2.KMEANS_PP_CENTERS)
+    lab = lab.ravel()
+    n1 = int(lab.sum())
+    big = 1 if n1 >= len(lab) - n1 else 0
+    small_n = len(lab) - n1 if big == 1 else n1
+    if small_n < 0.12 * len(lab) or np.linalg.norm(cen[0] - cen[1]) < 60:
+        return np.ones(len(px), bool), None
+    return lab == big, cen[1 - big]
+
+
 def texture_of(img, rect, mask) -> np.ndarray:
-    """Tekstur isi huruf: celah di antara huruf diisi warna huruf di sekitarnya, jadi
-    bisa dipakai menutupi huruf baru dengan pola goresan yang sama."""
+    """Isi huruf baru: gradasi warna isi logo asli dari atas ke bawah (tanpa menyalin huruf aslinya,
+    jadi tidak ada 'hantu' huruf lama / kotak gelap di dalam huruf baru)."""
     x, y, w, h = rect
-    crop = img[y:y + h, x:x + w].copy()
-    m = (mask[y:y + h, x:x + w] > 0).astype(np.uint8)
-    core = cv2.erode(m, np.ones((3, 3), np.uint8))
-    hole = (core == 0).astype(np.uint8) * 255
-    small = cv2.resize(crop, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)
-    hs = cv2.resize(hole, (small.shape[1], small.shape[0]), interpolation=cv2.INTER_NEAREST)
-    tex = cv2.inpaint(small, hs, 9, cv2.INPAINT_TELEA)
-    tex = cv2.resize(tex, (w, h), interpolation=cv2.INTER_CUBIC)
-    tex[core > 0] = crop[core > 0]
-    return tex
+    crop = img[y:y + h, x:x + w]
+    m = mask[y:y + h, x:x + w] > 0
+    core = cv2.erode(m.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    if not core.any():
+        return np.full((h, w, 3), 200, np.uint8)
+    ys, xs = np.nonzero(core)
+    px = crop[ys, xs]
+    fill, _stroke = _fill_stroke(px)
+    ys, px = ys[fill], px[fill]
+    rows = np.full((h, 3), np.nan, np.float32)
+    for r in np.unique(ys):
+        rows[r] = np.median(px[ys == r], axis=0)
+    ok = ~np.isnan(rows[:, 0])
+    idx = np.arange(h)
+    for c in range(3):
+        rows[:, c] = np.interp(idx, idx[ok], rows[ok, c])
+    rows = cv2.GaussianBlur(rows.reshape(h, 1, 3), (1, 0), sigmaX=0.1, sigmaY=max(1.0, h * 0.04)).reshape(h, 3)
+    return np.repeat(rows[:, None, :], w, axis=1).clip(0, 255).astype(np.uint8)
+
+
+def stroke_of(img, rect, mask):
+    x, y, w, h = rect
+    m = cv2.erode((mask[y:y + h, x:x + w] > 0).astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    px = img[y:y + h, x:x + w][m]
+    return _fill_stroke(px)[1]
 
 
 # ---------------------------------------------------------------- 2. hapus logo asli
@@ -161,6 +192,28 @@ def plan_lines(title: str) -> list[list[tuple[str, bool]]]:
     return lines
 
 
+def _regroup(lines, aspect: float, width_of, base: float):
+    """Gabungkan baris (1 kata penting per baris) supaya bentuk judul mendekati bentuk kotaknya:
+    kotak lebar -> 1-2 baris, kotak tinggi -> banyak baris."""
+    if len(lines) <= 1:
+        return lines
+    best, best_err = lines, 9e9
+    n_all = len(lines)
+    for n in range(1, n_all + 1):
+        # bagi rata berurutan
+        groups, k = [], 0
+        for g in range(n):
+            take = (n_all - k) // (n - g)
+            groups.append([wd for ln in lines[k:k + take] for wd in ln])
+            k += take
+        wid = max(width_of(gp) for gp in groups)
+        asp = wid / (n * base * 0.95)
+        err = abs(np.log(asp / max(0.05, aspect)))
+        if err < best_err - 1e-6:
+            best, best_err = groups, err
+    return best
+
+
 def _brush(alpha: np.ndarray, size: int, rough: float, seed: int = 7) -> np.ndarray:
     """Tepi kasar & goresan kuas: geser tepi huruf dengan derau halus + gores mendatar."""
     if rough < 1.08:
@@ -220,6 +273,8 @@ def render_title(img, title: str, rect, mask, font_path: str, upper: bool = True
         return meas.textlength(word, font=f)
 
     gap = base * 0.18
+    lines = _regroup(lines, w / max(1, h), lambda ln: sum(word_w(wd, sm) for wd, sm in ln) + gap * (len(ln) - 1),
+                     base)
     rows = []
     for ln in lines:
         ww = sum(word_w(wd, sm) for wd, sm in ln) + gap * (len(ln) - 1)
@@ -273,7 +328,9 @@ def render_title(img, title: str, rect, mask, font_path: str, upper: bool = True
         return out
     A = a[Y0 - oy:Y1 - oy, X0 - ox:X1 - ox].astype(np.float32) / 255.0
     region = out[Y0:Y1, X0:X1].astype(np.float32)
-    shadow = np.roll(np.roll(A, int(ah * 0.012) + 1, 0), int(ah * 0.008) + 1, 1)
+    sy, sx = int(ah * 0.012) + 1, int(ah * 0.008) + 1          # bayangan geser (tanpa membungkus tepi)
+    shadow = np.zeros_like(A)
+    shadow[sy:, sx:] = A[:A.shape[0] - sy, :A.shape[1] - sx]
     if st.get("light_bg"):
         # latar terang: garis tepi gelap (warna logo yang digelapkan) supaya huruf tetap terbaca
         r = max(2, int(ah * 0.012))
@@ -288,6 +345,12 @@ def render_title(img, title: str, rect, mask, font_path: str, upper: bool = True
         gcol = np.array(st["color"], np.float32) * 0.35
         region = region * (1 - 0.55 * glow) + gcol * 0.55 * glow
         region = region * (1 - 0.7 * shadow[..., None])
+    scol = stroke_of(img, rect, mask)
+    if scol is not None:            # logo asli punya garis tepi -> huruf baru juga
+        r = max(2, int(ah * 0.018))
+        ring = cv2.dilate((A > 0.3).astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1,) * 2))
+        ring = cv2.GaussianBlur(ring.astype(np.float32), (0, 0), 0.8)[..., None]
+        region = region * (1 - ring) + np.array(scol, np.float32) * ring
     # isi huruf dengan tekstur logo asli (diregangkan ke area judul baru)
     t = cv2.resize(tex, (aw, ah), interpolation=cv2.INTER_CUBIC)[Y0 - oy:Y1 - oy, X0 - ox:X1 - ox].astype(np.float32)
     # sedikit lebih terang di bagian atas huruf, seperti cat yang terkena cahaya
@@ -296,3 +359,62 @@ def render_title(img, title: str, rect, mask, font_path: str, upper: bool = True
     region = region * (1 - A[..., None]) + t * A[..., None]
     out[Y0:Y1, X0:X1] = np.clip(region, 0, 255).astype(np.uint8)
     return out
+
+
+# ---------------------------------------------------------------- 4. judul buatan sendiri (gambar)
+
+def paste_title(img, image_path: str, rect, mask, fit: str = "contain", scale: float = 1.0,
+                clean: bool = True, onto=None) -> np.ndarray:
+    """Tempel gambar judul buatan sendiri (PNG transparan / JPG) ke kotak judul.
+    clean: logo asli di kotak dihapus dulu (latar dibuat ulang)."""
+    x, y, w, h = (int(v) for v in rect)
+    base = img if onto is None else onto
+    out = clean_title(base, [x, y, w, h], mask) if clean else base.copy()
+    im = Image.open(image_path).convert("RGBA")
+    iw, ih = im.size
+    if fit == "stretch":
+        nw, nh = w, h
+    else:
+        s = (max if fit == "cover" else min)(w / iw, h / ih)
+        nw, nh = iw * s, ih * s
+    nw, nh = max(1, int(nw * scale)), max(1, int(nh * scale))
+    im = im.resize((nw, nh), Image.LANCZOS)
+    ox, oy = x + (w - nw) // 2, y + (h - nh) // 2
+    if fit == "cover":           # jangan keluar dari kotak
+        cx0, cy0 = max(0, x - ox), max(0, y - oy)
+        im = im.crop((cx0, cy0, min(nw, cx0 + w), min(nh, cy0 + h)))
+        ox, oy = ox + cx0, oy + cy0
+        nw, nh = im.size
+    H, W = out.shape[:2]
+    X0, Y0, X1, Y1 = max(0, ox), max(0, oy), min(W, ox + nw), min(H, oy + nh)
+    if X1 <= X0 or Y1 <= Y0:
+        return out
+    arr = np.asarray(im)[Y0 - oy:Y1 - oy, X0 - ox:X1 - ox].astype(np.float32)
+    a = arr[..., 3:4] / 255.0
+    region = out[Y0:Y1, X0:X1].astype(np.float32)
+    out[Y0:Y1, X0:X1] = np.clip(region * (1 - a) + arr[..., 2::-1] * a, 0, 255).astype(np.uint8)
+    return out
+
+
+def store_image(src) -> str:
+    """Simpan gambar judul (path file / QImage-bytes PNG / PIL Image) ke folder data aplikasi,
+    nama = sidik isi (gambar yang sama tidak disimpan dua kali). Mengembalikan path."""
+    import hashlib
+    import io
+    from .paths import data_dir
+    if isinstance(src, (bytes, bytearray)):
+        im = Image.open(io.BytesIO(src))
+    elif isinstance(src, Image.Image):
+        im = src
+    else:
+        im = Image.open(src)
+    im = im.convert("RGBA")
+    buf = io.BytesIO()
+    im.save(buf, "PNG")
+    data = buf.getvalue()
+    d = data_dir() / "titles"
+    d.mkdir(parents=True, exist_ok=True)
+    f = d / (hashlib.sha1(data).hexdigest()[:16] + ".png")
+    if not f.exists():
+        f.write_bytes(data)
+    return str(f)

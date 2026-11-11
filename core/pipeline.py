@@ -26,6 +26,11 @@ DEFAULT_SETTINGS = {
     "llm_api_key": "",
     "llm_extra_prompt": "",
     "llm_temperature": 0.3,
+    "tl_style": "alami",            # gaya bahasa (core/skills.py STYLES)
+    "tl_honorific": "keep",         # keep | translate
+    "story_memory": True,           # pakai memori cerita (tokoh, panggilan) saat menerjemahkan
+    "story_context": True,          # sertakan akhir halaman sebelumnya sebagai konteks (LLM)
+    "credits": None,                # halaman kredit & watermark (core/skills.py DEFAULT_CREDITS)
     "translation_cache": True,      # pakai ulang terjemahan teks yang sama (hemat token)
     "font": "",
     "max_font_size": 64,
@@ -373,6 +378,17 @@ def sfx_text_ok(text: str, lang: str) -> bool:
     return any(re.search(r"[AEIOUYaeiouy]", w) for w in words)
 
 
+def translate_texts(texts, page, project: Project, settings: dict, use_cache: bool = True) -> list[str]:
+    """Terjemahkan dengan skill: gaya bahasa + memori cerita (tokoh, panggilan, halaman sebelumnya)."""
+    from . import skills
+    glossary = dict(project.glossary)
+    if settings.get("story_memory", True):
+        glossary = {**skills.names_glossary(project), **glossary}    # nama tokoh dari memori cerita
+    ctx, ctx_key = skills.translate_context(project, page, settings, texts)
+    return translator.translate(texts, project.source_lang, project.target_lang, settings["translate_engine"],
+                                settings, glossary, use_cache=use_cache, context=ctx, ctx_key=ctx_key)
+
+
 def step_translate(page: Page, project: Project, settings: dict, log=None, only=None):
     for b in page.blocks:
         if b.kind == "title" and project.series_title:
@@ -383,8 +399,7 @@ def step_translate(page: Page, project: Project, settings: dict, log=None, only=
         return
     texts = [b.source for b in blocks]
     translator.reset_stats()
-    res = translator.translate(texts, project.source_lang, project.target_lang,
-                               settings["translate_engine"], settings, project.glossary)
+    res = translate_texts(texts, page, project, settings)
     if log:
         s = translator.STATS
         msg = f"[{page.name}] dikirim {s['sent']} teks"
@@ -499,6 +514,70 @@ def _saved(path, img):
             pass
 
 
+def _title_image(b) -> str:
+    f = getattr(b, "title_image", "") or ""
+    return f if f and Path(f).exists() else ""
+
+
+def _apply_titles(page: Page, project: Project, settings: dict, final):
+    titles = [b for b in page.blocks if b.kind == "title"
+              and (_title_image(b) or (b.translation or project.series_title).strip())]
+    if titles:
+        from . import titlelogo
+        src = detector.load_image(page.path)
+        for b in titles:
+            rect = [b.x, b.y, b.w, b.h]
+            img_f = _title_image(b)
+            if img_f:              # judul buatan sendiri (gambar ditempel)
+                final = titlelogo.paste_title(src, img_f, rect, titlelogo.mask_in_rect(src, rect),
+                                              fit=b.title_fit or "contain", scale=float(b.title_scale or 1.0),
+                                              clean=not b.title_keep_bg, onto=final)
+                continue
+            final = titlelogo.render_title(src, (b.translation or project.series_title).strip(), rect,
+                                           titlelogo.mask_in_rect(src, rect),
+                                           b.font or settings.get("font", "") or typeset.default_font(project.target_lang),
+                                           upper=(b.case or ("upper" if settings.get("uppercase", True) else "none")) == "upper",
+                                           onto=final)
+    return final
+
+
+def render_layers(page: Page, project: Project, settings: dict):
+    """Untuk export PSD: (gambar bersih BGR, hasil akhir BGR, [(balon, lapisan RGBA PIL, x, y)]).
+    Memakai hasil bersih yang tersimpan (tidak menghapus teks ulang)."""
+    if not page.cleaned_path or not Path(page.cleaned_path).exists():
+        raise ValueError(f"[{page.name}] belum dirender — terjemahkan / render halaman ini dulu.")
+    base = detector.load_image(page.cleaned_path)
+    if page.edits:
+        from . import edits as ED
+        try:
+            mt = Path(page.cleaned_path).stat().st_mtime
+        except OSError:
+            mt = 0
+        base = ED.apply_all(page, base, detector.load_image(page.path), settings["clean_method"],
+                            base_key=f"{page.cleaned_path}:{mt}")
+    sync_default_style(settings)
+    layers: list = []
+    final = typeset.render_page(base, page.blocks, project.target_lang, settings.get("font", ""),
+                                settings.get("uppercase", True), int(settings.get("max_font_size", 48)),
+                                italic=settings.get("italic", True),
+                                default_size=int(settings.get("default_font_size", 0) or 0),
+                                default_bold=bool(settings.get("default_bold", False)),
+                                line_spacing=float(settings.get("line_spacing", 1.2) or 1.2), collect=layers)
+    titled = _apply_titles(page, project, settings, final)
+    for t in [b for b in page.blocks if b.kind == "title"]:     # logo judul seri -> lapisan sendiri
+        H, W = titled.shape[:2]
+        x0, y0 = max(0, int(t.x)), max(0, int(t.y))
+        x1, y1 = min(W, int(t.x + t.w)), min(H, int(t.y + t.h))
+        if x1 > x0 and y1 > y0:
+            diff = (titled[y0:y1, x0:x1] != final[y0:y1, x0:x1]).any(axis=2)
+            if diff.any():
+                from PIL import Image
+                crop = titled[y0:y1, x0:x1][..., ::-1]
+                rgba = np.dstack([crop, (diff * 255).astype(np.uint8)])
+                layers.append((t, Image.fromarray(np.ascontiguousarray(rgba), "RGBA"), x0, y0))
+    return base, titled, layers
+
+
 def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool = False):
     if recalc_clean or not page.cleaned_path or not Path(page.cleaned_path).exists():
         base = step_clean(page, settings)
@@ -521,17 +600,7 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
                                 default_size=int(settings.get("default_font_size", 0) or 0),
                                 default_bold=bool(settings.get("default_bold", False)),
                                 line_spacing=float(settings.get("line_spacing", 1.2) or 1.2))
-    titles = [b for b in page.blocks if b.kind == "title" and (b.translation or project.series_title).strip()]
-    if titles:
-        from . import titlelogo
-        src = detector.load_image(page.path)
-        for b in titles:
-            rect = [b.x, b.y, b.w, b.h]
-            final = titlelogo.render_title(src, (b.translation or project.series_title).strip(), rect,
-                                           titlelogo.mask_in_rect(src, rect),
-                                           b.font or settings.get("font", "") or typeset.default_font(project.target_lang),
-                                           upper=(b.case or ("upper" if settings.get("uppercase", True) else "none")) == "upper",
-                                           onto=final)
+    final = _apply_titles(page, project, settings, final)
     p = output_dir(page, settings) / output_name(page, project, settings)
     detector.save_image(str(p), final)
     page.output_path = str(p)

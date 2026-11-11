@@ -367,6 +367,18 @@ class SettingsDialog(QDialog):
         self.extra = QTextEdit(self.s["llm_extra_prompt"]); self.extra.setFixedHeight(70)
         self.extra.setPlaceholderText("Instruksi tambahan, mis. 'Pakai bahasa gaul Jakarta untuk karakter remaja'")
         f.addRow("Instruksi tambahan", self.extra)
+        from core import skills
+        f.addRow(QLabel("<b>Skill AI</b> <small>(untuk LLM)</small>"))
+        self.style = _combo([(v[0], k) for k, v in skills.STYLES.items()], self.s.get("tl_style", "alami"))
+        f.addRow("Gaya bahasa", self.style)
+        self.honor = _combo([(v[0], k) for k, v in skills.HONORIFICS.items()], self.s.get("tl_honorific", "keep"))
+        f.addRow("Honorifik", self.honor)
+        self.memory = QCheckBox("Pakai memori cerita (tokoh, gender, panggilan)")
+        self.memory.setChecked(bool(self.s.get("story_memory", True)))
+        f.addRow("", self.memory)
+        self.prevctx = QCheckBox("Sertakan akhir halaman sebelumnya sebagai konteks")
+        self.prevctx.setChecked(bool(self.s.get("story_context", True)))
+        f.addRow("", self.prevctx)
         tabs.addTab(w, "Terjemahan")
 
         # --- Typeset & output
@@ -450,6 +462,8 @@ class SettingsDialog(QDialog):
                  llm_preset=self.preset.currentText(), llm_base_url=self.base.text().strip(),
                  llm_model=self.model.text().strip(), llm_api_key=self.key.text().strip(),
                  llm_temperature=self.temp.value(), llm_extra_prompt=self.extra.toPlainText().strip(),
+                 tl_style=self.style.currentData(), tl_honorific=self.honor.currentData(),
+                 story_memory=self.memory.isChecked(), story_context=self.prevctx.isChecked(),
                  max_font_size=self.maxsize.value(), default_stroke=self.stroke.value(),
                  output_format=self.fmt.currentText(), output_dir=self.outdir.text().strip(),
                  sfx_font_match=self.sfxmatch.isChecked(), font_match_system=self.sysfont.isChecked(),

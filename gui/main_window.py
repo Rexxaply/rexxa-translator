@@ -402,6 +402,21 @@ class MainWindow(QMainWindow):
         tb.addWidget(b)
         self.b_export = b
 
+        m_sk = QMenu(self)
+        m_sk.addAction(icon("book"), "Memori cerita (tokoh & panggilan)…", self.edit_story)
+        self.m_style = m_sk.addMenu(icon("translate"), "Gaya bahasa")
+        self.m_style.aboutToShow.connect(self._fill_style_menu)
+        m_sk.addAction(icon("scan"), "Proofread terjemahan…", self.proofread)
+        m_sk.addAction(icon("box"), "Kotak judul (buat / tempel logo judul)…", self.title_box)
+        m_sk.addSeparator()
+        m_sk.addAction(icon("export"), "Halaman kredit & watermark…", self.edit_credits)
+        m_sk.addAction(icon("image"), "Export PSD berlapis…", lambda: self.export_as(fmt="psd"))
+        b = tool_btn("wand", "Skill: memori cerita, gaya bahasa, proofread, kredit, PSD")
+        b.setMenu(m_sk)
+        b.setPopupMode(QToolButton.InstantPopup)
+        tb.addWidget(b)
+        self.b_skill = b
+
         m_set = QMenu(self)
         m_set.addAction(icon("settings"), "Pengaturan…  (Ctrl+,)", self.edit_settings)
         m_set.addAction(icon("book"), "Glosarium…", self.edit_glossary)
@@ -827,6 +842,12 @@ class MainWindow(QMainWindow):
         self.b_del.setObjectName("danger")
         self.b_del.clicked.connect(self.delete_selected)
         s3.lay.addWidget(self.p_kind)
+        self.b_title = QPushButton(icon("wand"), " Pembuat judul / tempel judul…")
+        self.b_title.setToolTip("Buat logo judul dari teks (gaya mirip aslinya) atau tempel judul buatan sendiri "
+                                "(Ctrl+V saat kotak judul dipilih)")
+        self.b_title.clicked.connect(lambda: self.edit_title())
+        self.b_title.setVisible(False)
+        s3.lay.addWidget(self.b_title)
         s3.lay.addWidget(self.p_clean)
         s3.lay.addWidget(self.b_del)
         self.p_kind.currentIndexChanged.connect(self._on_prop_change)
@@ -892,6 +913,7 @@ class MainWindow(QMainWindow):
             "save_as": self.save_project_as,
             "settings": self.edit_settings,
             "export": self.export_as,
+            "paste_title": self.paste_title,
             "translate_page": self.translate_page,
             "translate_all": self.run_all,
             "detect_all": self.detect_all,
@@ -1181,6 +1203,7 @@ class MainWindow(QMainWindow):
         if self.cur < 0 and self.project.pages:
             self.pages.setCurrentRow(0)
         self.log(f"{len(self.project.pages)} halaman dimuat.")
+        self._auto_story()
         self._warm_up_ai()
 
     def open_folder(self):
@@ -1221,6 +1244,7 @@ class MainWindow(QMainWindow):
             self.pages.setCurrentRow(0)
         self._update_title()
         self.log(f"Proyek dibuka: {f}")
+        self._auto_story()
         self._add_recent(f)
 
     def _warm_up_ai(self):
@@ -1277,7 +1301,8 @@ class MainWindow(QMainWindow):
         import json
         pr = self.project
         data = {"src": pr.source_lang, "tgt": pr.target_lang, "glossary": pr.glossary,
-                "title": getattr(pr, "series_title", ""),
+                "title": getattr(pr, "series_title", ""), "story": getattr(pr, "story", {}),
+                "meta": getattr(pr, "export_meta", {}),
                 "pages": [{"path": p.path, "edits": p.edits, "blocks": [b.to_dict() for b in p.blocks]}
                           for p in pr.pages]}
         return hashlib.md5(json.dumps(data, sort_keys=True, default=str).encode("utf-8")).hexdigest()
@@ -1414,6 +1439,7 @@ class MainWindow(QMainWindow):
         self.b_prev.setEnabled(has and self.cur > 0)
         self.b_next.setEnabled(has and 0 <= self.cur < n - 1)
         self.b_export.setEnabled(bool(self.project.pages) and not busy)
+        self.b_skill.setEnabled(bool(self.project.pages) and not busy)
         self.b_undo.setEnabled(bool(h["undo"]) and not busy)
         self.b_redo.setEnabled(bool(h["redo"]) and not busy)
         self.b_undo.setToolTip(f"Undo (Ctrl+Z) · {len(h['undo'])} dari maks. {UNDO_LIMIT} langkah")
@@ -1628,6 +1654,7 @@ class MainWindow(QMainWindow):
             self._color_btn(self.p_stroke_color, b.stroke_color)
             self.p_kind.setCurrentIndex(max(0, self.p_kind.findData(b.kind)))
             self.p_clean.setChecked(b.clean)
+            self.b_title.setVisible(b.kind == "title")
         else:
             self.sections[0].btn.setText("  TERJEMAHAN")
             self.e_src.clear()
@@ -1799,6 +1826,10 @@ class MainWindow(QMainWindow):
         b.max_lines = int(self.p_lines.value())
         b.kind = self.p_kind.currentData()
         b.clean = self.p_clean.isChecked()
+        self.b_title.setVisible(b.kind == "title")
+        if b.kind == "title" and old[1] != "title":       # baru dijadikan kotak judul -> buka pembuat judul
+            b.source = b.source or "[logo judul]"
+            QTimer.singleShot(0, lambda b=b: self.edit_title(b))
         if (b.clean, b.kind) != old:
             self.need_clean.add(self.page().path)
             for cv in (self.cv_src, self.cv_out):
@@ -1968,6 +1999,18 @@ class MainWindow(QMainWindow):
             return
         b = TextBlock(x=int(rect.x()), y=int(rect.y()), w=int(rect.width()), h=int(rect.height()),
                       kind="free", stroke_width=int(self.settings.get("default_stroke", 0)))
+        if getattr(self, "_title_box", False):          # Skill -> Kotak judul
+            self._title_box = False
+            self._snap()
+            b.kind, b.source, b.text_rect = "title", "[logo judul]", [b.x, b.y, b.w, b.h]
+            p.blocks.append(b)
+            self.b_box.setChecked(False)
+            self.cv_src.set_draw_mode(False)
+            self.sel = b
+            self._show_current()
+            self.tabs.setCurrentIndex(0)
+            QTimer.singleShot(0, lambda: self.edit_title(b))
+            return
         self._snap()
         try:
             from core import detector, inpaint
@@ -2701,9 +2744,7 @@ class MainWindow(QMainWindow):
                     textstyle.apply(img, b)          # warna ikut teks aslinya
             if b.source.strip() and kind != "ocr_only":
                 # "Terjemah ulang" = minta terjemahan baru (lewati cache); OCR ulang boleh pakai cache
-                b.translation = translator.translate([b.source], proj.source_lang, proj.target_lang,
-                                                     st["translate_engine"], st, proj.glossary,
-                                                     use_cache=(kind == "ocr"))[0]
+                b.translation = pipeline.translate_texts([b.source], p, proj, st, use_cache=(kind == "ocr"))[0]
             w.log.emit(f"OCR: {b.source}" if kind == "ocr_only" else f"{b.source}  →  {b.translation}")
             if rendered:
                 pipeline.step_render(p, proj, st, recalc_clean=recalc)
@@ -2745,16 +2786,190 @@ class MainWindow(QMainWindow):
             self.project.glossary = d.result_glossary()
             self.log(f"Glosarium: {len(self.project.glossary)} istilah.")
 
-    def export_as(self):
-        """Dialog Export As: pratinjau + pilih halaman + PDF manga/manhwa/manhua, CBZ (ComicInfo) atau ZIP."""
+    # ================================================================== skill
+    def _fill_style_menu(self):
+        from core import skills
+        m = self.m_style
+        m.clear()
+        cur = self.settings.get("tl_style", "alami")
+        for k, (lab, _p) in skills.STYLES.items():
+            a = m.addAction(lab, lambda k=k: self._set_style("tl_style", k))
+            a.setCheckable(True)
+            a.setChecked(k == cur)
+        m.addSeparator()
+        m.addAction("Honorifik (-san, senpai, oppa…)").setEnabled(False)
+        hcur = self.settings.get("tl_honorific", "keep")
+        for k, (lab, _p) in skills.HONORIFICS.items():
+            a = m.addAction("   " + lab, lambda k=k: self._set_style("tl_honorific", k))
+            a.setCheckable(True)
+            a.setChecked(k == hcur)
+        m.addSeparator()
+        note = m.addAction("Berlaku untuk mesin LLM / AI" if self.settings.get("translate_engine") == "llm"
+                           else "⚠ Hanya berlaku untuk mesin LLM / AI")
+        note.setEnabled(False)
+
+    def _set_style(self, key, val):
+        from core import skills
+        self.settings[key] = val
+        pipeline.save_settings(self.settings)
+        lab = (skills.STYLES if key == "tl_style" else skills.HONORIFICS)[val][0]
+        self.log(f"Gaya bahasa: {lab} (berlaku untuk terjemahan berikutnya; "
+                 "pakai Terjemah ulang untuk balon yang sudah ada)")
+
+    def edit_story(self):
+        from .skillsdlg import StoryDialog
+        d = StoryDialog(self.project, self.settings, self)
+        ok = d.exec()
+        d.deleteLater()
+        if ok:
+            pipeline.save_settings(self.settings)
+            self._refresh_state()
+            from core import skills
+            n = len(skills.story_of(self.project)["characters"])
+            self.log(f"Memori cerita disimpan: {n} tokoh.")
+
+    def _auto_story(self):
+        """Proyek / chapter baru dibuka: pakai memori cerita seri yang sama bila ada."""
+        from core import skills
+        try:
+            if skills.load_series(self.project):
+                n = len(skills.story_of(self.project)["characters"])
+                self.log(f"Memori cerita seri '{skills.series_key(self.project)}' dipakai ({n} tokoh).")
+        except Exception:
+            pass
+
+    def proofread(self):
+        if not self.project.pages:
+            return
+        if self.thread:
+            return
+        from .skillsdlg import ProofreadDialog
+        d = ProofreadDialog(self.project, self.settings, self.cur, self)
+        d.jump.connect(self._jump_block)
+        d.exec()
+        d.deleteLater()
+        if d.changed:
+            self._snap()
+            self._render_pages(sorted(d.changed))
+
+    def _jump_block(self, pi, bid):
+        if pi != self.cur:
+            self.pages.setCurrentRow(pi)
+        p = self.page()
+        b = next((x for x in p.blocks if x.id == bid), None) if p else None
+        if b is not None:
+            self._select(b)
+
+    def _render_pages(self, idxs):
+        proj, st = self.project, dict(self.settings)
+
+        def job(w: Worker):
+            for k, i in enumerate(idxs, 1):
+                p = proj.pages[i]
+                if p.cleaned_path or p.output_path:
+                    pipeline.step_render(p, proj, st)
+                    w.page_updated.emit(i)
+                w.progress.emit(k, len(idxs))
+
+        self._start(job, f"Render ulang {len(idxs)} halaman")
+
+    def title_box(self):
+        """Seret kotak di atas logo judul -> pembuat judul terbuka. Bila kotak judul sudah dipilih: langsung buka."""
+        if not self.page() or self.thread:
+            return
+        if self.sel is not None and self.sel.kind == "title":
+            self.edit_title(self.sel)
+            return
+        self._title_box = True
+        if getattr(self, "tool", "select") != "select":
+            self.set_tool("select")
+        self.b_box.setChecked(True)
+        self.cv_src.set_draw_mode(True)
+        self.status_lbl.setText("Seret kotak di atas logo judul pada gambar ASLI…")
+        self.log("Kotak judul: seret kotak di atas logo / tulisan judul pada gambar asli.")
+
+    def edit_title(self, b=None):
+        b = b or self.sel
+        p = self.page()
+        if not p or b is None or b not in p.blocks or self.thread:
+            return
+        from .titledlg import TitleDialog
+        self._snap()
+        if b.kind != "title":
+            b.kind = "title"
+        d = TitleDialog(self.project, p, b, self.settings, self)
+        ok = d.exec()
+        d.deleteLater()
+        if ok:
+            try:
+                pipeline.save_settings(self.settings)
+            except Exception:
+                pass
+            self._load_props(b)
+            for cv in (self.cv_src, self.cv_out):
+                cv.reload_boxes()
+            self.need_clean.add(p.path)
+            self.render_current()
+            self.log("Judul: gambar buatan sendiri ditempel." if b.title_image else f"Judul: {b.translation}")
+
+    def paste_title(self):
+        """Ctrl+V saat kotak judul dipilih: tempel gambar judul dari clipboard."""
+        b, p = self.sel, self.page()
+        if not p or b is None or b.kind != "title" or self.thread:
+            return
+        cb = QApplication.clipboard()
+        md = cb.mimeData()
+        data = None
+        if md is not None and md.hasImage() and not cb.image().isNull():
+            from PySide6.QtCore import QBuffer, QIODevice
+            buf = QBuffer()
+            buf.open(QIODevice.WriteOnly)
+            cb.image().save(buf, "PNG")
+            data = bytes(buf.data())
+        elif md is not None and md.hasUrls():
+            data = next((u.toLocalFile() for u in md.urls() if u.isLocalFile()), None)
+        if not data:
+            self.log("Clipboard tidak berisi gambar judul.")
+            return
+        from core import titlelogo
+        try:
+            path = titlelogo.store_image(data)
+        except Exception as e:
+            self.log(f"Gambar judul tidak bisa dibaca: {e}")
+            return
+        self._snap()
+        b.title_image = path
+        self.need_clean.add(p.path)
+        self.render_current()
+        self.log("Judul buatan sendiri ditempel ke kotak judul (atur ukurannya lewat 'Pembuat judul').")
+
+    def edit_credits(self):
+        from .skillsdlg import CreditsDialog
+        p = self.page()
+        sample = p.output_path if p and p.output_path and Path(p.output_path).exists() else (p.path if p else None)
+        d = CreditsDialog(self.settings, self.project.export_meta or {"series": self.project.series_title},
+                          sample, self)
+        ok = d.exec()
+        d.deleteLater()
+        if ok:
+            pipeline.save_settings(self.settings)
+            self.log("Kredit & watermark disimpan (centang di Export As untuk menambahkannya).")
+
+    def export_as(self, fmt=None):
+        """Dialog Export As: pratinjau + pilih halaman + PDF manga/manhwa/manhua, CBZ (ComicInfo), ZIP, PSD."""
         if not self.project.pages:
             QMessageBox.information(self, APP_NAME, "Belum ada halaman. Buka folder chapter dulu.")
             return
         if self.thread:
             return
         from .exportdlg import ExportDialog
+        if fmt:
+            self.settings.setdefault("export_opts", {})
+            self.settings["export_opts"] = dict(self.settings.get("export_opts") or {}, fmt=fmt)
         d = ExportDialog(self.project, self.cur, self.settings, self)
-        if not d.exec():
+        ok = d.exec()
+        d.deleteLater()
+        if not ok:
             return
         cfg = d.config()
         self.settings["export_opts"] = d.options()
@@ -2765,18 +2980,21 @@ class MainWindow(QMainWindow):
         if cfg["fmt"] == "cbz":
             self.project.export_meta = cfg["meta"]
             self._refresh_state()
-        proj = self.project
+        proj, st = self.project, dict(self.settings)
 
         def job(w: Worker):
             from core import exporter
             out = cfg.pop("out")
-            r = exporter.export(proj, out, progress=w.progress.emit, stop=lambda: w.stop, **cfg)
+            r = exporter.export(proj, out, progress=w.progress.emit, stop=lambda: w.stop, settings=st,
+                                log=w.log.emit, **cfg)
             jenis = {"manga": "manga", "manhwa": "manhwa", "manhua": "manhua"}[r["kind"]]
             if cfg["fmt"] == "pdf":
                 w.log.emit(f"PDF {jenis}: {r['files']} gambar → {r['pages_out']} halaman PDF · {out}")
             elif cfg["fmt"] == "cbz":
                 extra = " (paket Local Source Mihon)" if cfg["mihon_pack"] else " + ComicInfo.xml"
                 w.log.emit(f"CBZ {jenis}{extra}: {r['files']} gambar · {out}")
+            elif cfg["fmt"] == "psd":
+                w.log.emit(f"PSD berlapis: {r['files']} halaman · {out}")
             else:
                 w.log.emit(f"ZIP: {r['files']} gambar · {out}")
 
