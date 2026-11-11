@@ -8,6 +8,11 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.3.4 · Patch update
+
+- Perbaikan: tidak ada lagi lapisan kaca setengah transparan ("hantu") sebelum Pengaturan & kotak pesan muncul — kaca langsung pekat lalu mengembang, isi menyusul; saat ditutup kaca mengecil lalu lenyap
+- Perbaikan: dropdown & menu tidak lagi punya pojok hitam di lengkungannya
+
 ## 2.3.3 · Patch update
 
 - Perbaikan: dropdown & menu tidak lagi menjalankan animasi ganda (efek bawaan Windows dimatikan untuk aplikasi ini)
@@ -35,10 +40,3 @@ Penomoran MAJOR.MINOR.PATCH:
 - Geser teks balon dengan tombol panah keyboard (Shift = 10 px)
 - Edit teks ±2,5× lebih cepat: hasil langsung tampil, file disimpan di belakang layar
 - Animasi tombol Simpan lebih santai & mulus ala iOS
-
-## 2.2.0 · Minor update
-
-- Pilih banyak balon sekaligus: Ctrl+klik di gambar (Asli / Hasil) atau Ctrl / Shift+klik di tab Balon; Ctrl+klik lagi untuk melepas
-- Ubahan di panel kanan berlaku ke semua balon terpilih: font, ukuran, tebal/miring, KAPITAL, rata, spasi, rotasi, warna, stroke, gradasi, preset 1–5 — hanya nilai yang diubah yang disalin
-- Terjemah ulang / OCR ulang banyak balon dalam 1 permintaan, hapus & geser teks bersamaan
-- Tombol Samakan: ukuran teks & ukuran kotak mengikuti balon aktif
