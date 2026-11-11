@@ -5,6 +5,7 @@ Jenis (dict di Page.edits):
   {"op": "erase",   "poly": [[x, y], ...]}                    Hapus area (pen / bentuk) -> dibuat ulang AI (LaMa)
   {"op": "fill",    "poly": [[x, y], ...], "color": "#FFF"}   Isi area dengan warna
   {"op": "restore", "poly": [[x, y], ...]}                    Kembalikan piksel gambar asli di area
+  {"op": "patch",   "poly": [[x, y], ...]}                    Patch tool: tambal dengan area serupa di halaman
   {"op": "stroke",  "pts": [[x, y], ...], "w": 3, "color": "#000"}   Alat garis: gambar garis bebas / lurus
   {"op": "outline", "poly": [[x, y], ...], "w": 3, "color": "#000", "fill": "#FFF"|""}
                                                               Garis tepi tertutup (mis. menggambar ulang balon),
@@ -137,6 +138,10 @@ def apply_one(img: np.ndarray, e: dict, original: np.ndarray | None = None, meth
     op = e.get("op")
     if op in ("heal", "erase"):
         return _ai_fill(img, m, method)
+    if op == "patch":
+        from . import patchfill
+        out, _b, _a, ok = patchfill.patch_region(img, m, None, force=True)
+        return out if ok else _ai_fill(img, m, method)      # tidak ada area serupa: buat ulang AI
     out = img.copy()
     if op == "fill":
         col = np.array(_hex_bgr(e.get("color")), np.uint8)

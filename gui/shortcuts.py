@@ -25,6 +25,7 @@ SHORTCUTS = [
     ("tool_shape", "Alat", "Shape tool (kotak / oval; tekan lagi = ganti bentuk)", "A", True),
     ("tool_heal", "Alat", "Healing brush (sapukan untuk menghapus, AI membuat ulang latar)", "J", True),
     ("tool_line", "Alat", "Alat garis (seret = garis bebas, Shift = lurus)", "L", True),
+    ("tool_patch", "Alat", "Patch tool (lingkari area yang belum rapi -> ditambal area serupa)", "K", True),
     ("brush_up", "Alat", "Perbesar kuas", "]", True),
     ("brush_down", "Alat", "Perkecil kuas", "[", True),
     ("delete", "Edit", "Hapus balon terpilih", "Delete", True),

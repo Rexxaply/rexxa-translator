@@ -848,7 +848,8 @@ def _inpaint_lama(img, mask):
     return out
 
 
-def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", base=None) -> np.ndarray:
+def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", base=None,
+               patch: bool = False) -> np.ndarray:
     """img = halaman asli (sumber deteksi huruf). base = gambar awal hasil (mis. hasil bersih lama yang
     sebagian dikembalikan ke asli); default salinan img."""
     out = img.copy() if base is None else base.copy()
@@ -1000,6 +1001,15 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", b
             out[dm] = np.clip(out[dm].astype(np.int16) + detail[dm], 0, 255).astype(np.uint8)
     if done and method != "none":
         out = refine_clean(img, out, done, wants_lama)
+    if patch and method != "none":
+        # 5. periksa kemulusan hasil; area yang belum rapi ditambal dengan area serupa (Patch Tool)
+        try:
+            from . import patchfill, perf
+            rects = [(b.x, b.y, b.w, b.h) for b in blocks if b.clean and b.kind != "title"]
+            keep = [(b.x, b.y, b.w, b.h) for b in blocks if not b.clean]
+            out = patchfill.auto_patch(img, out, regions=rects, avoid_rects=keep, low_end=perf.low_end())
+        except Exception:
+            pass
     return out
 
 

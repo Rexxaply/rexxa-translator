@@ -279,6 +279,9 @@ class MainWindow(QMainWindow):
                                                  "Tekan A lagi untuk ganti kotak ↔ oval"),
                               ("heal", "heal", "Healing brush (J): sapukan di atas noda / sisa teks / objek, "
                                                "AI (LaMa) membuat ulang latarnya. [ dan ] = ukuran kuas"),
+                              ("patch", "patch", "Patch tool (K): lingkari area yang belum rapi (seret seperti "
+                                                 "lasso). AI mencari area latar yang sama persis di halaman lalu "
+                                                 "menambalnya dengan pembauran halus — seperti Patch Tool Photoshop"),
                               ("line", "line", "Alat garis (L): gambar garis sendiri, mis. tepi balon yang hilang. "
                                                "Seret = garis bebas, Shift + seret = garis lurus. "
                                                "[ dan ] = tebal garis, klik kotak warna untuk ganti warna")):
@@ -476,6 +479,7 @@ class MainWindow(QMainWindow):
         self.cv_src.box_drawn.connect(self._add_box)
         for cv in (self.cv_src, self.cv_out):
             cv.heal_stroke.connect(self._on_heal)
+            cv.patch_done.connect(self._on_patch)
             cv.region_done.connect(self._on_region)
             cv.line_stroke.connect(self._on_line)
             cv.draft_changed.connect(lambda on, c=cv: self._on_draft_changed(c, on))
@@ -904,6 +908,7 @@ class MainWindow(QMainWindow):
             "tool_shape": self._shape_key,
             "tool_heal": lambda: self.set_tool("heal"),
             "tool_line": lambda: self.set_tool("line"),
+            "tool_patch": lambda: self.set_tool("patch"),
             "brush_up": lambda: self._brush_step(1.25),
             "brush_down": lambda: self._brush_step(0.8),
             "delete": lambda: self.delete_pages() if self.pages.hasFocus() else self.delete_selected(),
@@ -2017,6 +2022,8 @@ class MainWindow(QMainWindow):
                  "shape": f"Shape ({'oval' if self.cv_src.shape_kind == 'ellipse' else 'kotak'}): seret di gambar. "
                           "Shift = persegi/lingkaran. Tekan A lagi untuk ganti bentuk.",
                  "heal": "Healing brush: sapukan di atas noda / sisa teks / objek. [ ] = ukuran kuas.",
+                 "patch": "Patch: seret melingkari area yang belum rapi. AI mencari area serupa di halaman "
+                          "dan menambalnya. (Atau pakai Pen lalu pilih 'Tambal dengan area serupa'.)",
                  "line": "Garis: klik = tambah titik, seret = gambar bebas (Shift = lurus). Hasilnya pratinjau "
                          "putus-putus yang bisa diedit; Enter / tombol 'Jadikan garis' = jadi garis."}
         self.status_lbl.setText(hints.get(tool, ""))
@@ -2160,12 +2167,17 @@ class MainWindow(QMainWindow):
         if len(pts) and self.page():
             self._add_edit({"op": "heal", "pts": pts, "r": int(r)}, "Healing brush: area dibuat ulang AI")
 
+    def _on_patch(self, pts):
+        if len(pts) >= 3 and self.page():
+            self._add_edit({"op": "patch", "poly": pts}, "Area ditambal dengan area serupa (Patch)")
+
     def _on_region(self, pts, screen_pos):
         p = self.page()
         if not p or len(pts) < 3:
             return
         from PySide6.QtGui import QCursor
         m = QMenu(self)
+        a_patch = m.addAction(icon("patch"), "Tambal dengan area serupa (Patch)  — cari latar yang sama")
         a_ai = m.addAction(icon("heal"), "Hapus area dengan AI (LaMa)  — buat ulang latar")
         a_white = m.addAction("Isi putih")
         a_col = m.addAction("Isi warna…")
@@ -2182,7 +2194,9 @@ class MainWindow(QMainWindow):
         act = m.exec(screen_pos or QCursor.pos())
         if act is None:
             return
-        if act is a_ai:
+        if act is a_patch:
+            self._add_edit({"op": "patch", "poly": pts}, "Area ditambal dengan area serupa (Patch)")
+        elif act is a_ai:
             self._add_edit({"op": "erase", "poly": pts}, "Area dihapus, latar dibuat ulang AI")
         elif act is a_white:
             self._add_edit({"op": "fill", "poly": pts, "color": "#FFFFFF"}, "Area diisi putih")

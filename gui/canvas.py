@@ -225,6 +225,7 @@ class PageCanvas(QGraphicsView):
     zoom_changed = Signal(float)
     heal_stroke = Signal(list, int)          # healing brush: titik-titik goresan, jari-jari kuas
     region_done = Signal(list, object)       # pen / bentuk: titik poligon, posisi layar (QPoint) untuk menu
+    patch_done = Signal(list)                # patch tool: titik poligon area yang ditambal
     line_stroke = Signal(list, int)          # (lama) garis langsung jadi
     draft_changed = Signal(bool)             # alat garis: ada / tidak ada pratinjau garis yang bisa diedit
     draft_menu = Signal(object)              # klik kanan di pratinjau garis -> posisi layar (QPoint)
@@ -413,7 +414,7 @@ class PageCanvas(QGraphicsView):
         if self.draw_mode:
             return Qt.CrossCursor
         return {"heal": Qt.BlankCursor, "pen": Qt.CrossCursor, "shape": Qt.CrossCursor,
-                "line": Qt.CrossCursor}.get(self.tool, Qt.ArrowCursor)
+                "line": Qt.CrossCursor, "patch": Qt.CrossCursor}.get(self.tool, Qt.ArrowCursor)
 
     def set_space(self, on: bool):
         """Spasi ditahan: tangan untuk menggeser gambar tanpa mengganti alat."""
@@ -491,6 +492,12 @@ class PageCanvas(QGraphicsView):
             return True
         if e.button() != Qt.LeftButton:
             return False
+        if self.tool == "patch":                 # lasso: seret melingkari area
+            self._stroke = [(x, y)]
+            pen = self._pen("#ffd166", 1.5, Qt.DashLine)
+            self._stroke_item = self.scene().addPath(self._stroke_path(), pen, QBrush(QColor(255, 209, 102, 45)))
+            self._stroke_item.setZValue(30)
+            return True
         if self.tool == "heal":
             self._stroke = [(x, y)]
             pen = QPen(QColor(255, 77, 109, 120), 2 * self.brush, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
@@ -526,6 +533,15 @@ class PageCanvas(QGraphicsView):
         if self.tool == "line":
             return self._line_move(e)
         sp = self.mapToScene(e.position().toPoint())
+        if self.tool == "patch":
+            if self._stroke is not None:
+                lx, ly = self._stroke[-1]
+                if abs(sp.x() - lx) + abs(sp.y() - ly) >= 2.0 / max(self.zoom(), 1e-6):
+                    self._stroke.append((sp.x(), sp.y()))
+                    path = self._stroke_path()
+                    path.closeSubpath()
+                    self._stroke_item.setPath(path)
+            return True
         if self.tool == "heal":
             self._update_brush_cursor(sp)
             if self._stroke is not None:
@@ -552,7 +568,7 @@ class PageCanvas(QGraphicsView):
                 r.setHeight(side)
             self._shape_item.setRect(r)
             return True
-        return self.tool in ("pen", "shape", "line")
+        return self.tool in ("pen", "shape", "line", "patch")
 
     def _tool_release(self, e) -> bool:
         if self.tool == "select" or self.pix_item is None:
@@ -563,6 +579,13 @@ class PageCanvas(QGraphicsView):
             pts = [[int(round(x)), int(round(y))] for x, y in self._stroke]
             self.cancel_tool()
             self.heal_stroke.emit(pts, int(self.brush))
+            return True
+        if self.tool == "patch" and self._stroke is not None:
+            pts = [[int(round(x)), int(round(y))] for x, y in self._stroke]
+            self.cancel_tool()
+            xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+            if len(pts) >= 3 and max(xs) - min(xs) >= 4 and max(ys) - min(ys) >= 4:
+                self.patch_done.emit(pts)
             return True
         if self.tool == "shape" and self._shape_item is not None:
             r = self._shape_item.rect().intersected(self.scene().sceneRect())
@@ -580,7 +603,7 @@ class PageCanvas(QGraphicsView):
                        [int(r.right()), int(r.bottom())], [int(r.left()), int(r.bottom())]]
             self.region_done.emit(pts, e.globalPosition().toPoint())
             return True
-        return self.tool in ("pen", "heal", "shape", "line")
+        return self.tool in ("pen", "heal", "shape", "line", "patch")
 
     # ------------------------------------------------------------ alat garis: pratinjau yang bisa diedit
     def has_draft(self) -> bool:

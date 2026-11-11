@@ -325,6 +325,8 @@ class SettingsDialog(QDialog):
         self.detect = _combo(DETECT, self.s["detect_mode"]); f.addRow("Deteksi teks", self.detect)
         self.ocr = _combo(OCR, self.s["ocr_engine"]); f.addRow("Engine OCR", self.ocr)
         self.clean = _combo(CLEAN, self.s["clean_method"]); f.addRow("Hapus teks", self.clean)
+        self.autopatch = QCheckBox("Perapian otomatis: area bekas teks yang belum mulus ditambal area serupa (Patch)")
+        self.autopatch.setChecked(bool(self.s.get("auto_patch", True))); f.addRow("", self.autopatch)
         self.gpu = QCheckBox("Pakai GPU (CUDA) jika tersedia"); self.gpu.setChecked(self.s["gpu"]); f.addRow("", self.gpu)
         self.sfxmatch = QCheckBox("Teks spesial / SFX: pilih font yang mirip dengan aslinya")
         self.sfxmatch.setChecked(bool(self.s.get("sfx_font_match", True))); f.addRow("", self.sfxmatch)
@@ -441,6 +443,7 @@ class SettingsDialog(QDialog):
         s = self.s
         s.update(detect_mode=self.detect.currentData(), ocr_engine=self.ocr.currentData(),
                  clean_method=self.clean.currentData(), gpu=self.gpu.isChecked(),
+                 auto_patch=self.autopatch.isChecked(),
                  translate_engine=self.trans.currentData(), deepl_key=self.deepl.text().strip(),
                  llm_preset=self.preset.currentText(), llm_base_url=self.base.text().strip(),
                  llm_model=self.model.text().strip(), llm_api_key=self.key.text().strip(),

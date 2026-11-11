@@ -64,6 +64,8 @@ ICONS = {
     "heal": '<rect x="2.5" y="8.5" width="19" height="7" rx="3.5" transform="rotate(-45 12 12)"/>'
             '<path d="M10.5 10.5l3 3M13.5 10.5l-3 3"/>',
     "close": '<path d="M7 7l10 10M17 7L7 17"/>',
+    "patch": '<path d="M4 9c0-3 3-5 6-5s7 1 8 4-1 5-4 6-9 1-10-1-0-2 0-4z" stroke-dasharray="2 2"/>'
+             '<rect x="12" y="13" width="8" height="7" rx="1"/>',
     "al_left": '<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>',
     "al_center": '<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>',
     "al_right": '<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>',

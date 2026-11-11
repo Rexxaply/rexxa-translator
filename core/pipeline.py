@@ -16,6 +16,7 @@ DEFAULT_SETTINGS = {
     "ocr_engine": "auto",           # auto | manga-ocr | easyocr
     "translate_engine": "google",   # google | deepl | llm
     "clean_method": "auto",         # auto | fill | opencv | lama
+    "auto_patch": True,             # setelah hapus teks: area yang kurang mulus ditambal area serupa
     "gpu": False,
     "deepl_key": "",
     "llm_preset": "Gemini",
@@ -465,9 +466,10 @@ def step_clean(page: Page, settings: dict, incremental: bool = True):
                 regions.append(_rect_pad((b.x, b.y, b.w, b.h), pad, W, H))
             for x0, y0, x1, y1 in regions:
                 base[y0:y1, x0:x1] = img[y0:y1, x0:x1]
-            cleaned = inpaint.clean_page(img, redo, method, base=base)
+            cleaned = inpaint.clean_page(img, redo, method, base=base,
+                                         patch=bool(settings.get("auto_patch", True)))
     if cleaned is None:
-        cleaned = inpaint.clean_page(img, page.blocks, method)
+        cleaned = inpaint.clean_page(img, page.blocks, method, patch=bool(settings.get("auto_patch", True)))
     out = output_dir(page, settings) / ".cache"
     out.mkdir(exist_ok=True)
     p = out / (Path(page.path).stem + "_clean.png")
