@@ -22,8 +22,17 @@ MARGIN = 26                    # ruang di sekeliling panel untuk bayangan
 GLASS_STYLE = """
 QWidget { background: transparent; }
 QScrollArea { border: none; }
-QComboBox QAbstractItemView, QComboBox QAbstractItemView QWidget, QMenu { background: #1f2333; color: #eef0f7;
-    border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 4px; selection-background-color: rgba(150,140,235,0.35); }
+QComboBoxPrivateContainer { background: transparent; border: none; }
+QComboBox QAbstractItemView { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #262b3f, stop:1 #1c2030);
+    border: 1px solid rgba(255,255,255,0.13); border-radius: 12px; padding: 5px; outline: 0; color: #e3e7f3; }
+QComboBox QAbstractItemView::item { min-height: 30px; padding: 2px 10px; border-radius: 8px; margin: 1px 0; }
+QComboBox QAbstractItemView::item:hover { background: rgba(255,255,255,0.07); }
+QComboBox QAbstractItemView::item:selected { color: white;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(111,143,232,0.62), stop:1 rgba(143,120,224,0.62)); }
+QMenu { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #262b3f, stop:1 #1c2030);
+    border: 1px solid rgba(255,255,255,0.13); border-radius: 12px; padding: 6px; }
+QMenu::item { padding: 7px 20px 7px 12px; border-radius: 8px; color: #e3e7f3; }
+QMenu::item:selected { color: white; background: rgba(140,130,230,0.55); }
 QListWidget, QTableWidget, QTreeWidget { background: rgba(0,0,0,0.18); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; }
 QLabel#gTitle { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; font-size: 13pt; font-weight: 800; color: #f2f4fb; }
 QLabel#gSub { color: rgba(225,229,242,0.55); font-size: 9pt; }
@@ -265,23 +274,36 @@ class GlassDialog(QDialog):
             else:
                 self._finish_close()
 
-    def showEvent(self, e):
-        super().showEvent(e)
-        if self._popped:
-            return
-        self._popped = True
+    def setVisible(self, visible: bool):
+        # Semua persiapan (posisi, latar frosted, foto isi, sembunyikan isi) dikerjakan SEBELUM jendela muncul,
+        # jadi frame pertama di layar sudah frame awal animasi (tanpa kedipan / loncatan posisi).
+        if visible and not self.isVisible() and not self._popped:
+            self._popped = True
+            self._prepare_show()
+        super().setVisible(visible)
+        if visible and self._anim is not None and not self._timer.isActive():
+            self._clock.start()
+            self._timer.start()
+
+    def _prepare_show(self):
         host = self.parentWidget().window() if self.parentWidget() is not None else None
         if host is not None and host.isVisible():
             self._grab_backdrop(host)
-            self._dim = _Dim(host)
             pg = host.geometry()            # muncul di tengah jendela utama
             self.move(pg.center() - QPoint(self.width() // 2, self.height() // 2))
+            self._dim = _Dim(host)
         else:                               # belum ada jendela utama: tengah layar
             from PySide6.QtGui import QGuiApplication
             scr = QGuiApplication.primaryScreen()
             if scr is not None:
                 self.move(scr.availableGeometry().center() - QPoint(self.width() // 2, self.height() // 2))
-        self._start(1)
+        self.ensurePolished()
+        self.sheet.ensurePolished()
+        self.layout().activate()
+        self._anim = {"dir": 1, "t0": 0, "pix": self.sheet.grab(), "rect": self.sheet.geometry()}
+        self.sheet.setUpdatesEnabled(False)
+        self.sheet.hide()
+        self._clock.start()
 
     def _grab_backdrop(self, host):
         """Foto jendela di belakang lalu diburamkan (efek kaca frosted). Gagal = kaca biasa."""
@@ -418,3 +440,55 @@ def smooth_scroll(area: QAbstractScrollArea):
 def smooth_all(root: QWidget):
     for a in root.findChildren(QAbstractScrollArea):
         smooth_scroll(a)
+
+
+# ---------------------------------------------------------------- dropdown & menu
+class _PopupFx(QObject):
+    """Semua daftar pilihan (QComboBox) & menu: latar jendela transparan supaya sudut membulat terlihat bersih,
+    tanpa bayangan kotak Windows, dan muncul dengan memudar + turun sedikit (±140 ms)."""
+
+    def eventFilter(self, obj, ev):
+        t = ev.type()
+        if t == QEvent.Polish and obj.isWidgetType() and obj.isWindow():
+            if obj.inherits("QComboBoxPrivateContainer") or obj.inherits("QMenu"):
+                if not obj.property("_rexxa_fx"):
+                    obj.setProperty("_rexxa_fx", True)
+                    obj.setAttribute(Qt.WA_TranslucentBackground, True)
+                    obj.setWindowFlag(Qt.NoDropShadowWindowHint, True)
+                    if obj.inherits("QComboBoxPrivateContainer"):
+                        obj.setContentsMargins(0, 0, 0, 0)
+        elif t == QEvent.Show and obj.isWidgetType() and obj.property("_rexxa_fx"):
+            QTimer.singleShot(0, lambda w=obj: self._appear(w))
+        return False
+
+    @staticmethod
+    def _appear(w):
+        try:
+            if not w.isVisible():
+                return
+            end = w.pos()
+            fade = QPropertyAnimation(w, b"windowOpacity", w)
+            fade.setDuration(140)
+            fade.setStartValue(0.0)
+            fade.setEndValue(1.0)
+            fade.setEasingCurve(QEasingCurve.OutCubic)
+            slide = QPropertyAnimation(w, b"pos", w)
+            slide.setDuration(170)
+            slide.setStartValue(end - QPoint(0, 6))
+            slide.setEndValue(end)
+            slide.setEasingCurve(QEasingCurve.OutCubic)
+            w.setWindowOpacity(0.0)
+            fade.start(QPropertyAnimation.DeleteWhenStopped)
+            slide.start(QPropertyAnimation.DeleteWhenStopped)
+            QTimer.singleShot(320, lambda: w.setWindowOpacity(1.0) if w.isVisible() else None)   # pengaman
+        except Exception:
+            try:
+                w.setWindowOpacity(1.0)
+            except Exception:
+                pass
+
+
+def install_popup_fx(app):
+    if not getattr(app, "_rexxa_popup_fx", None):
+        app._rexxa_popup_fx = _PopupFx(app)
+        app.installEventFilter(app._rexxa_popup_fx)
