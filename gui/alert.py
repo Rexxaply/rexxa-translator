@@ -11,22 +11,66 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QSizePolicy
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QSizePolicy, QWidget
 
 from .glass import MARGIN, GlassDialog
 
 ACCENT = "#7c6cff"
-KINDS = {   # warna lencana, simbol
-    "info": ("#4f86ff", "i"),
-    "success": ("#06d6a0", "✓"),
-    "warn": ("#ffb020", "!"),
-    "error": ("#ff6e7d", "×"),
-    "question": ("#8e5cf6", "?"),
-    "save": ("#ff9a62", "●"),
+KINDS = {   # warna lencana (atas, bawah), ikon
+    "info": (("#7aa6ff", "#4a74e8"), "info"),
+    "success": (("#5fe3b0", "#16b886"), "check"),
+    "warn": (("#ffd36b", "#f5a524"), "alert"),
+    "error": (("#ff9aa5", "#ec5466"), "close"),
+    "question": (("#b39bff", "#7c5ce6"), "help"),
+    "save": (("#ffc08f", "#f58a4b"), "save"),
 }
 
+
+class _Badge(QWidget):
+    """Lencana bulat bergaya kaca: gradasi warna, kilau di atas, pendar lembut, ikon putih di tengah."""
+
+    SIZE = 56
+
+    def __init__(self, kind: str):
+        super().__init__()
+        (self.c1, self.c2), name = KINDS.get(kind, KINDS["info"])
+        from .icons import icon
+        self.pix = icon(name, "#ffffff").pixmap(64, 64)
+        self.setFixedSize(self.SIZE, self.SIZE)
+
+    def paintEvent(self, _e):
+        from PySide6.QtCore import QPointF, QRectF
+        from PySide6.QtGui import QBrush, QLinearGradient, QPainter, QPen, QRadialGradient
+        p = QPainter(self)
+        p.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        s = float(self.SIZE)
+        c1, c2 = QColor(self.c1), QColor(self.c2)
+        glow = QRadialGradient(QPointF(s / 2, s / 2 + 2), s / 2)
+        g0 = QColor(c2)
+        g0.setAlpha(110)
+        glow.setColorAt(0.62, g0)
+        glow.setColorAt(1.0, QColor(0, 0, 0, 0))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(glow))
+        p.drawEllipse(QRectF(0, 0, s, s))
+        r = QRectF(7, 6, s - 14, s - 14)
+        g = QLinearGradient(r.topLeft(), r.bottomLeft())
+        g.setColorAt(0, c1)
+        g.setColorAt(1, c2)
+        p.setBrush(QBrush(g))
+        p.setPen(QPen(QColor(255, 255, 255, 120), 1))
+        p.drawEllipse(r)
+        hl = QLinearGradient(r.topLeft(), QPointF(r.left(), r.center().y()))
+        hl.setColorAt(0, QColor(255, 255, 255, 95))
+        hl.setColorAt(1, QColor(255, 255, 255, 0))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(hl))
+        p.drawEllipse(r.adjusted(4, 2, -4, -r.height() * 0.45))
+        ir = QRectF(0, 0, 22, 22)
+        ir.moveCenter(r.center())
+        p.drawPixmap(ir, self.pix, QRectF(self.pix.rect()))
+
 STYLE = """
-QLabel#badge { border-radius: 22px; font-size: 17pt; font-weight: 800; color: white; }
 QLabel#heading { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; color: #f3f5fb; font-size: 12pt;
     font-weight: 800; }
 QLabel#detail { color: rgba(228,232,245,0.66); font-size: 9.2pt; }
@@ -62,15 +106,7 @@ class Alert(GlassDialog):
         self._escape = escape_value
         self.sheet.layout().setContentsMargins(26, 22, 26, 20)
 
-        color, glyph = KINDS.get(kind, KINDS["info"])
-        badge = QLabel(glyph)
-        badge.setObjectName("badge")
-        badge.setFixedSize(44, 44)
-        badge.setAlignment(Qt.AlignCenter)
-        c = QColor(color)
-        badge.setStyleSheet(
-            "background: qradialgradient(cx:0.35, cy:0.3, radius:0.9, fx:0.35, fy:0.3, "
-            f"stop:0 {c.lighter(135).name()}, stop:1 {c.name()}); border: 1px solid rgba(255,255,255,0.45);")
+        badge = _Badge(kind)
         brow = QHBoxLayout()
         brow.addStretch()
         brow.addWidget(badge)
