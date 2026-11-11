@@ -77,6 +77,16 @@ class ExportDialog(QDialog):
         meta = dict(project.export_meta or {})
         self.resize(1080, 720)
 
+        self.setStyleSheet(
+            "QFrame#card QLabel, QFrame#card QRadioButton, QFrame#card QCheckBox { background: transparent; }"
+            "QRadioButton::indicator, QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid #555a66;"
+            " background: #23252b; }"
+            "QRadioButton::indicator { border-radius: 8px; }"
+            "QCheckBox::indicator { border-radius: 3px; }"
+            "QRadioButton::indicator:checked { background: qradialgradient(cx:.5, cy:.5, radius:.5, fx:.5, fy:.5,"
+            " stop:0 #ff4d6d, stop:.45 #ff4d6d, stop:.55 #23252b, stop:1 #23252b); border-color: #ff4d6d; }"
+            "QCheckBox::indicator:checked { background: #ff4d6d; border-color: #ff4d6d; }"
+            "QRadioButton::indicator:hover, QCheckBox::indicator:hover { border-color: #ff8197; }")
         root = QHBoxLayout(self)
         root.setContentsMargins(10, 10, 10, 10)
         root.setSpacing(10)
@@ -150,7 +160,7 @@ class ExportDialog(QDialog):
         self.r_all = QRadioButton(f"Semua halaman  ({n})")
         self.r_rng = QRadioButton("Rentang:")
         self.rng = QLineEdit(opts.get("range", ""))
-        self.rng.setPlaceholderText(f"mis. 1-5, 8, 10-{n}")
+        self.rng.setPlaceholderText("mis. 1-5, 8, 10-12")
         self.scope = QButtonGroup(self)
         for i, r in enumerate((self.r_cur, self.r_all, self.r_rng)):
             self.scope.addButton(r, i)
@@ -161,7 +171,9 @@ class ExportDialog(QDialog):
         h.addWidget(self.r_rng)
         h.addWidget(self.rng, 1)
         v.addLayout(h)
-        self.use_orig = QCheckBox("Halaman yang belum diterjemahkan: pakai gambar asli")
+        self.use_orig = QCheckBox("Sertakan yang belum diterjemahkan")
+        self.use_orig.setToolTip("Halaman yang belum diterjemahkan ikut diekspor memakai gambar aslinya.\n"
+                                 "Bila tidak dicentang, halaman itu dilewati.")
         self.use_orig.setChecked(bool(opts.get("use_original", False)))
         v.addWidget(self.use_orig)
         self.sel_info = QLabel("")
@@ -205,6 +217,7 @@ class ExportDialog(QDialog):
         self.m_genre = QLineEdit(meta.get("genre", ""))
         self.m_genre.setPlaceholderText("Action, Romance, …")
         self.m_status = QComboBox()
+        self.m_status.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.m_status.addItems(list(exporter.STATUS))
         self.m_status.setCurrentText(meta.get("status", "Tidak diketahui"))
         self.m_sum = QTextEdit(meta.get("summary", ""))
@@ -215,7 +228,7 @@ class ExportDialog(QDialog):
                        ("Status", self.m_status), ("Ringkasan", self.m_sum)):
             f.addRow(lab, w)
         v.addLayout(f)
-        self.mihon = QCheckBox("Paket Local Source Mihon (folder seri + cover + info)")
+        self.mihon = QCheckBox("Paket Local Source Mihon")
         self.mihon.setChecked(bool(opts.get("mihon_pack", False)))
         self.mihon.setToolTip("Hasil .zip berisi folder seri. Ekstrak ke folder Mihon/local/ di HP,\n"
                               "lalu buka Browse → Local source.")
@@ -227,7 +240,9 @@ class ExportDialog(QDialog):
         sc.setWidgetResizable(True)
         sc.setFrameShape(QFrame.NoFrame)
         sc.setWidget(panel)
-        sc.setFixedWidth(380)
+        sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        sc.setFixedWidth(392)
+        panel.setFixedWidth(376)
         right = QVBoxLayout()
         right.addWidget(sc, 1)
         self.summary = QLabel("")
@@ -266,6 +281,8 @@ class ExportDialog(QDialog):
     @staticmethod
     def _combo(items, value):
         c = QComboBox()
+        c.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        c.setMinimumContentsLength(8)
         for lab, v in items:
             c.addItem(lab, v)
         c.setCurrentIndex(max(0, c.findData(value)))
@@ -385,7 +402,7 @@ class ExportDialog(QDialog):
         self._loader.start()
 
     def _strip_width(self) -> int:
-        return max(200, min(760, self.strip.viewport().width() - 24))
+        return max(200, min(560, self.strip.viewport().width() - 24))
 
     def _load_step(self):
         if not self._load_q:
