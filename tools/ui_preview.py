@@ -37,7 +37,9 @@ class Spy(QObject):
 
     def eventFilter(self, obj, ev):
         if ev.type() == QEvent.Paint:
-            self.paints.append((self.dlg._anim is not None, self.dlg.sheet.isVisible()))
+            from PySide6.QtCore import Qt
+            self.paints.append((self.dlg._anim is not None or self.dlg.testAttribute(Qt.WA_DontShowOnScreen),
+                                self.dlg.sheet.isVisible(), self.dlg.testAttribute(Qt.WA_DontShowOnScreen)))
         return False
 
 
@@ -67,6 +69,9 @@ def main(out):
             after = arr(dlg.sheet.grab())
             diff = float(np.abs(before.astype(int) - after.astype(int)).mean()) if before is not None and before.shape == after.shape else -1
             liar = [p for p in spy.paints[:3] if not p[0]]
+            layar = [p for p in spy.paints if not p[2]]
+            print(f"   gambar di layar asli: pertama saat animasi={layar[0][0] if layar else None} | isi tersembunyi={not layar[0][1] if layar else None}"
+                  f" | gambar di belakang layar={sum(1 for p in spy.paints if p[2])}", flush=True)
             print(f"putaran {rnd} tab {tab}: beda foto={diff:.2f} | gambar pertama saat animasi={spy.paints[0][0] if spy.paints else None}"
                   f" | gambar tanpa animasi di awal={len(liar)} | terbuka={dlg.isVisible()}", flush=True)
             dlg._closing = None
