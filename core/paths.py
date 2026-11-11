@@ -81,4 +81,16 @@ def work_dir(image_path: str, custom: str = "", create: bool = True) -> Path:
         d = data_dir() / "work" / f"{name}-{h}"
     if create:
         d.mkdir(parents=True, exist_ok=True)
+        if not custom:
+            touch_work(d, Path(image_path).resolve().parent)
     return d
+
+
+def touch_work(d: Path, source: Path | None = None):
+    """Catat kapan folder kerja terakhir dipakai (untuk pembersihan otomatis) + asal chapternya."""
+    try:
+        if source is not None and not (d / ".source").exists():
+            (d / ".source").write_text(str(source), encoding="utf-8")
+        (d / ".used").write_text("", encoding="utf-8")
+    except OSError:
+        pass

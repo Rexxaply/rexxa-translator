@@ -55,6 +55,7 @@ DEFAULT_SETTINGS = {
     "box_mode": "box",              # kotak manual baru: box (kotak saja) | ocr (+ baca teks) | ocr_tr (+ terjemah)
     "output_format": "png",         # png | jpg | webp
     "output_dir": "",               # kosong = folder kerja tersembunyi (data aplikasi)
+    "work_keep_days": 30,           # folder kerja yang tidak dibuka sekian hari dihapus otomatis (0 = jangan)
     "last_source_lang": "ja",       # bahasa terakhir dipilih di toolbar
     "last_target_lang": "id",
     "update_last_check": "",        # tanggal ISO, cek maks. sekali sehari

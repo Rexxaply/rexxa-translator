@@ -1283,6 +1283,11 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(400, lambda: self.render_current(quiet=True))
         self._history = {}
         self._saved_sig = None                     # dihitung ulang: proyek yang baru dibuka = tersimpan
+        try:
+            from core import datastore
+            datastore.touch_project(self.project, self.settings)   # dibuka = masih dipakai (tidak dibersihkan)
+        except Exception:
+            pass
         self._warm_up_ai()
         self.src.setCurrentIndex(max(0, self.src.findData(self.project.source_lang)))
         self.tgt.setCurrentIndex(max(0, self.tgt.findData(self.project.target_lang)))
@@ -3277,6 +3282,18 @@ class MainWindow(QMainWindow):
             pipeline.export_text(self.project, f)
             self.log(f"Skrip diekspor: {f}")
 
+    def auto_clean_work(self):
+        """Hapus folder kerja chapter yang lama tidak dibuka (Pengaturan → Data)."""
+        try:
+            from core import datastore
+            days = int(self.settings.get("work_keep_days", 30) or 0)
+            n, freed = datastore.auto_cleanup(days, datastore.project_work_dirs(self.project, self.settings))
+            if n:
+                self.log(f"Pembersihan otomatis: {n} folder kerja chapter yang tidak dibuka > {days} hari dihapus "
+                         f"({datastore.human(freed)}).")
+        except Exception as e:
+            self.log(f"Pembersihan folder kerja dilewati: {e}")
+
     def open_output_folder(self):
         p = self.page() or (self.project.pages[0] if self.project.pages else None)
         if not p:
@@ -3462,4 +3479,5 @@ def run():
     w.show()
     if len(sys.argv) > 1:
         w._load_paths(sys.argv[1:])
+    QTimer.singleShot(4000, w.auto_clean_work)
     sys.exit(app.exec())
