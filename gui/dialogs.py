@@ -464,6 +464,42 @@ class SettingsDialog(GlassDialog):
         self.footer.addWidget(ok)
         from .glass import smooth_all
         smooth_all(self)
+        self._sig0 = self._sig()                 # keadaan awal, untuk mendeteksi perubahan
+
+    # ------------------------------------------------------------ konfirmasi sebelum menutup
+    def _sig(self) -> str:
+        import copy
+        import json
+        keep, keep_text = copy.deepcopy(self.s), self.extra.toPlainText()
+        try:
+            r = dict(self.result_settings())
+        finally:
+            self.s.clear()
+            self.s.update(keep)                  # result_settings() tidak boleh mengubah apa pun di sini
+        r.pop("_settings_tab", None)
+        return json.dumps(r, sort_keys=True, default=str) + keep_text
+
+    def changed(self) -> bool:
+        try:
+            return self._sig() != self._sig0
+        except Exception:
+            return False
+
+    def reject(self):
+        """Batal / × / Esc: bila ada perubahan, tanya dulu Simpan, Kembali, atau Tutup tanpa menyimpan."""
+        if self._closing is None and not self.factory_reset and self.changed():
+            from .alert import Alert
+            choice = Alert(self, "Pengaturan", "Simpan perubahan pengaturan?",
+                           "Ada pengaturan yang kamu ubah tapi belum disimpan.", kind="save",
+                           buttons=[("Simpan", "primary", "save"), ("Kembali", "neutral", "back"),
+                                    ("Tutup tanpa simpan", "danger", "discard")],
+                           escape_value="back").exec_value()
+            if choice == "save":
+                self._ok()
+                return
+            if choice != "discard":
+                return                           # Kembali: tetap di Pengaturan
+        super().reject()
 
     # ------------------------------------------------------------ kerangka halaman
     def _go(self, i):
