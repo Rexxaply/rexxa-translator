@@ -281,7 +281,7 @@ class GlassDialog(QDialog):
             # lapisan hantu), hanya mengembang ala pegas dari 92%. Isi menyusul memudar di atas kaca yang sudah pekat.
             scale = 0.92 + 0.08 * _spring(u)
             op_glass = 1.0
-            op_content = ramp(u, 0.05, 0.30)
+            op_content = 1.0            # isi ikut muncul hampir bersamaan (±50 ms): satu kesatuan
         else:
             # tutup: isi hilang dulu; kaca tetap pekat sambil mengecil, lalu lenyap di frame terakhir
             # (tidak ada fase kaca setengah transparan)
@@ -515,7 +515,9 @@ class _PopupFx(QObject):
         geo = obj.geometry()                      # posisi sudah dihitung combo / menu: jangan sampai ter-reset
         obj.setAttribute(Qt.WA_TranslucentBackground, True)
         obj.setAttribute(Qt.WA_NoSystemBackground, True)
-        obj.setWindowFlag(Qt.NoDropShadowWindowHint, True)   # (membuat ulang jendela -> transparansi pasti aktif)
+        # Di Windows, transparansi per piksel HANYA aktif bila jendela juga FramelessWindowHint; tanpa itu area di luar
+        # lengkungan digambar hitam. (Mengubah flag membuat ulang jendela -> transparansi pasti aktif.)
+        obj.setWindowFlags(obj.windowFlags() | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
         obj.setGeometry(geo)
         if obj.inherits("QComboBoxPrivateContainer"):
             obj.setContentsMargins(0, 0, 0, 0)
