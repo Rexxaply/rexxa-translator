@@ -8,6 +8,10 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.3.5 · Patch update
+- Dropdown & menu di Windows: tidak ada lagi warna hitam di pojok lengkungan (popup kini benar-benar transparan).
+- Pop-up Pengaturan & dialog lain: kaca dan isinya muncul bersamaan sejak frame pertama, tanpa panel kaca kosong yang terlihat seperti glitch.
+
 ## 2.3.4 · Patch update
 
 - Perbaikan: tidak ada lagi lapisan kaca setengah transparan ("hantu") sebelum Pengaturan & kotak pesan muncul — kaca langsung pekat lalu mengembang, isi menyusul; saat ditutup kaca mengecil lalu lenyap
@@ -29,14 +33,3 @@ Penomoran MAJOR.MINOR.PATCH:
 
 - Perbaikan: jendela Pengaturan & kotak pesan tidak lagi berkedip saat dibuka (muncul langsung dengan animasi pop-up)
 - Semua dropdown & menu bergaya Liquid Glass: kaca frosted (isi aplikasi di belakang tampak buram), sudut membulat, pilihan berbentuk pil, muncul halus
-
-## 2.3.0 · Minor update
-
-- Pengaturan baru bergaya Liquid Glass: menu samping, isi dikelompokkan rapi, catatan kegunaan saat kursor diarahkan ke setiap pengaturan, konfirmasi Simpan / Kembali / Tutup tanpa simpan
-- Preset engine: simpan beberapa pengaturan engine (awal "Default"), ganti nama, hapus, dan pindah cepat dari menu panah tombol Terjemahkan saat satu model gangguan
-- Semua kotak pesan bergaya Liquid Glass: kaca frosted (isi aplikasi di belakang tampak buram), lencana ikon sesuai jenis pesan, animasi pop-up masuk & keluar
-- Folder chapter tetap bersih: hasil kerja disimpan di folder tersembunyi aplikasi; gambar keluar lewat Export → "Gambar (ke folder)"
-- Hasil kerja per chapter bisa dihapus di Pengaturan → Data, dan otomatis dibersihkan bila tidak dibuka > 30 hari (bisa diatur)
-- Geser teks balon dengan tombol panah keyboard (Shift = 10 px)
-- Edit teks ±2,5× lebih cepat: hasil langsung tampil, file disimpan di belakang layar
-- Animasi tombol Simpan lebih santai & mulus ala iOS
