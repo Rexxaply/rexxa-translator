@@ -186,7 +186,14 @@ class WelcomeView(QWidget):
         v.addStretch(3)
         logo = QLabel()
         logo.setAlignment(Qt.AlignCenter)
-        logo.setPixmap(icon("image", "#6f7380", 96).pixmap(QSize(56, 56)))
+        from core.paths import code_dir
+        from PySide6.QtGui import QPixmap
+        app_icon = code_dir() / "assets" / "icon.png"
+        pm = QPixmap(str(app_icon)) if app_icon.exists() else QPixmap()
+        if pm.isNull():
+            logo.setPixmap(icon("image", "#6f7380", 96).pixmap(QSize(56, 56)))
+        else:
+            logo.setPixmap(pm.scaled(88, 88, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         logo.setStyleSheet("background: transparent;")
         v.addWidget(logo)
         v.addSpacing(14)
