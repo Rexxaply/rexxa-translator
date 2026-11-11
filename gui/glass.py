@@ -595,6 +595,13 @@ class _PopupFx(QObject):
 
 
 def install_popup_fx(app):
+    # Matikan animasi bawaan Windows untuk dropdown & menu (menggulung / memudar). Kalau tidak, dropdown
+    # muncul dengan DUA animasi berurutan: efek Windows lalu animasi kaca kita.
+    for eff in (Qt.UIEffect.UI_AnimateCombo, Qt.UIEffect.UI_AnimateMenu, Qt.UIEffect.UI_FadeMenu):
+        try:
+            app.setEffectEnabled(eff, False)
+        except Exception:
+            pass
     if not getattr(app, "_rexxa_popup_fx", None):
         app._rexxa_popup_fx = _PopupFx(app)
         app.installEventFilter(app._rexxa_popup_fx)
