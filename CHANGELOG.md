@@ -8,6 +8,10 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.1.1 · Patch update
+
+- Ikon & logo baru Rexxa Translator (jendela aplikasi, layar pembuka, file proyek). Ikon file .exe ikut berganti saat update penuh / instal baru
+
 ## 2.1.0 · Minor update
 
 - Menu Skill baru: Memori cerita — AI mengingat tokoh, gender, panggilan (aku/kamu, gue/lo, kak…) & gaya bicara; disimpan per seri, bisa "Pelajari dari chapter ini (AI)"
@@ -35,12 +39,3 @@ Penomoran MAJOR.MINOR.PATCH:
 - Satu huruf + titik-titik ("I...", "A...") sekarang terdeteksi & terbaca benar
 - Tulisan tangan tipis huruf kecil di latar terang ("Is that it...") tidak lagi terlewat
 - OCR: titik-titik di ujung baris ikut terbaca ("TALK..." bukan "TALK."), spasi setelah "..." tidak hilang
-
-## 2.0.5 · Patch update
-
-- Hapus teks lebih rapi di latar raster/berbintik: bekas teks diisi tekstur aslinya (tanpa gumpalan putih / tambalan terang)
-- Teks bergaris tepi putih (mis. di atas tembok) dihapus bersih beserta tepinya; terjemahan ikut diberi garis tepi putih
-- Garis kotak narasi & tepi balon tidak lagi ikut terhapus / tercoret
-- Patch Tool: perapian otomatis area yang kurang mulus + alat Patch manual (K) seperti di Photoshop
-- Sambung otomatis tepi balon yang terputus saat teks dihapus (garis objek seperti tembok/rambut dibiarkan)
-- Font hiasan aneh (Goudy Stout, Algerian, dll.) tidak dipakai lagi untuk dialog & narasi
