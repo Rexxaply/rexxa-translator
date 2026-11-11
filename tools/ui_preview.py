@@ -39,7 +39,8 @@ def main(out):
     install_popup_fx(app)
     app.setStyleSheet(mw.STYLE)
     host = QWidget()
-    host.setStyleSheet("background: #e8e2d6;")       # latar terang supaya pojok hitam kelihatan
+    host.setObjectName("host")
+    host.setStyleSheet("QWidget#host { background: #e8e2d6; }")       # latar terang supaya pojok hitam kelihatan
     host.resize(500, 360)
     lay = QVBoxLayout(host)
     cb = QComboBox()
