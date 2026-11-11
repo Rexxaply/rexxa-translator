@@ -872,7 +872,7 @@ def _inpaint_lama(img, mask):
 
 
 def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", base=None,
-               patch: bool = False, lines: bool = False) -> np.ndarray:
+               patch: bool = False, lines: bool = False, bubble_blocks=None) -> np.ndarray:
     """img = halaman asli (sumber deteksi huruf). base = gambar awal hasil (mis. hasil bersih lama yang
     sebagian dikembalikan ke asli); default salinan img."""
     out = img.copy() if base is None else base.copy()
@@ -1042,8 +1042,10 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", b
             tmask = np.zeros(img.shape[:2], np.uint8)
             for _b, tm_, _l in done:
                 tmask |= tm_
+            polys = [bb.mask_poly for bb in (bubble_blocks or blocks)
+                     if bb.kind == "bubble" and bb.mask_poly and len(bb.mask_poly) >= 3]
             out = linefix.repair(img, out, [(b.x, b.y, b.w, b.h) for b, _t, _l in done], lh=lh_med,
-                                 text_mask=tmask)
+                                 text_mask=tmask, bubble_polys=polys)
         except Exception:
             pass
     return out

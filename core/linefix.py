@@ -81,8 +81,48 @@ def _bezier(p0, p1, p2, p3, n):
     return ((1 - t) ** 3) * p0 + 3 * ((1 - t) ** 2) * t * p1 + 3 * (1 - t) * t * t * p2 + (t ** 3) * p3
 
 
+def _side_stats(g: np.ndarray, path, d, t, skip: np.ndarray | None = None):
+    """Nilai piksel di KEDUA sisi garis (tegak lurus arah garis), sedikit di luar tebal garisnya."""
+    n = np.array([-d[1], d[0]], np.float32)
+    H, W = g.shape
+    side = ([], [])
+    for k, (py, px) in enumerate(path):
+        if k < 2:
+            continue
+        for s in np.arange(t / 2.0 + 2.0, t / 2.0 + 8.0, 1.5):
+            for si, sg in enumerate((1.0, -1.0)):
+                qx, qy = int(round(px + n[0] * s * sg)), int(round(py + n[1] * s * sg))
+                if 0 <= qx < W and 0 <= qy < H and (skip is None or not skip[qy, qx]):
+                    side[si].append(float(g[qy, qx]))
+    return [np.array(v, np.float32) for v in side]
+
+
+def is_bubble_edge(g: np.ndarray, path, d, t, contour_dist: np.ndarray | None = None,
+                   skip: np.ndarray | None = None) -> bool:
+    """Apakah potongan garis ini TEPI BALON (bukan garis objek: tembok, rambut, garis kecepatan)?
+    1) berimpit dengan kontur balon yang terdeteksi, atau
+    2) satu sisinya bidang terang & rata (isi balon), sisi lainnya jelas berbeda."""
+    if contour_dist is not None:
+        near = [contour_dist[py, px] <= max(4.0, t + 2) for py, px in path]
+        if np.mean(near) >= 0.7:
+            return True
+    a, b = _side_stats(g, path, d, t, skip)      # area bekas teks tidak ikut dinilai
+    if len(a) < 12 or len(b) < 12:
+        return False
+    for inner, outer in ((a, b), (b, a)):
+        bright = float(np.median(inner)) >= 205 and float((inner >= 190).mean()) >= 0.85
+        flat = float((inner < 150).mean()) <= 0.03 and \
+            float(np.percentile(inner, 75) - np.percentile(inner, 25)) <= 20
+        # sisi luar berbeda: lebih gelap, atau bertekstur (raster / gambar: ada titik-titik gelap)
+        differs = (abs(float(np.median(outer)) - float(np.median(inner))) >= 35
+                   or float((outer < 150).mean()) >= 0.06 or float(outer.std()) >= 30)
+        if bright and flat and differs:
+            return True
+    return False
+
+
 def repair(original: np.ndarray, cleaned: np.ndarray, rects, lh: float = 16.0, log=None,
-           text_mask: np.ndarray | None = None) -> np.ndarray:
+           text_mask: np.ndarray | None = None, bubble_polys=None, only_bubbles: bool = True) -> np.ndarray:
     """Sambung garis yang terputus di sekitar kotak-kotak `rects` (area yang dibersihkan)."""
     H, W = cleaned.shape[:2]
     out = cleaned
@@ -96,6 +136,8 @@ def repair(original: np.ndarray, cleaned: np.ndarray, rects, lh: float = 16.0, l
         if ch.sum() < 20:
             continue
         ch_d = cv2.dilate(ch.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+        rmask = np.zeros(ch.shape, bool)                 # kotak teks (area yang dibersihkan)
+        rmask[max(0, y - y0 - 3):y + h - y0 + 3, max(0, x - x0 - 3):x + w - x0 + 3] = True
         C = out[y0:y1, x0:x1]
         g = cv2.cvtColor(C, cv2.COLOR_BGR2GRAY)
         # garis di gambar ASLI (sebelum teks dihapus): bukti bahwa garis memang lewat di sana
@@ -120,6 +162,15 @@ def repair(original: np.ndarray, cleaned: np.ndarray, rects, lh: float = 16.0, l
             continue
         sk = _thin(lines)
         dist = cv2.distanceTransform(lines.astype(np.uint8), cv2.DIST_L2, 3)
+        cdist = None
+        if bubble_polys:
+            cm = np.full(g.shape, 255, np.uint8)
+            for poly in bubble_polys:
+                pts_ = np.asarray(poly, np.int32).reshape(-1, 2) - np.array([x0, y0], np.int32)
+                if len(pts_) >= 3:
+                    cv2.polylines(cm, [pts_], True, 0, 1)
+            if (cm == 0).any():
+                cdist = cv2.distanceTransform(cm, cv2.DIST_L2, 3)
         ends = []
         for (ey, ex) in _endpoints(sk):
             path = _trace(sk, ey, ex, 18)
@@ -154,6 +205,9 @@ def repair(original: np.ndarray, cleaned: np.ndarray, rects, lh: float = 16.0, l
             # jarak ke tepi di tengah garis setebal w kira-kira (w + 1) / 2
             t = float(np.median([dist[py, px] for py, px in path])) * 2.0 - 1.0
             col = np.median(np.array([C[py, px] for py, px in path]), axis=0)
+            # hanya tepi balon yang disambung; garis objek (tembok, rambut, garis kecepatan) dibiarkan
+            if only_bubbles and not is_bubble_edge(g, path, d, max(1.0, t), cdist, skip=ch_d | tmask | rmask):
+                continue
             ends.append({"p": np.array([ex, ey], np.float32), "d": d, "t": max(1.0, t), "col": col,
                          "k": kappa})
         if len(ends) < 2:

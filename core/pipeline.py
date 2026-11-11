@@ -469,7 +469,8 @@ def step_clean(page: Page, settings: dict, incremental: bool = True):
                 base[y0:y1, x0:x1] = img[y0:y1, x0:x1]
             cleaned = inpaint.clean_page(img, redo, method, base=base,
                                          patch=bool(settings.get("auto_patch", True)),
-                                         lines=bool(settings.get("auto_lines", True)))
+                                         lines=bool(settings.get("auto_lines", True)),
+                                         bubble_blocks=page.blocks)
     if cleaned is None:
         cleaned = inpaint.clean_page(img, page.blocks, method, patch=bool(settings.get("auto_patch", True)),
                                      lines=bool(settings.get("auto_lines", True)))
