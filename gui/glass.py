@@ -283,10 +283,11 @@ class GlassDialog(QDialog):
             op_glass = 1.0
             op_content = ramp(u, 0.05, 0.30)
         else:
-            # tutup: isi hilang dulu, kaca mengecil & lenyap cepat
-            scale = 1.0 - 0.06 * u
+            # tutup: isi hilang dulu; kaca tetap pekat sambil mengecil, lalu lenyap di frame terakhir
+            # (tidak ada fase kaca setengah transparan)
+            scale = 1.0 - 0.14 * u * u
             op_content = 1 - ramp(u, 0.0, 0.30)
-            op_glass = (1 - ramp(u, 0.15, 1.0)) ** 2
+            op_glass = 1 - ramp(u, 0.82, 1.0)
         c = r.center()
         p.translate(c)
         p.scale(scale, scale)
