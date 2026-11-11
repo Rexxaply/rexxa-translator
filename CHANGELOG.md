@@ -8,6 +8,13 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.3.3 · Patch update
+
+- Perbaikan: dropdown & menu tidak lagi menjalankan animasi ganda (efek bawaan Windows dimatikan untuk aplikasi ini)
+- Perbaikan: tidak ada lagi garis buram sekilas sebelum pop-up Pengaturan muncul
+- Perbaikan: tidak ada bayangan ganda saat Pengaturan & kotak pesan dibuka / ditutup (kaca muncul dulu, lalu isinya; saat tutup isinya hilang dulu)
+- Dropdown tidak lagi tembus pandang saat muncul; kaca frosted lebih lembut
+
 ## 2.3.2 · Patch update
 
 - Perbaikan: glitch saat membuka Pengaturan & kotak pesan (batang gulir yang tiba-tiba muncul di akhir animasi, animasi bawaan Windows yang bertabrakan)
@@ -35,11 +42,3 @@ Penomoran MAJOR.MINOR.PATCH:
 - Ubahan di panel kanan berlaku ke semua balon terpilih: font, ukuran, tebal/miring, KAPITAL, rata, spasi, rotasi, warna, stroke, gradasi, preset 1–5 — hanya nilai yang diubah yang disalin
 - Terjemah ulang / OCR ulang banyak balon dalam 1 permintaan, hapus & geser teks bersamaan
 - Tombol Samakan: ukuran teks & ukuran kotak mengikuti balon aktif
-
-## 2.1.5 · Patch update
-
-- Instruksi tambahan LLM kini prioritas tertinggi: prompt panjang / persona ("You are…") dipakai sebagai system prompt utama, instruksi pendek ditaruh di akhir
-- Variabel di prompt diisi otomatis: {targetLanguage}, {sourceLanguage}
-- Format jawaban JSON selalu diatur aplikasi, jadi prompt sendiri tidak bikin error
-- Terjemahan Indonesia lebih santai & tidak kaku (nggak, udah, aku/kamu, gue/lo; hindari "Anda", "tersebut") — kecuali Gaya bahasa Baku
-- Hasil terjemahan LLM lama di cache tidak dipakai lagi
