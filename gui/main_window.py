@@ -497,6 +497,7 @@ class MainWindow(QMainWindow):
             other = self.cv_out if cv is self.cv_src else self.cv_src
             cv.block_selected.connect(self._on_canvas_select)
             cv.block_toggled.connect(self._on_canvas_toggle)
+            cv.nudge_key.connect(self._nudge)
             cv.edit_started.connect(self._on_edit_started)
             cv.block_moving.connect(lambda b, o=other: o.reload_boxes())
             cv.block_geometry_changed.connect(self._on_geom_changed)
@@ -815,7 +816,8 @@ class MainWindow(QMainWindow):
         for ico, dx, dy, tip in (("mv_left", -1, 0, "Geser kiri"), ("mv_up", 0, -1, "Geser atas"),
                                  ("mv_down", 0, 1, "Geser bawah"), ("mv_right", 1, 0, "Geser kanan"),
                                  ("mv_reset", 0, 0, "Kembalikan ke posisi semula")):
-            b = mini("", tip + (" (Shift = 10 px)" if dx or dy else ""), checkable=False, w=24, ico=ico)
+            b = mini("", tip + (" — atau tombol panah keyboard setelah klik balon (Shift = 10 px)" if dx or dy else ""),
+                     checkable=False, w=24, ico=ico)
             b.setAutoRepeat(bool(dx or dy))
             b.setAutoRepeatDelay(350)
             b.setAutoRepeatInterval(60)

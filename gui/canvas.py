@@ -223,6 +223,7 @@ class BoxItem(QGraphicsRectItem):
 class PageCanvas(QGraphicsView):
     block_selected = Signal(object)          # TextBlock atau None
     block_toggled = Signal(object)           # Ctrl+klik: tambah / lepas balon dari pilihan ganda
+    nudge_key = Signal(int, int)             # tombol panah keyboard: geser teks balon terpilih
     edit_started = Signal(object)            # sebelum kotak digeser/diubah (untuk undo)
     block_moving = Signal(object)            # selama digeser
     block_geometry_changed = Signal(object)  # setelah dilepas
@@ -811,7 +812,15 @@ class PageCanvas(QGraphicsView):
             return
         super().mouseDoubleClickEvent(e)
 
+    ARROWS = {Qt.Key_Left: (-1, 0), Qt.Key_Right: (1, 0), Qt.Key_Up: (0, -1), Qt.Key_Down: (0, 1)}
+
     def keyPressEvent(self, e):
+        # panah = geser teks balon terpilih (Shift = 10 px); tanpa balon terpilih = gulir gambar seperti biasa
+        if (e.key() in self.ARROWS and self.tool == "select" and self.selected is not None
+                and not (e.modifiers() & (Qt.ControlModifier | Qt.AltModifier))):
+            self.nudge_key.emit(*self.ARROWS[e.key()])
+            e.accept()
+            return
         if self.tool == "line" and self.draft["pts"]:
             if e.key() in (Qt.Key_Return, Qt.Key_Enter):
                 self.draft_menu.emit("commit")
