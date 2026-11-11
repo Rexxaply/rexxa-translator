@@ -872,7 +872,7 @@ def _inpaint_lama(img, mask):
 
 
 def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", base=None,
-               patch: bool = False) -> np.ndarray:
+               patch: bool = False, lines: bool = False) -> np.ndarray:
     """img = halaman asli (sumber deteksi huruf). base = gambar awal hasil (mis. hasil bersih lama yang
     sebagian dikembalikan ke asli); default salinan img."""
     out = img.copy() if base is None else base.copy()
@@ -1031,6 +1031,19 @@ def clean_page(img: np.ndarray, blocks: list[TextBlock], method: str = "auto", b
             rects = [(b.x, b.y, b.w, b.h) for b in blocks if b.clean and b.kind != "title"]
             keep = [(b.x, b.y, b.w, b.h) for b in blocks if not b.clean]
             out = patchfill.auto_patch(img, out, regions=rects, avoid_rects=keep, low_end=perf.low_end())
+        except Exception:
+            pass
+    if lines and method != "none" and done:
+        # 6. garis balon / garis gambar yang terputus karena ikut terhapus -> disambung ulang
+        #    (seperti memakai pen tool + alat garis: ikuti arah, tebal & warna garis aslinya)
+        try:
+            from . import linefix
+            lh_med = float(np.median([d[2] for d in done]))
+            tmask = np.zeros(img.shape[:2], np.uint8)
+            for _b, tm_, _l in done:
+                tmask |= tm_
+            out = linefix.repair(img, out, [(b.x, b.y, b.w, b.h) for b, _t, _l in done], lh=lh_med,
+                                 text_mask=tmask)
         except Exception:
             pass
     return out

@@ -17,6 +17,7 @@ DEFAULT_SETTINGS = {
     "translate_engine": "google",   # google | deepl | llm
     "clean_method": "auto",         # auto | fill | opencv | lama
     "auto_patch": True,             # setelah hapus teks: area yang kurang mulus ditambal area serupa
+    "auto_lines": True,             # setelah hapus teks: garis balon yang terputus disambung ulang
     "gpu": False,
     "deepl_key": "",
     "llm_preset": "Gemini",
@@ -467,9 +468,11 @@ def step_clean(page: Page, settings: dict, incremental: bool = True):
             for x0, y0, x1, y1 in regions:
                 base[y0:y1, x0:x1] = img[y0:y1, x0:x1]
             cleaned = inpaint.clean_page(img, redo, method, base=base,
-                                         patch=bool(settings.get("auto_patch", True)))
+                                         patch=bool(settings.get("auto_patch", True)),
+                                         lines=bool(settings.get("auto_lines", True)))
     if cleaned is None:
-        cleaned = inpaint.clean_page(img, page.blocks, method, patch=bool(settings.get("auto_patch", True)))
+        cleaned = inpaint.clean_page(img, page.blocks, method, patch=bool(settings.get("auto_patch", True)),
+                                     lines=bool(settings.get("auto_lines", True)))
     out = output_dir(page, settings) / ".cache"
     out.mkdir(exist_ok=True)
     p = out / (Path(page.path).stem + "_clean.png")
