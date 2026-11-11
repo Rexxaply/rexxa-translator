@@ -45,8 +45,13 @@ def main(out):
         w.settings["_settings_tab"] = tab
         dlg = SettingsDialog(w.settings, w, project=w.project)
         dlg.show()
-        before = arr(dlg._anim["pix"]) if dlg._anim else None
-        r0 = dlg._anim["rect"] if dlg._anim else None
+        print(f"tab {tab}: langsung setelah show -> opasitas jendela={dlg.windowOpacity()} | animasi belum mulai={dlg._anim is None}",
+              flush=True)
+        while dlg._anim is None:
+            app.processEvents()
+        before = arr(dlg._anim["pix"])
+        r0 = dlg._anim["rect"]
+        print(f"tab {tab}: saat animasi mulai -> opasitas={dlg.windowOpacity()}", flush=True)
         pump(app, 1.0)
         after = arr(dlg.sheet.grab())
         r1 = dlg.sheet.geometry()
@@ -55,6 +60,12 @@ def main(out):
         print(f"tab {tab}: posisi/ukuran isi sebelum={r0} sesudah={r1} | beda piksel rata-rata={diff:.2f}", flush=True)
         if same_size:
             Image.fromarray(np.concatenate([before, after], 1)).save(out / f"beda_tab{tab}.png")
+        if tab == 1:
+            from PySide6.QtWidgets import QLabel, QLineEdit, QCheckBox
+            tl = [x for x in dlg.findChildren((QLabel, QLineEdit, QCheckBox)) if x.toolTip() and x.objectName() != "gHint"]
+            hints = [x for x in dlg.findChildren(QLabel) if x.objectName() == "gHint" and x.toolTip()]
+            print("label/kolom/centang yang masih punya keterangan:", [x.text()[:20] if hasattr(x, "text") else "" for x in tl],
+                  "| ikon (i) berketerangan:", len(hints), flush=True)
         dlg._closing = None
         dlg.done(0)
         pump(app, 0.4)
