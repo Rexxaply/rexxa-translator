@@ -675,6 +675,7 @@ class MainWindow(QMainWindow):
         self.tabs.setObjectName("rightTabs")
         self.tabs.addTab(self._build_props(), "PROPERTI")
         self.tabs.addTab(self._build_table(), "BALON")
+        self.tabs.addTab(self._build_images_tab(), "GAMBAR")
         self.logbox = QPlainTextEdit()
         self.logbox.setReadOnly(True)
         self.logbox.setMaximumBlockCount(3000)
@@ -1217,6 +1218,10 @@ class MainWindow(QMainWindow):
         r_ib.addWidget(self.b_img_swap, 1)
         r_ib.addWidget(self.b_img_ratio, 1)
         ib.addLayout(r_ib)
+        b_key = QPushButton(icon("wand"), " Hapus latar (putih / hijau / biru…)")
+        b_key.setToolTip("Buka tab Gambar: hapus latar polos / latar kotak-kotak palsu (chroma key)")
+        b_key.clicked.connect(lambda: self.tabs.setCurrentWidget(self.img_tab))
+        ib.addWidget(b_key)
         hint = QLabel("Seret sudut = ubah ukuran (Shift = bebas)")
         hint.setObjectName("dim")
         hint.setWordWrap(True)
@@ -2225,6 +2230,7 @@ class MainWindow(QMainWindow):
 
     # ================================================================== daftar balon (tabel)
     def _fill_table(self):
+        self._fill_img_list()
         p = self.page()
         self.table.blockSignals(True)
         self.table.setRowCount(0)
@@ -2312,7 +2318,7 @@ class MainWindow(QMainWindow):
         else:
             cur.append(block)
             prim = block
-        if self.tabs.currentIndex() == 2:
+        if self.tabs.currentWidget() is self.logbox:
             self.tabs.setCurrentIndex(0)
         self._select(prim, from_canvas=True, multi=cur if len(cur) > 1 else None)
         if prim is None:
@@ -2333,7 +2339,8 @@ class MainWindow(QMainWindow):
 
     def _on_canvas_select(self, block):
         self._select(block, from_canvas=True)
-        if block is not None and self.tabs.currentIndex() == 2:
+        if block is not None and (self.tabs.currentWidget() is self.logbox
+                                  or (self.tabs.currentWidget() is self.img_tab and block.kind != "image")):
             self.tabs.setCurrentIndex(0)
         if block is None:
             self.table.clearSelection()
@@ -2397,7 +2404,9 @@ class MainWindow(QMainWindow):
             op = getattr(b, "opacity", 1.0)
             self.p_opacity.setValue(int(round(100 * (1.0 if op is None else float(op)))))
             self._image_mode(is_img)
+            self._sync_img_tab(b if is_img else None)
         else:
+            self._sync_img_tab(None)
             self._image_mode(False)
             self.sections[3].set_chip("")
             self._note_mode(False)
@@ -4079,13 +4088,14 @@ class MainWindow(QMainWindow):
         return f
 
     def add_image_layer(self):
-        """Alat Gambar (I): pilih gambar dari galeri / folder lalu tempel sebagai lapisan di halaman ini
-        (mis. judul chapter, logo, kredit). Bisa digeser, diubah ukurannya, dan diberi opasitas."""
+        """Alat Gambar (I): buka tab Gambar lalu pilih gambar dari galeri / folder; gambar jadi lapisan di
+        halaman ini (mis. judul chapter, logo, kredit) yang bisa digeser, diubah ukurannya, dihapus latarnya."""
         if not self.page() or self.thread:
             return
-        f = self._pick_image_file("Tambah gambar ke halaman")
-        if f:
-            self._place_image_layer(f)
+        if not self.insp_slide.open:
+            self.toggle_inspector(True)
+        self.tabs.setCurrentWidget(self.img_tab)
+        self._add_images_dialog()
 
     def _store_layer(self, src):
         from core import titlelogo
@@ -4095,7 +4105,7 @@ class MainWindow(QMainWindow):
             self.log(f"Gambar tidak bisa dibaca: {e}")
             return ""
 
-    def _place_image_layer(self, src):
+    def _place_image_layer(self, src, offset: int = 0):
         p = self.page()
         if not p:
             return
@@ -4114,22 +4124,324 @@ class MainWindow(QMainWindow):
         k = min(1.0, pw * 0.7 / iw, max(40.0, vis.height() * 0.7) / ih)
         w_, h_ = max(8, int(iw * k)), max(8, int(ih * k))
         c = vis.center()                                    # di tengah bagian halaman yang sedang terlihat
-        x = int(min(max(0, c.x() - w_ / 2), max(0, pw - w_)))
-        y = int(min(max(0, c.y() - h_ / 2), max(0, ph - h_)))
+        x = int(min(max(0, c.x() - w_ / 2 + offset), max(0, pw - w_)))
+        y = int(min(max(0, c.y() - h_ / 2 + offset), max(0, ph - h_)))
         self._snap()
         b = TextBlock(x=x, y=y, w=w_, h=h_, kind="image", clean=False, note=True, source="", translation="",
-                      title_image=path, title_fit="stretch", title_keep_bg=True, opacity=1.0)
+                      title_image=path, layer_src=path, title_fit="stretch", title_keep_bg=True, opacity=1.0)
         p.blocks.append(b)
         self.sel, self.multi = b, []
         self.set_tool("select")
         self._show_current()
-        self.tabs.setCurrentIndex(0)
+        if self.tabs.currentWidget() is not self.img_tab:
+            self.tabs.setCurrentIndex(0)
         if p.cleaned_path and Path(p.cleaned_path).exists():
             self._schedule_render()
         elif all(getattr(x_, "note", False) for x_ in p.blocks):
             self.render_current()          # halaman tanpa balon (mis. halaman judul): langsung jadi hasil
         self.status_lbl.setText("Gambar ditambahkan — seret untuk memindahkan, tarik sudutnya untuk mengubah ukuran.")
         self.log(f"Lapisan gambar ditambahkan ({iw}×{ih}px).")
+
+    # ---------------------------------------------------------------- tab Gambar
+    def _build_images_tab(self):
+        """Tab GAMBAR: tambah gambar (seret & lepas / pilih dari folder / Ctrl+V), daftar lapisan gambar di
+        halaman ini, dan hapus latar (chroma key)."""
+        from PySide6.QtWidgets import QButtonGroup, QListWidget, QScrollArea
+        mw = self
+        IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+
+        def files_of(md):
+            return [u.toLocalFile() for u in md.urls() if u.isLocalFile()
+                    and Path(u.toLocalFile()).suffix.lower() in IMG_EXT] if md.hasUrls() else []
+
+        class DropZone(QFrame):
+            def __init__(self):
+                super().__init__()
+                self.setObjectName("dropZone")
+                self.setAcceptDrops(True)
+                self.setCursor(Qt.PointingHandCursor)
+                self.setProperty("hot", False)
+                v = QVBoxLayout(self)
+                v.setContentsMargins(10, 12, 10, 12)
+                v.setSpacing(4)
+                ic = QLabel()
+                ic.setPixmap(icon("image").pixmap(26, 26))
+                ic.setAlignment(Qt.AlignCenter)
+                t1 = QLabel("<b>Seret gambar ke sini</b>")
+                t1.setAlignment(Qt.AlignCenter)
+                t2 = QLabel("atau klik untuk pilih dari folder · Ctrl+V")
+                t2.setObjectName("dim")
+                t2.setAlignment(Qt.AlignCenter)
+                for x in (ic, t1, t2):
+                    x.setAttribute(Qt.WA_TransparentForMouseEvents)
+                    v.addWidget(x)
+
+            def _hot(self, on):
+                self.setProperty("hot", on)
+                self.style().unpolish(self)
+                self.style().polish(self)
+
+            def mouseReleaseEvent(self, e):
+                if e.button() == Qt.LeftButton:
+                    mw._add_images_dialog()
+
+            def dragEnterEvent(self, e):
+                if files_of(e.mimeData()) or e.mimeData().hasImage():
+                    e.acceptProposedAction()
+                    self._hot(True)
+
+            def dragLeaveEvent(self, e):
+                self._hot(False)
+
+            def dropEvent(self, e):
+                self._hot(False)
+                fs = files_of(e.mimeData())
+                if fs:
+                    mw._add_image_files(fs)
+                elif e.mimeData().hasImage():
+                    from PySide6.QtCore import QBuffer, QIODevice
+                    buf = QBuffer()
+                    buf.open(QIODevice.WriteOnly)
+                    e.mimeData().imageData().save(buf, "PNG")
+                    mw._place_image_layer(bytes(buf.data()))
+                e.acceptProposedAction()
+
+        page_w = QWidget()
+        v = QVBoxLayout(page_w)
+        v.setContentsMargins(4, 6, 4, 6)
+        v.setSpacing(8)
+        self.drop_zone = DropZone()
+        v.addWidget(self.drop_zone)
+
+        lst = Section("Gambar di halaman ini")
+        self.img_list = QListWidget()
+        self.img_list.setObjectName("imgList")
+        self.img_list.setIconSize(QSize(40, 40))
+        self.img_list.setFixedHeight(150)
+        self.img_list.setSpacing(2)
+        self.img_list.currentRowChanged.connect(self._on_img_list_row)
+        lst.lay.addWidget(self.img_list)
+        self.img_empty = QLabel("Belum ada gambar di halaman ini.")
+        self.img_empty.setObjectName("dim")
+        self.img_empty.setAlignment(Qt.AlignCenter)
+        lst.lay.addWidget(self.img_empty)
+        v.addWidget(lst)
+
+        key = Section("Hapus latar")
+        self.key_sec = key
+        tip = QLabel("Latar polos / kotak-kotak palsu jadi transparan (chroma key).")
+        tip.setObjectName("dim")
+        tip.setWordWrap(True)
+        key.lay.addWidget(tip)
+        grid = QGridLayout()
+        grid.setSpacing(4)
+        self.key_btns = {}
+        self.key_group = QButtonGroup(self)
+        self.key_group.setExclusive(True)
+        opts = (("", "Tidak", "Tampilkan gambar apa adanya"),
+                ("auto", "Otomatis", "Warna latar dibaca dari tepi gambar (juga latar kotak-kotak palsu)"),
+                ("white", "Putih", "Hapus latar putih"),
+                ("green", "Hijau", "Hapus layar hijau (green screen)"),
+                ("blue", "Biru", "Hapus layar biru"),
+                ("custom", "Warna…", "Pilih sendiri warna latar yang dihapus"))
+        for i, (k, label, tt) in enumerate(opts):
+            bt = QPushButton(label)
+            bt.setObjectName("keyBtn")
+            bt.setCheckable(True)
+            bt.setToolTip(tt)
+            bt.clicked.connect(lambda _c=False, k=k: self._on_key_mode(k))
+            self.key_group.addButton(bt)
+            self.key_btns[k] = bt
+            grid.addWidget(bt, i // 3, i % 3)
+        key.lay.addLayout(grid)
+
+        def row(label, field, tt):
+            r = QHBoxLayout()
+            lb = QLabel(label)
+            lb.setObjectName("dim")
+            lb.setToolTip(tt)
+            field.setToolTip(tt)
+            r.addWidget(lb)
+            r.addStretch(1)
+            r.addWidget(field)
+            key.lay.addLayout(r)
+        self.key_tol = NumField(0, 100, 5, 0, suffix="%", default=30)
+        self.key_soft = NumField(0, 100, 5, 0, suffix="%", default=20)
+        row("Toleransi", self.key_tol, "Makin besar = warna yang mirip latar ikut terhapus")
+        row("Halus tepi", self.key_soft, "Peralihan tepi yang lembut (tidak bergerigi)")
+        self.key_edge = QCheckBox("Hanya latar di tepi (isi gambar aman)")
+        self.key_edge.setToolTip("Warna yang sama DI DALAM gambar (mis. tulisan putih di logo) tidak ikut dihapus")
+        self.key_edge.setChecked(True)
+        key.lay.addWidget(self.key_edge)
+        self.key_info = QLabel("")
+        self.key_info.setObjectName("dim")
+        key.lay.addWidget(self.key_info)
+        self.key_tol.valueChanged.connect(lambda _v: self._key_timer.start())
+        self.key_soft.valueChanged.connect(lambda _v: self._key_timer.start())
+        self.key_edge.toggled.connect(lambda _v: self._key_timer.start())
+        self._key_timer = QTimer(self)
+        self._key_timer.setSingleShot(True)
+        self._key_timer.setInterval(140)
+        self._key_timer.timeout.connect(self._apply_key_ui)
+        v.addWidget(key)
+        v.addStretch(1)
+
+        sc = QScrollArea()
+        sc.setWidgetResizable(True)
+        sc.setFrameShape(QFrame.NoFrame)
+        sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        sc.setWidget(page_w)
+        self.img_tab = sc
+        self._sync_img_tab(None)
+        return sc
+
+    def _add_images_dialog(self):
+        if not self.page() or self.thread:
+            self.status_lbl.setText("Buka halaman dulu untuk menambahkan gambar.")
+            return
+        start = self.settings.get("last_image_dir", "") or str(Path.home() / "Pictures")
+        fs, _ = QFileDialog.getOpenFileNames(self, "Tambah gambar ke halaman", start,
+                                             "Gambar (*.png *.jpg *.jpeg *.webp *.bmp *.gif);;Semua file (*)")
+        if fs:
+            self.settings["last_image_dir"] = str(Path(fs[0]).parent)
+            self._add_image_files(fs)
+
+    def _add_image_files(self, files):
+        if not self.page() or self.thread:
+            self.status_lbl.setText("Buka halaman dulu untuk menambahkan gambar.")
+            return
+        for i, f in enumerate(files[:12]):
+            self._place_image_layer(f, offset=i * 30)
+
+    @staticmethod
+    def _checker_icon(path, size=40):
+        """Ikon gambar di atas latar kotak-kotak (bagian transparan terlihat jelas)."""
+        from PySide6.QtGui import QPainter
+        pm = QPixmap(size, size)
+        pm.fill(QColor(70, 74, 90))
+        p = QPainter(pm)
+        c = size // 5
+        for yy in range(0, size, c):
+            for xx in range(0, size, c):
+                if (xx // c + yy // c) % 2 == 0:
+                    p.fillRect(xx, yy, c, c, QColor(110, 115, 132))
+        src = QPixmap(path)
+        if not src.isNull():
+            sm = src.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            p.drawPixmap((size - sm.width()) // 2, (size - sm.height()) // 2, sm)
+        p.end()
+        return QIcon(pm)
+
+    def _fill_img_list(self):
+        if not hasattr(self, "img_list"):
+            return
+        p = self.page()
+        layers = [b for b in (p.blocks if p else []) if b.kind == "image"]
+        self.img_list.blockSignals(True)
+        self.img_list.clear()
+        from PySide6.QtWidgets import QListWidgetItem
+        for b in layers:
+            n = p.blocks.index(b) + 1
+            name = Path(b.layer_src or b.title_image or "").name
+            extra = {"auto": "latar otomatis", "white": "tanpa putih", "green": "tanpa hijau",
+                     "blue": "tanpa biru", "black": "tanpa hitam", "custom": "tanpa warna"}.get(b.key_mode, "")
+            it = QListWidgetItem(self._checker_icon(b.title_image),
+                                 f"Gambar #{n}  ·  {b.w}×{b.h}" + (f"\n{extra}" if extra else f"\n{name[:22]}"))
+            it.setToolTip(name)
+            self.img_list.addItem(it)
+        cur = next((i for i, b in enumerate(layers) if b is self.sel), -1)
+        self.img_list.setCurrentRow(cur)
+        self.img_list.blockSignals(False)
+        self.img_list.setVisible(bool(layers))
+        self.img_empty.setVisible(not layers)
+        self._img_layers = layers
+
+    def _on_img_list_row(self, r):
+        layers = getattr(self, "_img_layers", [])
+        if 0 <= r < len(layers) and layers[r] is not self.sel:
+            self._select(layers[r])
+
+    def _sync_img_tab(self, b):
+        """Isi kontrol "Hapus latar" dari lapisan gambar terpilih (atau nonaktif bila tidak ada)."""
+        if not hasattr(self, "key_sec"):
+            return
+        on = b is not None
+        self.key_sec.setEnabled(on)
+        was = self._loading
+        self._loading = True
+        mode = (b.key_mode or "") if on else ""
+        for k, bt in self.key_btns.items():
+            bt.setChecked(k == mode)
+        self.key_tol.setValue(float(b.key_tol if on else 30))
+        self.key_soft.setValue(float(b.key_soft if on else 20))
+        self.key_edge.setChecked(bool(b.key_edge) if on else True)
+        if on and b.key_mode == "custom" and b.key_color:
+            self.key_btns["custom"].setStyleSheet(f"border-left: 5px solid {b.key_color};")
+        else:
+            self.key_btns["custom"].setStyleSheet("")
+        self.key_info.setText("" if on else "Pilih gambar di daftar / di halaman.")
+        self._loading = was
+        if hasattr(self, "_img_layers"):
+            self.img_list.blockSignals(True)
+            self.img_list.setCurrentRow(next((i for i, x in enumerate(self._img_layers) if x is b), -1))
+            self.img_list.blockSignals(False)
+
+    def _on_key_mode(self, k):
+        ts = self._layer_targets()
+        if not ts:
+            return
+        if k == "custom":
+            c = QColorDialog.getColor(QColor(ts[0].key_color or "#00ff00"), self, "Warna latar yang dihapus")
+            if not c.isValid():
+                self._sync_img_tab(ts[0])
+                return
+            for t in ts:
+                t.key_color = c.name()
+        self._apply_key_ui(mode=k)
+
+    def _apply_key_ui(self, mode=None):
+        if self._loading:
+            return
+        ts = self._layer_targets()
+        if not ts:
+            return
+        self._snap(("key", ts[0].id))
+        for t in ts:
+            if mode is not None:
+                t.key_mode = mode
+            t.key_tol = float(self.key_tol.value())
+            t.key_soft = float(self.key_soft.value())
+            t.key_edge = self.key_edge.isChecked()
+            self._key_layer(t)
+        self._after_layer_edit()
+        self._sync_img_tab(ts[0])
+
+    def _key_layer(self, t):
+        """Buat ulang gambar lapisan dari gambar aslinya dengan setelan hapus latar sekarang."""
+        from core import chroma
+        if not t.layer_src:
+            t.layer_src = t.title_image
+        src = t.layer_src
+        if not t.key_mode:
+            t.title_image = src
+            self.key_info.setText("")
+            return
+        try:
+            cache = getattr(self, "_key_src", None)
+            if cache is None or cache[0] != src:
+                from PIL import Image
+                import numpy as np
+                cache = self._key_src = (src, np.asarray(Image.open(src).convert("RGBA")))
+            arr = cache[1]
+            out = chroma.remove_background(arr, t.key_mode, t.key_tol, t.key_soft, edge_only=t.key_edge,
+                                           custom=t.key_color)
+            from PIL import Image
+            path = self._store_layer(Image.fromarray(out, "RGBA"))
+            if path:
+                t.title_image = path
+                self.key_info.setText(f"Latar terhapus: {round(100 * chroma.removed_ratio(arr, out))}% gambar")
+        except Exception as e:
+            self.log(f"Hapus latar gagal: {e}")
 
     def _layer_targets(self):
         return [t for t in self._targets() if t.kind == "image"]
@@ -4169,9 +4481,11 @@ class MainWindow(QMainWindow):
         sz = QImageReader(path).size()
         self._snap()
         for t in ts:
-            t.title_image = path
+            t.title_image = t.layer_src = path
             if sz.width() > 0 and sz.height() > 0:
                 t.h = max(8, int(round(t.w * sz.height() / sz.width())))
+            if t.key_mode:
+                self._key_layer(t)                 # latar gambar baru langsung dihapus dengan setelan yang sama
         self._after_layer_edit()
 
     def _layer_ratio(self):
@@ -4181,7 +4495,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtGui import QImageReader
         self._snap()
         for t in ts:
-            sz = QImageReader(t.title_image).size()
+            sz = QImageReader(t.layer_src or t.title_image).size()
             if sz.width() > 0 and sz.height() > 0:
                 t.h = max(8, int(round(t.w * sz.height() / sz.width())))
         self._after_layer_edit()
@@ -4505,6 +4819,15 @@ STYLE += """
 #chrome QLabel#fieldLabel { color: rgba(225,229,242,0.55); font-size: 7.5pt; }
 #chrome QPushButton#danger { color: #ff8a95; }
 #chrome QTabWidget#rightTabs::pane { border: none; background: transparent; top: 4px; }
+#chrome QFrame#dropZone { background: rgba(255,255,255,0.035); border: 1.5px dashed rgba(200,208,235,0.32);
+  border-radius: 14px; }
+#chrome QFrame#dropZone:hover { background: rgba(124,108,255,0.10); border-color: rgba(160,150,255,0.7); }
+#chrome QFrame#dropZone[hot="true"] { background: rgba(124,108,255,0.20); border: 1.5px solid #8f80ff; }
+#chrome QPushButton#keyBtn { padding: 4px 2px; border-radius: 9px; font-size: 8pt; }
+#chrome QPushButton#keyBtn:checked { background: rgba(124,108,255,0.55); color: white; border-color: #8f80ff; }
+#chrome QListWidget#imgList { background: transparent; border: none; }
+#chrome QListWidget#imgList::item { padding: 3px; border-radius: 8px; color: #dde2ef; }
+#chrome QListWidget#imgList::item:selected { background: rgba(124,108,255,0.35); }
 #chrome QTabWidget#rightTabs QTabBar { background: transparent; }
 #chrome QTabWidget#rightTabs QTabBar::tab { background: transparent; color: rgba(225,229,242,0.56); border: none;
   padding: 5px 9px; margin: 2px 1px; border-radius: 11px; font-size: 7.5pt; font-weight: 700; }
