@@ -198,9 +198,12 @@ class GlassDialog(QDialog):
         self.title_lbl.setObjectName("gTitle")
         self.sub_lbl = QLabel(subtitle)
         self.sub_lbl.setObjectName("gSub")
-        self.sub_lbl.setVisible(bool(subtitle))
         tl.addWidget(self.title_lbl)
         tl.addWidget(self.sub_lbl)
+        # Sembunyikan SETELAH label punya induk. Kalau setVisible(True) dipanggil saat label belum punya induk,
+        # Windows menampilkannya sebagai jendela sendiri (bar judul "Rexxa Translator") sepersekian detik.
+        if not subtitle:
+            self.sub_lbl.hide()
         head.addLayout(tl, 1)
         self.head_extra = QHBoxLayout()
         head.addLayout(self.head_extra)

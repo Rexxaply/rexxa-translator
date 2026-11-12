@@ -110,6 +110,11 @@ def main(out):
         threading.Thread(target=watcher, daemon=True).start()
         threading.Thread(target=grabber, daemon=True).start()
         QTimer.singleShot(1500, finish)
+        from gui.alert import Alert
+        from gui.dialogs import NameDialog
+        Alert(w, "Tes", "Judul", "detail", kind="warn")
+        NameDialog(w, "Nama", "x")
+        log.append(("--- setelah Alert & NameDialog dibuat ---",))
         w.edit_settings()
     QTimer.singleShot(100, go)
     app.exec()
