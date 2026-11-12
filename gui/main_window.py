@@ -109,7 +109,7 @@ class Section(QWidget):
         self.lay.setContentsMargins(0, 4, 0, 0)
         self.lay.setSpacing(6)
         v = QVBoxLayout(self)
-        v.setContentsMargins(10, 7, 10, 10)
+        v.setContentsMargins(9, 6, 9, 9)
         v.setSpacing(0)
         v.addLayout(hd)
         v.addWidget(self.body)
@@ -643,7 +643,7 @@ class MainWindow(QMainWindow):
         il = QVBoxLayout(insp)
         il.setContentsMargins(6, 8, 4, 8)
         il.addWidget(self.tabs)
-        self.insp_slide = SlidePanel(insp, 252)
+        self.insp_slide = SlidePanel(insp, 276)
         self.insp_slide.toggled.connect(lambda _on: QTimer.singleShot(0, self._fit_both))
 
         # ---- kiri: kolom alat mengambang
