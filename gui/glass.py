@@ -32,6 +32,7 @@ QComboBox QAbstractItemView::item:selected { color: white;
 QMenu { background: transparent;
     border: none; border-radius: 12px; padding: 6px; }
 QMenu::item { padding: 7px 20px 7px 12px; border-radius: 8px; color: #e3e7f3; }
+QMenu::item:disabled { color: rgba(225,229,242,0.62); }
 QMenu::item:selected { color: white; background: rgba(140,130,230,0.55); }
 QListWidget, QTableWidget, QTreeWidget { background: rgba(0,0,0,0.18); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; }
 QLabel#gTitle { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; font-size: 13pt; font-weight: 800; color: #f2f4fb; }

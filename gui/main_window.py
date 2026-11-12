@@ -4001,7 +4001,8 @@ QMenu { background: transparent;
 QMenu::item { padding: 7px 20px 7px 12px; border-radius: 8px; margin: 1px 0; color: #e3e7f3; }
 QMenu::item:selected { color: white;
   background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(111,143,232,0.62), stop:1 rgba(143,120,224,0.62)); }
-QMenu::item:disabled { color: #6b7391; }
+QMenu::item:disabled { color: rgba(225,229,242,0.62); }
+QMenu#toolFly::item:disabled { color: rgba(225,229,242,0.70); font-size: 8pt; }
 QMenu::separator { height: 1px; background: rgba(255,255,255,0.09); margin: 5px 8px; }
 QMenu::icon { padding-left: 6px; }
 QCheckBox { spacing: 8px; background: transparent; }
