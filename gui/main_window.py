@@ -88,7 +88,7 @@ class Section(QWidget):
         self.btn.setCheckable(True)
         self.btn.setChecked(True)
         self.btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self.btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.btn.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         self.btn.toggled.connect(self._toggle)
         self.chip = QLabel("")
         self.chip.setObjectName("chip")
@@ -96,7 +96,8 @@ class Section(QWidget):
         hd = QHBoxLayout()
         hd.setContentsMargins(0, 0, 0, 0)
         hd.setSpacing(4)
-        hd.addWidget(self.btn, 1)
+        hd.addWidget(self.btn)
+        hd.addStretch(1)
         hd.addWidget(self.chip)
         self.body = QWidget()
         self.body.setObjectName("sectionBody")
@@ -2176,7 +2177,7 @@ class MainWindow(QMainWindow):
     def _color_btn(btn, color):
         btn.setText("")
         btn.setToolTip(f"{btn.toolTip().split('  ·')[0]}  ·  {color.upper()}")
-        btn.setStyleSheet(f"background:{color}; border:1px solid #4b5470; border-radius:4px;")
+        btn.setStyleSheet(f"background:{color}; border:1.5px solid rgba(255,255,255,0.45); border-radius:10px;")
 
     def _on_src_text(self):
         if self._loading or not self.sel:
@@ -2500,10 +2501,10 @@ class MainWindow(QMainWindow):
             css = css_preview(b.grad_type or "linear", b.grad_angle if b.grad_angle is not None else 90,
                               b.color, b.color2, b.grad_pos if b.grad_pos is not None else 0.5,
                               b.grad_soft if b.grad_soft is not None else 1.0)
-            self.p_color2.setStyleSheet(f"background: {css}; border:1px solid #4b5470; border-radius:4px;")
+            self.p_color2.setStyleSheet(f"background: {css}; border:1.5px solid rgba(255,255,255,0.45); border-radius:10px;")
         else:
             self.p_color2.setText("")
-            self.p_color2.setStyleSheet("background: transparent; border:1px dashed #4b5470; border-radius:4px;")
+            self.p_color2.setStyleSheet("background: transparent; border:1.5px dashed rgba(255,255,255,0.35); border-radius:10px;")
         self.p_grad_off.setEnabled(bool(b.color2))
 
     def _clear_gradient(self):
