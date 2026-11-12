@@ -4226,6 +4226,8 @@ def run():
     uifonts.load()
     from .glass import install_popup_fx
     install_popup_fx(app)                 # dropdown & menu: sudut membulat transparan + muncul halus
+    from .glass import install_smooth_scroll
+    install_smooth_scroll(app)            # semua gulir: meluncur halus, per 10 px (touchpad 5 px)
     app.setStyleSheet(STYLE + extra)
     ic = code_dir() / "assets" / "icon.png"
     if ic.exists():
