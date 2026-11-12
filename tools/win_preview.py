@@ -79,8 +79,8 @@ def main(out):
 
     def grab():
         g = fc.mapToGlobal(fc.rect().topLeft())
-        x0, y0 = g.x() - 40, g.y() - 40
-        return ImageGrab.grab(bbox=(x0, y0, x0 + 420, y0 + 460), all_screens=True)
+        x0, y0 = g.x() - 200, g.y() - 40
+        return ImageGrab.grab(bbox=(x0, y0, x0 + 480, y0 + 380), all_screens=True)
     import traceback
     _orig_rev = fc._revert
 

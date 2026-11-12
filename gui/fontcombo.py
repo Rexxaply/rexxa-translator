@@ -151,11 +151,10 @@ class FontCombo(QComboBox):
         pop.setItemDelegate(_Delegate(pop, query=lambda: self._proxy.q))
         pop.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._comp.setPopup(pop)
-        try:                                  # panel kaca membulat seperti dropdown lain
-            from .glass import _PopupFx
-            _PopupFx._prep(pop)
-        except Exception:
-            pass
+        # panel membulat tanpa pojok hitam: jendela transparan + tanpa bingkai (lihat glass._PopupFx._prep);
+        # latar panelnya digambar stylesheet QListView#fontSearch
+        pop.setAttribute(Qt.WA_TranslucentBackground, True)
+        pop.setWindowFlags(pop.windowFlags() | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
         self.setCompleter(None)
         self._comp.setWidget(le)
         pop.clicked.connect(lambda ix: self._picked(ix.data()))

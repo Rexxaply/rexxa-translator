@@ -3595,7 +3595,8 @@ QComboBox QAbstractItemView::item:hover { background: rgba(255,255,255,0.07); }
 QComboBox QAbstractItemView::item:selected { color: white;
   background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(111,143,232,0.62), stop:1 rgba(143,120,224,0.62)); }
 /* pencarian font: daftar hasil saring (panel kaca seperti dropdown) */
-QListView#fontSearch { background: transparent; border: none; padding: 5px; outline: 0; color: #e3e7f3; }
+QListView#fontSearch { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(40,45,66,0.98), stop:1 rgba(26,29,44,0.98));
+  border: 1px solid rgba(255,255,255,0.16); border-radius: 12px; padding: 5px; outline: 0; color: #e3e7f3; }
 QListView#fontSearch > QWidget { background: transparent; }
 QListView#fontSearch::item { min-height: 30px; padding: 2px 10px; border-radius: 8px; margin: 1px 0; }
 QListView#fontSearch::item:hover { background: rgba(255,255,255,0.07); }
