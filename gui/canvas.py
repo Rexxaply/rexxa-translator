@@ -312,6 +312,44 @@ class PageCanvas(QGraphicsView):
         if fit:
             self.fit()
 
+    @staticmethod
+    def changed_rect(img, prev):
+        """Kotak (x0, y0, x1, y1) yang berbeda antara dua gambar BGR, None = sama persis.
+        Cepat (±5 ms untuk halaman webtoon) sehingga bisa dipanggil di setiap ketikan."""
+        import cv2
+        h = img.shape[0]
+        d = cv2.absdiff(img.reshape(h, -1), prev.reshape(h, -1))
+        bx, by, bw, bh = cv2.boundingRect(d)
+        if bw == 0 or bh == 0:
+            return None
+        return bx // 3, by, (bx + bw + 2) // 3, by + bh
+
+    def show_live(self, img, rect=None):
+        """Ganti gambar yang tampil dengan `img` (numpy BGR) TANPA membangun ulang adegan.
+        rect = area yang berubah (lihat changed_rect): hanya area itu yang digambar ulang."""
+        if self.pix_item is None or img is None:
+            return
+        import numpy as np
+        from PySide6.QtGui import QImage, QPainter
+        h, w = img.shape[:2]
+        pm = self._pm
+        if rect is not None and pm is not None and pm.width() == w and pm.height() == h:
+            x0, y0, x1, y1 = rect
+            part = np.ascontiguousarray(img[y0:y1, x0:x1])
+            qi = QImage(part.data, x1 - x0, y1 - y0, part.strides[0], QImage.Format.Format_BGR888)
+            p = QPainter(pm)
+            p.setCompositionMode(QPainter.CompositionMode_Source)
+            p.drawImage(x0, y0, qi)
+            p.end()
+        else:
+            arr = np.ascontiguousarray(img)
+            qi = QImage(arr.data, w, h, arr.strides[0], QImage.Format.Format_BGR888)
+            pm = QPixmap.fromImage(qi)
+            if pm.width() != self.scene().sceneRect().width() or pm.height() != self.scene().sceneRect().height():
+                self.scene().setSceneRect(QRectF(pm.rect()))
+        self._pm, self._pm_key = pm, ("live", id(img))
+        self.pix_item.setPixmap(pm)
+
     def set_blocks(self, blocks):
         for b in self.boxes:
             self.scene().removeItem(b)
