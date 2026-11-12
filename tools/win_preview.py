@@ -149,8 +149,14 @@ def main(out):
     pump(0.3)
     cv = w.cv_src
     cv.setFocus()
+    w.activateWindow()
+    w.raise_()
+    pump(0.3)
+    print("aktif:", QApplication.activeWindow() is w, "| fokus:", type(QApplication.focusWidget()).__name__,
+          "| boleh:", w._space_allowed(), flush=True)
     QApplication.sendEvent(cv, QKeyEvent(_E.KeyPress, Qt.Key_Control, Qt.ControlModifier))
     pump(0.2)
+    print("setelah tekan Ctrl: ctrl_held", type(cv).ctrl_held, flush=True)
     b = p.blocks[2]
     x0, y0 = b.x, b.y
     item = next(bx for bx in cv.boxes if bx.block is b)
