@@ -170,10 +170,12 @@ def main(out):
                            btns, Qt.ControlModifier)
     QApplication.sendEvent(cv.viewport(), me(_E.MouseButtonPress, c, Qt.LeftButton))
     pump(0.05)
-    print("setelah klik: balon terpilih =", w.sel is b, flush=True)
+    print("setelah klik: balon terpilih =", w.sel is b, "| item masih ada", item in cv.boxes,
+          "| mode", item._mode, "| grabber", type(cv.scene().mouseGrabberItem()).__name__, flush=True)
     for k in range(1, 9):
         QApplication.sendEvent(cv.viewport(), me(_E.MouseMove, c + QPoint(k * 6, k * 4), Qt.LeftButton))
         pump(0.03)
+    print("setelah gerak: pos item", item.pos(), "| mode", item._mode, flush=True)
     QApplication.sendEvent(cv.viewport(), me(_E.MouseButtonRelease, c + QPoint(48, 32), Qt.NoButton))
     pump(0.3)
     QApplication.sendEvent(cv, QKeyEvent(_E.KeyRelease, Qt.Key_Control, Qt.NoModifier))
