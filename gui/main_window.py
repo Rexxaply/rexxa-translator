@@ -569,6 +569,7 @@ class MainWindow(QMainWindow):
                 pill.setPopupMode(QToolButton.InstantPopup)
             pill.move(10, 10)
             pill.raise_()
+            QTimer.singleShot(0, pill.adjustSize)
             w.header = pill
             # lebar ditentukan layout (50:50), bukan isi panel -> kedua panel selalu sama lebar
             w.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
@@ -1965,6 +1966,7 @@ class MainWindow(QMainWindow):
             "PRATINJAU": "HASIL · belum diterjemahkan",
         }[kind])
         self.col_out.header.adjustSize()
+        self.col_src.header.adjustSize()
         if fit:
             QTimer.singleShot(0, self._fit_both)
         else:
