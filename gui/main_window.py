@@ -2169,7 +2169,9 @@ class MainWindow(QMainWindow):
         if b:
             idx = self.page().blocks.index(b) + 1 if self.page() and b in self.page().blocks else ""
             n = len(self._targets())
-            self.sections[0].set_chip(f"Balon #{idx}" + (f" +{n - 1}" if n > 1 else ""))
+            self._note_mode(bool(getattr(b, "note", False)) and n == 1)
+            self.sections[0].set_chip(("Teks" if getattr(b, "note", False) else "Balon") + f" #{idx}"
+                                      + (f" +{n - 1}" if n > 1 else ""))
             self.multi_bar.setVisible(n > 1)
             if n > 1:
                 self.multi_lbl.setText(f"<b>{n} balon dipilih</b> — ubahan gaya berlaku ke semua")
@@ -2204,6 +2206,7 @@ class MainWindow(QMainWindow):
             self.p_clean.setChecked(b.clean)
             self.b_title.setVisible(b.kind == "title")
         else:
+            self._note_mode(False)
             self.sections[0].set_chip("")
             self.multi_bar.setVisible(False)
             self.e_src.clear()
@@ -2219,6 +2222,27 @@ class MainWindow(QMainWindow):
             for btn in (self.p_color, self.p_color2, self.p_stroke_color):
                 btn.setStyleSheet("")
         self._loading = False
+
+    def _note_mode(self, on: bool):
+        """Teks bebas (alat T) punya panel sendiri: tanpa OCR / terjemah, tanpa preset & jumlah baris,
+        tanpa jenis balon / hapus latar. Ukuran selalu angka (bukan Auto)."""
+        if getattr(self, "_note_on", None) == on:
+            return
+        self._note_on = on
+        s1, s2, s_col, s3 = self.sections
+        s1.btn.setText("Teks" if on else "Terjemahan")
+        s2.btn.setText("Gaya teks" if on else "Tipografi")
+        s3.btn.setText("Teks bebas" if on else "Balon")
+        for wd in (self.e_src, self.b_reocr, self.b_retr, self.p_match, self.p_kind, self.p_clean,
+                   self.p_lines.parentWidget(), self.p_lines_m, self.p_lines_p, *self.p_presets):
+            wd.setVisible(not on)
+        for lbl in getattr(self, "_tr_labels", []):
+            lbl.setVisible(not on)
+        self.e_tr.setPlaceholderText("Tulis catatan / info di sini…" if on else "Tulis / perbaiki terjemahan…")
+        self.e_tr.setFixedHeight(84 if on else 58)
+        self.p_size.setSpecialValueText("" if on else "Auto")
+        self.p_size.setRange(8 if on else 0, 300)
+        self.b_del.setText(" Hapus teks ini" if on else " Hapus balon ini")
 
     @staticmethod
     def _color_btn(btn, color):
@@ -2341,7 +2365,7 @@ class MainWindow(QMainWindow):
     def _update_fit_text(self, b=None):
         """Ukuran Auto ditampilkan dengan angka hasil render terakhir, mis. "Auto · 24"."""
         b = b or self.sel
-        if not b:
+        if not b or getattr(b, "note", False):      # teks bebas: ukuran selalu angka, tanpa Auto
             return
         self.p_size.setSpecialValueText(f"Auto · {b.fit_size}" if b.fit_size else "Auto")
 
@@ -2595,7 +2619,7 @@ class MainWindow(QMainWindow):
         w_, h_ = int(pw * 0.36), int(fs * 3.2)
         # catatan / info: ukuran tetap (tidak ikut dikecilkan balon lain), huruf sesuai ketikan, tidak miring
         b = TextBlock(x=int(pt.x() - w_ / 2), y=int(pt.y() - h_ / 2), w=w_, h=h_, kind="free", clean=False,
-                      source="", translation="", font_size=fs, italic=False, case="none",
+                      source="", translation="", font_size=fs, italic=False, case="none", note=True,
                       stroke_width=int(self.settings.get("default_stroke", 0)))
         p.blocks.append(b)
         self.sel = b

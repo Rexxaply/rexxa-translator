@@ -51,6 +51,7 @@ class TextBlock:
     title_scale: float = 1.0  # skala gambar judul di dalam kotak
     title_keep_bg: bool = False  # True = logo asli TIDAK dihapus sebelum gambar ditempel
     shape: str = ""           # "" = kotak, "oval" = balon oval buatan sendiri (kontur ikut kotak saat diubah)
+    note: bool = False        # teks bebas dari alat Teks (catatan / info): tidak di-OCR / diterjemah / dihapus latarnya
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
 
     @property
