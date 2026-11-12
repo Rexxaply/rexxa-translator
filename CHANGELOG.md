@@ -8,6 +8,11 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.3.6 · Patch update
+- Membuka Pengaturan: tidak ada lagi jendela kecil berbar judul "Rexxa Translator" yang muncul sesaat sebelum pop-up.
+- Animasi pop-up tidak lagi tertahan di panel kaca kosong lalu meloncat; kalau PC sempat tersendat, animasi berhenti sejenak lalu lanjut mulus.
+- Animasi pop-up lebih ringan: jendela utama tidak lagi digambar ulang di setiap frame.
+
 ## 2.3.5 · Patch update
 - Dropdown & menu di Windows: tidak ada lagi warna hitam di pojok lengkungan (popup kini benar-benar transparan).
 - Pop-up Pengaturan & dialog lain: kaca dan isinya muncul bersamaan sejak frame pertama, tanpa panel kaca kosong yang terlihat seperti glitch.
@@ -28,8 +33,3 @@ Penomoran MAJOR.MINOR.PATCH:
 
 - Perbaikan: glitch saat membuka Pengaturan & kotak pesan (batang gulir yang tiba-tiba muncul di akhir animasi, animasi bawaan Windows yang bertabrakan)
 - Keterangan pengaturan kini hanya muncul saat kursor diarahkan ke ikon (i)
-
-## 2.3.1 · Patch update
-
-- Perbaikan: jendela Pengaturan & kotak pesan tidak lagi berkedip saat dibuka (muncul langsung dengan animasi pop-up)
-- Semua dropdown & menu bergaya Liquid Glass: kaca frosted (isi aplikasi di belakang tampak buram), sudut membulat, pilihan berbentuk pil, muncul halus
