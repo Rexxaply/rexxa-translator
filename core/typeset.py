@@ -61,8 +61,32 @@ def _comic_rank(p) -> int:
     return len(COMIC_PREF)
 
 
+_FONTS_CACHE: dict = {}
+
+
+def _fonts_key():
+    k = []
+    for d in (user_fonts_dir(), bundled_fonts_dir(), *SYSTEM_FONT_DIRS):
+        try:
+            k.append((str(d), d.stat().st_mtime_ns))
+        except OSError:
+            k.append((str(d), 0))
+    return tuple(k)
+
+
 def list_fonts() -> list[str]:
-    """Font milik user + font bawaan aplikasi + font komik yang terpasang di Windows + cadangan."""
+    """Font milik user + font bawaan aplikasi + font komik yang terpasang di Windows + cadangan.
+    Hasil disimpan; dibaca ulang hanya bila isi folder font berubah (font baru ditambah / dihapus)."""
+    key = _fonts_key()
+    hit = _FONTS_CACHE.get("v")
+    if hit is not None and hit[0] == key:
+        return list(hit[1])
+    out = _list_fonts_scan()
+    _FONTS_CACHE["v"] = (key, out)
+    return list(out)
+
+
+def _list_fonts_scan() -> list[str]:
     found = []
     for d in (user_fonts_dir(), bundled_fonts_dir()):
         if d.exists():

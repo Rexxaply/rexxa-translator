@@ -11,7 +11,10 @@ import os
 import traceback
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRectF, QSize, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QEvent, QObject, QRectF, QSize, Qt, QThread, QTimer, QUrl, Signal
+
+# event yang perlu diperiksa penyaring global jendela utama (selain itu langsung diteruskan, tanpa biaya)
+_EF_TYPES = frozenset((QEvent.Resize, QEvent.KeyPress, QEvent.KeyRelease, QEvent.WindowDeactivate))
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QImageReader, QKeySequence, QPixmap
 from .numfield import NumField
 from PySide6.QtWidgets import (QAbstractItemView, QAbstractSpinBox, QDoubleSpinBox, QApplication, QCheckBox, QColorDialog, QComboBox,
@@ -1296,27 +1299,59 @@ class MainWindow(QMainWindow):
             self.progress.setValue(0)
 
     @staticmethod
-    def _thumb(path) -> QIcon:
+    def _thumb_image(path):
+        """Gambar kecil untuk strip halaman (aman dipanggil dari thread latar)."""
         from . import imgcache
         t = imgcache.thumb(path)
         if t is not None:                      # baru dirender: pakai gambar di memori
-            return QIcon(QPixmap.fromImage(t))
+            return t
         r = QImageReader(path)
         r.setAutoTransform(True)
         s = r.size()
         if s.isValid() and s.height() > 0:
-            r.setScaledSize(QSize(max(1, int(s.width() * 128 / s.height())), 128))
-        return QIcon(QPixmap.fromImage(r.read()))
+            r.setScaledSize(QSize(max(1, int(s.width() * 96 / s.height())), 96))
+        return r.read()
+
+    @classmethod
+    def _thumb(cls, path) -> QIcon:
+        return QIcon(QPixmap.fromImage(cls._thumb_image(path)))
 
     def _refresh_page_list(self):
+        """Daftar halaman langsung tampil; thumbnail dimuat di latar (proyek besar terbuka seketika)."""
         self.pages.blockSignals(True)
         self.pages.clear()
+        self._thumb_gen = getattr(self, "_thumb_gen", 0) + 1
+        gen = self._thumb_gen
+        jobs = []
+        blank = QPixmap(28, 38)
+        blank.fill(QColor(255, 255, 255, 18))
+        blank_icon = QIcon(blank)
         for i, p in enumerate(self.project.pages):
-            it = QListWidgetItem(self._thumb(p.output_path if p.output_path and Path(p.output_path).exists()
-                                             else p.path), "")
+            src = p.output_path if p.output_path and Path(p.output_path).exists() else p.path
+            it = QListWidgetItem(blank_icon, "")
             self.pages.addItem(it)
             self._update_page_item(i)
+            jobs.append((i, src))
         self.pages.blockSignals(False)
+        if jobs:
+            if not hasattr(self, "_thumb_pool"):
+                from concurrent.futures import ThreadPoolExecutor
+                self._thumb_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="rexxa-thumb")
+                self._thumb_bridge = _LiveBridge()
+                self._thumb_bridge.done.connect(self._thumb_done)
+            cur = max(0, self.cur)                    # halaman yang sedang dibuka & sekitarnya dulu
+            jobs.sort(key=lambda j: abs(j[0] - cur))
+
+            def work(i, src, gen=gen):
+                if gen != self._thumb_gen:
+                    return
+                try:
+                    img = self._thumb_image(src)
+                except Exception:
+                    return
+                self._thumb_bridge.done.emit((gen, i, src, img))
+            for i, src in jobs:
+                self._thumb_pool.submit(work, i, src)
         n = len(self.project.pages)
         self.pages_hdr.setText(f"Halaman · {n}")
         self.pages.setVisible(n > 0)
@@ -1457,6 +1492,12 @@ class MainWindow(QMainWindow):
             f = it.font(); f.setPointSizeF(7.5); it.setFont(f)
             it.setToolTip(f"Hal {i + 1} · {STATUS_TXT.get(p.status, p.status)}\n{p.path}")
             it.setForeground(QColor("#7ee2b8") if p.status == "selesai" else QColor("#c8cede"))
+
+    def _thumb_done(self, res):
+        gen, i, src, img = res
+        if gen != getattr(self, "_thumb_gen", 0) or not (0 <= i < self.pages.count()) or img is None or img.isNull():
+            return
+        self.pages.item(i).setIcon(QIcon(QPixmap.fromImage(img)))
 
     def _step_page(self, d):
         n = len(self.project.pages)
@@ -1905,8 +1946,9 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ Spasi = tangan (geser gambar)
     def eventFilter(self, obj, ev):
-        from PySide6.QtCore import QEvent
         t = ev.type()
+        if t not in _EF_TYPES:                   # dipanggil untuk SEMUA event aplikasi: keluar secepat mungkin
+            return False
         if t == QEvent.Resize and obj is getattr(self, "_editor", None):
             self._place_float_btn()
         if t == QEvent.KeyPress and ev.key() == Qt.Key_Tab and not ev.modifiers() \

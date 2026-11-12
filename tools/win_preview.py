@@ -51,6 +51,12 @@ def main():
                 print("   ", ln[:150], flush=True)
         return r
 
+    from PySide6.QtWidgets import QComboBox, QLineEdit, QLabel
+    timed("uji: QLabel pertama", lambda: QLabel("tes").sizeHint())
+    timed("uji: QLineEdit pertama", lambda: QLineEdit().sizeHint())
+    timed("uji: QComboBox editable", lambda: QComboBox().setEditable(True))
+    from PySide6.QtGui import QFontDatabase
+    timed("uji: QFontDatabase.families()", lambda: len(QFontDatabase.families()))
     w = timed("bangun jendela utama", lambda: mw.MainWindow(), prof=True)
     w.resize(1280, 800)
     timed("tampilkan jendela", w.show)
