@@ -33,7 +33,9 @@ def main():
         print(base64.b64encode(Path(f"{name}.png").read_bytes()).decode())
         print("===END===")
 
-    pump(1.0)
+    pump(0.6)
+    w.toggle_inspector(True)
+    pump(0.8)
     for s in w.sections:
         s.setEnabled(True)
     sec = w.sections[1]
