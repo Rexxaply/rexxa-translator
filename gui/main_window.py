@@ -751,9 +751,11 @@ class MainWindow(QMainWindow):
         self.cap_opt = capsule(self.b_line_color, self.brush_field, self.b_line_ok, self.b_line_cancel, name="capOpt")
         arrow = QLabel("→")
         arrow.setObjectName("dim")
-        for cb in (self.src, self.tgt):           # lebar mengikuti isi (kapsul tidak melar)
-            cb.setSizeAdjustPolicy(QComboBox.AdjustToContents)
-            cb.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        for cb in (self.src, self.tgt):           # ringkas: kapsul tidak melar; daftar tetap lebar
+            cb.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            cb.setMinimumContentsLength(10)
+            cb.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            cb.view().setMinimumWidth(220)
         cap_r = capsule(self.src, arrow, self.tgt, 6, self.b_go, self.b_stop, "sep", self.b_export, self.b_skill,
                         self.b_settings, name="capR")
         for b_ in (self.b_open, self.b_save, self.b_undo, self.b_redo, self.b_stop, self.b_export, self.b_skill,

@@ -5,11 +5,10 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import (QEasingCurve, QElapsedTimer, QPoint, QPointF, QRectF, QSize, Qt, QTimer,
-                            QVariantAnimation, Signal)
+from PySide6.QtCore import QEasingCurve, QPoint, QPointF, QRectF, QSize, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import (QAction, QActionGroup, QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen,
                            QPolygonF, QRadialGradient)
-from PySide6.QtWidgets import QFrame, QMenu, QToolButton, QWidget
+from PySide6.QtWidgets import QFrame, QMenu, QToolButton, QWidget  # noqa: F401
 
 from .icons import icon
 
@@ -196,7 +195,6 @@ class SlidePanel(QWidget):
 
     def _step(self, u):
         u = float(u)
-        self.trace.append((round(u, 2), self._from, self._to, self.open)) if hasattr(self, "trace") else None
         k = spring(u) if self.open else 1 - (1 - u) ** 3
         w = int(round(self._from + (self._to - self._from) * k))
         w = max(0, min(self.full, w))
