@@ -196,7 +196,7 @@ class SlidePanel(QWidget):
 
     def _step(self, u):
         u = float(u)
-        self.trace.append(u) if hasattr(self, "trace") else None
+        self.trace.append((round(u, 2), self._from, self._to, self.open)) if hasattr(self, "trace") else None
         k = spring(u) if self.open else 1 - (1 - u) ** 3
         w = int(round(self._from + (self._to - self._from) * k))
         w = max(0, min(self.full, w))

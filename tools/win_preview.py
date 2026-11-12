@@ -110,9 +110,9 @@ def main(out):
     t0 = time.time()
     while time.time() - t0 < 0.6:
         app.processEvents()
-        frames.append(round(w.insp_slide.width()))
-    print("lebar panel selama animasi:", frames[::max(1, len(frames) // 25)], flush=True)
-    print("nilai animasi:", [round(x, 2) for x in w.insp_slide.trace][:40], flush=True)
+        frames.append((round((time.time() - t0) * 1000), w.insp_slide.width(), w.insp_slide.minimumWidth()))
+    print("lebar panel selama animasi:", [f for i, f in enumerate(frames) if i == 0 or f[1] != frames[i - 1][1]][:30], flush=True)
+    print("nilai animasi:", w.insp_slide.trace[:12], flush=True)
     pump(0.8)
     w.b_layers.setChecked(False)
     pump(0.5)
