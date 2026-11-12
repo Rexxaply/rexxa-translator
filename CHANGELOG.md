@@ -8,6 +8,22 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 3.0.0 · Major update
+- Tampilan baru Liquid Glass: latar gelap bercahaya lembut, panel kaca mengambang, area halaman manga jauh lebih luas.
+- Toolbar atas diganti kapsul ringkas: buka/simpan/undo di kiri, bahasa JP → ID dan tombol Terjemahkan (dengan menu pilihan) di kanan.
+- Kolom alat di kiri dengan grup ala Photoshop: klik kiri memakai alat, klik kanan memilih isi grup; ikon berganti mengikuti alat yang sedang dipakai.
+- Pintasan per grup: Balon (B), Seleksi (A), Perbaikan (J) — tekan Ctrl+Shift+huruf untuk ganti cepat di dalam grup. Pen (P) dan Garis (L) tetap terpisah.
+- Balon & seleksi kini bisa kotak atau oval; tahan Shift saat menyeret untuk persegi / lingkaran sempurna.
+- Patch digabung ke grup Perbaikan: seret kotak di area lalu pilih cara memperbaikinya.
+- Alat Teks baru (T): klik untuk menulis teks bebas di halaman, dengan panel properti sendiri (tidak ikut OCR/terjemah, tetap ada saat deteksi ulang).
+- Tahan Ctrl dengan alat apa pun untuk memilih dan memindahkan balon sementara.
+- Panel properti berbentuk kartu (Terjemahan, Tipografi, Warna, Balon) yang bisa dibuka/tutup dengan animasi halus; pindah tab juga beranimasi.
+- Panel samping bisa disembunyikan dengan Tab, animasi pegas seperti iOS. Tombol layer (H) untuk menampilkan/menyembunyikan kotak balon.
+- Kolom garis: mengetik 0 langsung menjadi "-" (tanpa garis).
+- Strip halaman di bawah lebih tipis; riwayat proyek maksimal 5, tampil 3 dan sisanya bisa digulir.
+- Gulir halus di seluruh aplikasi (per 10 px dengan mouse, 5 px dengan touchpad).
+- Jauh lebih ringan: jendela utama terbuka ±9× lebih cepat, proyek besar ±3–5× lebih cepat (thumbnail dimuat di latar), Pengaturan ±3× lebih cepat, daftar font disimpan.
+
 ## 2.5.1 · Patch update
 - Kotak font: klik kotaknya langsung menampilkan daftar semua font (font yang dipakai sudah terpilih di tengah daftar), tanpa harus mengetik dulu.
 - Saat daftar terbuka, nama font lama terseleksi: huruf pertama yang diketik langsung menggantikannya dan menyaring daftar.
@@ -27,7 +43,3 @@ Penomoran MAJOR.MINOR.PATCH:
 - Membuka Pengaturan: tidak ada lagi jendela kecil berbar judul "Rexxa Translator" yang muncul sesaat sebelum pop-up.
 - Animasi pop-up tidak lagi tertahan di panel kaca kosong lalu meloncat; kalau PC sempat tersendat, animasi berhenti sejenak lalu lanjut mulus.
 - Animasi pop-up lebih ringan: jendela utama tidak lagi digambar ulang di setiap frame.
-
-## 2.3.5 · Patch update
-- Dropdown & menu di Windows: tidak ada lagi warna hitam di pojok lengkungan (popup kini benar-benar transparan).
-- Pop-up Pengaturan & dialog lain: kaca dan isinya muncul bersamaan sejak frame pertama, tanpa panel kaca kosong yang terlihat seperti glitch.
