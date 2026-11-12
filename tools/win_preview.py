@@ -163,8 +163,10 @@ def main(out):
         if m:
             print("menu area muncul:", [x.text() for x in m.actions() if x.text()][:6], flush=True)
             m.close()
-    for t_ in (300, 700, 1200):
-        QTimer.singleShot(t_, closer)
+    ct = QTimer()
+    ct.setInterval(250)
+    ct.timeout.connect(closer)
+    ct.start()
 
     def drag(mod, dx, dy):
         c = QPoint(cv.viewport().width() // 3, cv.viewport().height() // 3)
