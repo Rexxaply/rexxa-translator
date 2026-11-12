@@ -120,7 +120,49 @@ class Section(QWidget):
         self.chip.setVisible(bool(text))
 
     def _toggle(self, on):
-        self.body.setVisible(on)
+        """Lipat / buka dengan animasi: tinggi isi meluncur (OutCubic), isi memudar masuk / keluar."""
+        from PySide6.QtCore import QEasingCurve, QVariantAnimation
+        from PySide6.QtWidgets import QGraphicsOpacityEffect
+        body = self.body
+        anim = getattr(self, "_anim", None)
+        if anim is not None:
+            anim.stop()
+        if not self.isVisible():                    # belum tampil: langsung, tanpa animasi
+            body.setGraphicsEffect(None)
+            body.setMaximumHeight(16777215)
+            body.setVisible(on)
+            return
+        start = body.height() if body.isVisible() else 0
+        if on:
+            body.setMaximumHeight(start)
+            body.show()
+            end = body.sizeHint().height()
+        else:
+            end = 0
+        fx = body.graphicsEffect()
+        if not isinstance(fx, QGraphicsOpacityEffect):
+            fx = QGraphicsOpacityEffect(body)
+            body.setGraphicsEffect(fx)
+        anim = self._anim = QVariantAnimation(self)
+        anim.setDuration(240 if on else 190)
+        anim.setEasingCurve(QEasingCurve.OutCubic if on else QEasingCurve.InOutCubic)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+
+        def step(u, a=float(start), b=float(end)):
+            body.setMaximumHeight(int(round(a + (b - a) * u)))
+            fx.setOpacity(u if on else 1.0 - u)
+
+        def done():
+            body.setGraphicsEffect(None)            # efek dilepas: gambar normal kembali ringan
+            if on:
+                body.setMaximumHeight(16777215)
+            else:
+                body.hide()
+                body.setMaximumHeight(16777215)
+        anim.valueChanged.connect(step)
+        anim.finished.connect(done)
+        anim.start()
 
 
 def small_label(text):
@@ -643,6 +685,7 @@ class MainWindow(QMainWindow):
         self.b_insp_close.setToolTip("Sembunyikan panel (Tab)")
         self.b_insp_close.clicked.connect(lambda: self.toggle_inspector(False))
         self.tabs.setCornerWidget(self.b_insp_close, Qt.TopRightCorner)
+        self.tabs.currentChanged.connect(self._animate_tab)
         insp = GlassPanel(radius=20)
         insp.setObjectName("inspector")
         il = QVBoxLayout(insp)
@@ -1533,6 +1576,37 @@ class MainWindow(QMainWindow):
 
     def _zoom_step(self, f):
         self.cv_src.set_zoom(self.cv_src.zoom() * f, emit=True)
+
+    def _animate_tab(self, i):
+        """Ganti tab panel (Properti / Balon / Log): isi baru memudar masuk sambil naik sedikit."""
+        from PySide6.QtCore import QEasingCurve, QVariantAnimation
+        from PySide6.QtWidgets import QGraphicsOpacityEffect
+        w = self.tabs.widget(i)
+        if w is None or not self.isVisible():
+            return
+        old = getattr(self, "_tab_anim", None)
+        if old is not None:
+            old.stop()
+        fx = QGraphicsOpacityEffect(w)
+        fx.setOpacity(0.0)
+        w.setGraphicsEffect(fx)
+        y0 = w.y()
+        a = self._tab_anim = QVariantAnimation(self)
+        a.setDuration(200)
+        a.setEasingCurve(QEasingCurve.OutCubic)
+        a.setStartValue(0.0)
+        a.setEndValue(1.0)
+
+        def step(u):
+            fx.setOpacity(u)
+            w.move(w.x(), int(y0 + 10 * (1 - u)))
+
+        def done():
+            w.setGraphicsEffect(None)
+            w.move(w.x(), y0)
+        a.valueChanged.connect(step)
+        a.finished.connect(done)
+        a.start()
 
     def toggle_inspector(self, on: bool):
         """Panel properti kanan: tutup / buka dengan animasi pegas; area halaman ikut melebar / menyempit."""
