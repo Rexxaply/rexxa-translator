@@ -30,6 +30,7 @@ SHORTCUTS = [
     ("heal_cycle", "Alat", "Ganti isi grup Perbaikan (Healing ↔ Patch)", "Ctrl+Shift+J", True),
     ("tool_line", "Alat", "Alat garis (seret = garis bebas, Shift = lurus)", "L", True),
     ("tool_text", "Alat", "Teks bebas (klik di gambar lalu langsung ketik)", "T", True),
+    ("add_image", "Alat", "Tambah gambar sebagai lapisan (dari galeri / file)", "I", True),
     ("tool_patch", "Alat", "Patch tool langsung (opsional)", "", True),
     ("brush_up", "Alat", "Perbesar kuas", "]", True),
     ("brush_down", "Alat", "Perkecil kuas", "[", True),

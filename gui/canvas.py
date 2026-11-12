@@ -57,6 +57,8 @@ class BoxItem(QGraphicsRectItem):
             return QColor("#ffbe0b")
         if self.block.kind == "title":
             return QColor("#ff9a62")
+        if self.block.kind == "image":
+            return QColor("#c084fc")
         return QColor("#5b8cff") if self.block.kind == "bubble" else QColor("#2ec5c9")
 
     def refresh_style(self):
@@ -82,6 +84,16 @@ class BoxItem(QGraphicsRectItem):
         return HANDLE_PX / z
 
     def paint(self, painter, option, widget=None):
+        b = self.block
+        if b.kind == "image" and self.canvas.draw_layers:       # pratinjau lapisan gambar (belum dirender)
+            pm = self.canvas.layer_pixmap(getattr(b, "title_image", ""))
+            if pm is not None:
+                painter.save()
+                painter.setRenderHint(QPainter.SmoothPixmapTransform)
+                op = getattr(b, "opacity", 1.0)
+                painter.setOpacity(max(0.0, min(1.0, 1.0 if op is None else float(op))))
+                painter.drawPixmap(self.rect(), pm, QRectF(pm.rect()))
+                painter.restore()
         super().paint(painter, option, widget)
         if self.label and not self.ghost:
             z = self.canvas.zoom() or 1
@@ -176,6 +188,15 @@ class BoxItem(QGraphicsRectItem):
                 r.setTop(min(r.bottom() - MIN_SIZE, r.top() + d.y()))
             if "b" in m:
                 r.setBottom(max(r.top() + MIN_SIZE, r.bottom() + d.y()))
+            pr = self._press_rect
+            if (self.block.kind == "image" and len(m) == 2 and pr.height() > 0
+                    and not (e.modifiers() & Qt.ShiftModifier)):     # gambar: sudut = rasio tetap
+                ar = pr.width() / pr.height()
+                w_ = max(r.width(), r.height() * ar)
+                h_ = w_ / ar
+                x_ = pr.right() - w_ if "l" in m else pr.left()      # sudut seberang tetap di tempat
+                y_ = pr.bottom() - h_ if "t" in m else pr.top()
+                r = QRectF(x_, y_, w_, h_)
         self.prepareGeometryChange()
         self.setPos(r.topLeft())
         self.setRect(0, 0, r.width(), r.height())
@@ -251,13 +272,15 @@ class PageCanvas(QGraphicsView):
         self.setScene(QGraphicsScene(self))
         self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
         self.setDragMode(QGraphicsView.NoDrag)
-        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setTransformationAnchor(QGraphicsView.NoAnchor)    # titik jangkar zoom diatur sendiri
         self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
         self.setBackgroundBrush(QBrush(QColor("#0e1118")))
         self.setFrameShape(QGraphicsView.NoFrame)
         self.setMouseTracking(True)
         self.viewport().setCursor(Qt.ArrowCursor)
         self.pix_item: QGraphicsPixmapItem | None = None
+        self.draw_layers = False                 # gambar lapisan gambar di kotaknya (halaman belum dirender)
+        self._layer_pms: dict = {}
         self.boxes: list[BoxItem] = []
         self.show_boxes = True
         self.draw_mode = False
@@ -373,6 +396,19 @@ class PageCanvas(QGraphicsView):
             self.scene().addItem(item)
             self.boxes.append(item)
 
+    def layer_pixmap(self, path):
+        if not path:
+            return None
+        pm = self._layer_pms.get(path)
+        if pm is None:
+            pm = QPixmap(path)
+            if pm.isNull():
+                return None
+            if len(self._layer_pms) > 12:
+                self._layer_pms.clear()
+            self._layer_pms[path] = pm
+        return pm
+
     def reload_boxes(self):
         for b in self.boxes:
             b.reload()
@@ -432,21 +468,36 @@ class PageCanvas(QGraphicsView):
     def zoom(self) -> float:
         return self.transform().m11()
 
-    def set_zoom(self, s: float, emit=False):
+    def set_zoom(self, s: float, emit=False, anchor=None):
+        """Ubah skala. anchor = titik viewport (QPointF) yang tetap menunjuk bagian gambar yang sama;
+        None = tengah tampilan (tombol + / -, panel dibuka / ditutup, jendela diubah ukurannya)."""
         s = max(0.05, min(8.0, s))
+        vp = self.viewport().rect()
+        a = QPointF(anchor) if anchor is not None else QPointF(vp.width() / 2, vp.height() / 2)
+        target = self.mapToScene(a.toPoint()) if self.pix_item is not None else None
         self.setTransform(QTransform.fromScale(s, s))
+        if target is not None:
+            # geser supaya titik gambar yang tadi di bawah jangkar kembali ke posisi jangkar
+            now = self.mapFromScene(target)
+            hb, vb = self.horizontalScrollBar(), self.verticalScrollBar()
+            hb.setValue(hb.value() + int(round(now.x() - a.x())))
+            vb.setValue(vb.value() + int(round(now.y() - a.y())))
         for b in self.boxes:
             b.prepareGeometryChange()   # ukuran pegangan bergantung zoom
         if emit:
             self.zoom_changed.emit(s)
 
     def wheelEvent(self, e):
-        f = 1.15 if e.angleDelta().y() > 0 else 1 / 1.15
-        if 0.05 < self.zoom() * f < 8:
-            self.scale(f, f)
-            for b in self.boxes:
-                b.prepareGeometryChange()
-            self.zoom_changed.emit(self.zoom())
+        """Roda mouse = zoom ke arah kursor (titik di bawah kursor tetap di tempatnya)."""
+        dy = e.angleDelta().y() or e.pixelDelta().y()
+        if not dy:
+            return
+        f = 1.15 ** max(-2.0, min(2.0, dy / 120.0))      # touchpad: langkah kecil & halus
+        z = self.zoom()
+        if abs(max(0.05, min(8.0, z * f)) - z) < 1e-6:     # sudah di batas zoom
+            return
+        self.set_zoom(z * f, emit=True, anchor=e.position())
+        e.accept()
 
     # ------------------------------------------------------------ mouse: gambar kotak / geser tampilan
     # ------------------------------------------------------------ alat sunting

@@ -660,8 +660,8 @@ class MainWindow(QMainWindow):
         self.views.addWidget(self.col_out)
         self.views.setStretchFactor(0, 1)
         self.views.setStretchFactor(1, 1)
-        self.views.splitterMoved.connect(lambda *_: QTimer.singleShot(0, self._fit_both))
-        self.views.reset_done.connect(lambda: QTimer.singleShot(0, self._fit_both))
+        self.views.splitterMoved.connect(lambda *_: QTimer.singleShot(0, self._refit_keep))
+        self.views.reset_done.connect(lambda: QTimer.singleShot(0, self._refit_keep))
 
         # ---- kanan: properti / daftar balon / log
         self.tabs = QTabWidget()
@@ -692,7 +692,7 @@ class MainWindow(QMainWindow):
         il.setContentsMargins(6, 8, 4, 8)
         il.addWidget(self.tabs)
         self.insp_slide = SlidePanel(insp, 262)
-        self.insp_slide.toggled.connect(lambda _on: QTimer.singleShot(0, self._fit_both))
+        self.insp_slide.toggled.connect(lambda _on: QTimer.singleShot(0, self._refit_keep))
 
         # ---- kiri: kolom alat mengambang
         rail = GlassPanel(radius=22)
@@ -700,11 +700,14 @@ class MainWindow(QMainWindow):
         rl = QVBoxLayout(rail)
         rl.setContentsMargins(5, 6, 5, 6)
         rl.setSpacing(3)
+        self.b_add_img = tool_btn("image", "Tambah gambar (I)\nPilih gambar dari galeri / folder, lalu jadi lapisan di "
+                                  "halaman ini (mis. judul chapter). Bisa juga Ctrl+V gambar dari clipboard.",
+                                  self.add_image_layer)
         self.b_layers = tool_btn("layers", "Tampilkan / sembunyikan kotak balon & nomornya (H)", checkable=True)
         self.b_layers.setChecked(True)
         self.b_layers.toggled.connect(self._toggle_boxes)
         for wd in (self.tool_groups["select"], self.g_box, self.tool_groups["shape"], self.tool_groups["heal"],
-                   self.tool_groups["pen"], self.tool_groups["line"], self.tool_groups["text"], "sep",
+                   self.tool_groups["pen"], self.tool_groups["line"], self.tool_groups["text"], self.b_add_img, "sep",
                    self.b_split, self.b_layers):
             if wd == "sep":
                 ln = QFrame()
@@ -1180,6 +1183,39 @@ class MainWindow(QMainWindow):
         self.b_title.setVisible(False)
         s3.lay.addWidget(self.b_title)
         s3.lay.addWidget(self.p_clean)
+        # lapisan gambar: opasitas, ganti gambar, kembalikan rasio
+        self.img_box = QWidget()
+        ib = QVBoxLayout(self.img_box)
+        ib.setContentsMargins(0, 0, 0, 0)
+        ib.setSpacing(4)
+        r_op = QHBoxLayout()
+        r_op.setSpacing(6)
+        lb_op = QLabel("Opasitas")
+        lb_op.setObjectName("dim")
+        self.p_opacity = NumField(0, 100, 5, 0, suffix="%", default=100)
+        self.p_opacity.setToolTip("Tembus pandang gambar (0% = tak terlihat, 100% = penuh)")
+        self.p_opacity.valueChanged.connect(self._on_opacity)
+        r_op.addWidget(lb_op)
+        r_op.addStretch(1)
+        r_op.addWidget(self.p_opacity)
+        ib.addLayout(r_op)
+        r_ib = QHBoxLayout()
+        r_ib.setSpacing(4)
+        self.b_img_swap = QPushButton(icon("image"), " Ganti…")
+        self.b_img_swap.setToolTip("Ganti gambar lapisan ini (posisi & lebar tetap)")
+        self.b_img_swap.clicked.connect(self._swap_layer_image)
+        self.b_img_ratio = QPushButton(icon("fit"), " Rasio asli")
+        self.b_img_ratio.setToolTip("Kembalikan perbandingan lebar : tinggi gambar aslinya")
+        self.b_img_ratio.clicked.connect(self._layer_ratio)
+        r_ib.addWidget(self.b_img_swap, 1)
+        r_ib.addWidget(self.b_img_ratio, 1)
+        ib.addLayout(r_ib)
+        hint = QLabel("Seret sudut = ubah ukuran (Shift = bebas)")
+        hint.setObjectName("dim")
+        hint.setWordWrap(True)
+        ib.addWidget(hint)
+        self.img_box.hide()
+        s3.lay.addWidget(self.img_box)
         s3.lay.addWidget(self.b_del)
         self.p_kind.currentIndexChanged.connect(self._on_prop_change)
         self.p_clean.toggled.connect(self._on_prop_change)
@@ -1282,6 +1318,7 @@ class MainWindow(QMainWindow):
             "shape_cycle": lambda: self._cycle_group("shape"),
             "heal_cycle": lambda: self._cycle_group("heal"),
             "tool_text": lambda: self.set_tool("text"),
+            "add_image": self.add_image_layer,
             "tool_line": lambda: self.set_tool("line"),
             "tool_patch": lambda: self.set_tool("patch"),
             "brush_up": lambda: self._brush_step(1.25),
@@ -1569,10 +1606,23 @@ class MainWindow(QMainWindow):
                 cv._center_or_top()
         self.zoom_lbl.setText(f"{round(s * 100)}%")
 
+    def _refit_keep(self):
+        """Ukuran area halaman berubah (panel dibuka / ditutup, jendela diubah): bila masih "pas layar",
+        skala disesuaikan lagi TANPA melompat ke atas -- bagian halaman yang sedang dibaca tetap di tengah.
+        Bila pengguna sudah zoom sendiri, zoom & posisi dibiarkan."""
+        if not getattr(self, "_fit_pending", True) or not self.cv_src.pix_item:
+            return
+        cvs = [self.cv_src] + ([self.cv_out] if self.col_out.isVisible() and self.cv_out.pix_item else [])
+        s = min(cv.fit_scale() for cv in cvs)
+        for cv in (self.cv_src, self.cv_out):
+            if cv.pix_item and abs(cv.zoom() - s) > 1e-4:
+                cv.set_zoom(s)
+        self.zoom_lbl.setText(f"{round(s * 100)}%")
+
     def resizeEvent(self, e):
         super().resizeEvent(e)
         if getattr(self, "_fit_pending", True):   # tetap pas layar sampai pengguna zoom sendiri
-            QTimer.singleShot(0, self._fit_both)
+            QTimer.singleShot(0, self._refit_keep)
 
     def _zoom_step(self, f):
         self.cv_src.set_zoom(self.cv_src.zoom() * f, emit=True)
@@ -1632,7 +1682,7 @@ class MainWindow(QMainWindow):
         self.col_out.setVisible(on)
         if on:
             QTimer.singleShot(0, self.views.equalize)
-        QTimer.singleShot(0, self._fit_both)
+        QTimer.singleShot(0, self._refit_keep)
 
     # ================================================================== buka / simpan
     def _load_paths(self, paths):
@@ -2131,8 +2181,10 @@ class MainWindow(QMainWindow):
         self._live_prev = None
         z = self.cv_src.zoom()
         hs, vs = self.cv_src.horizontalScrollBar().value(), self.cv_src.verticalScrollBar().value()
-        self.cv_src.set_page(p.path, p.blocks, fit=False)
         out, kind = self._out_image(p)
+        self.cv_src.draw_layers = True                       # lapisan gambar tampil di atas gambar asli
+        self.cv_out.draw_layers = kind != "TERJEMAHAN"       # hasil render sudah berisi lapisannya
+        self.cv_src.set_page(p.path, p.blocks, fit=False)
         self.cv_out.set_page(out, p.blocks, fit=False)
         self.col_out.header.setText({
             "TERJEMAHAN": "HASIL",
@@ -2172,6 +2224,12 @@ class MainWindow(QMainWindow):
                 n = QTableWidgetItem(str(i + 1))
                 n.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
                 self.table.setItem(i, 0, n)
+                if b.kind == "image":                    # lapisan gambar: tidak ada teks untuk diedit
+                    for col, txt in ((1, "[gambar]"), (2, Path(b.title_image or "").name)):
+                        it = QTableWidgetItem(txt)
+                        it.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                        self.table.setItem(i, col, it)
+                    continue
                 self.table.setItem(i, 1, QTableWidgetItem(b.source))
                 self.table.setItem(i, 2, QTableWidgetItem(b.translation))
             self.table.resizeRowsToContents()
@@ -2273,6 +2331,9 @@ class MainWindow(QMainWindow):
     def _focus_translation(self, block):
         self._select(block)
         self.tabs.setCurrentIndex(0)
+        if block is not None and block.kind == "image":      # klik dua kali lapisan gambar = ganti gambarnya
+            QTimer.singleShot(0, self._swap_layer_image)
+            return
         self.e_tr.setFocus()
         self.e_tr.selectAll()
 
@@ -2285,9 +2346,11 @@ class MainWindow(QMainWindow):
         if b:
             idx = self.page().blocks.index(b) + 1 if self.page() and b in self.page().blocks else ""
             n = len(self._targets())
-            self._note_mode(bool(getattr(b, "note", False)) and n == 1)
+            is_img = b.kind == "image" and n == 1
+            self._note_mode(bool(getattr(b, "note", False)) and n == 1 and not is_img)
             self.sections[0].set_chip(("Teks" if getattr(b, "note", False) else "Balon") + f" #{idx}"
                                       + (f" +{n - 1}" if n > 1 else ""))
+            self.sections[3].set_chip(f"Gambar #{idx}" if is_img else "")
             self.multi_bar.setVisible(n > 1)
             if n > 1:
                 self.multi_lbl.setText(f"<b>{n} balon dipilih</b> — ubahan gaya berlaku ke semua")
@@ -2321,7 +2384,12 @@ class MainWindow(QMainWindow):
             self.p_kind.setCurrentIndex(max(0, self.p_kind.findData(b.kind)))
             self.p_clean.setChecked(b.clean)
             self.b_title.setVisible(b.kind == "title")
+            op = getattr(b, "opacity", 1.0)
+            self.p_opacity.setValue(int(round(100 * (1.0 if op is None else float(op)))))
+            self._image_mode(is_img)
         else:
+            self._image_mode(False)
+            self.sections[3].set_chip("")
             self._note_mode(False)
             self.sections[0].set_chip("")
             self.multi_bar.setVisible(False)
@@ -2338,6 +2406,25 @@ class MainWindow(QMainWindow):
             for btn in (self.p_color, self.p_color2, self.p_stroke_color):
                 btn.setStyleSheet("")
         self._loading = False
+
+    def _image_mode(self, on: bool):
+        """Lapisan gambar terpilih: panel hanya berisi kartu "Gambar" (opasitas, ganti, rasio, hapus)."""
+        s1, s2, s_col, s3 = self.sections
+        for sec in (s1, s2, s_col):
+            sec.setVisible(not on)
+        self.img_box.setVisible(on)
+        note = bool(getattr(self, "_note_on", False))
+        if on:
+            s3.btn.setText("Gambar")
+            for wd in (self.p_kind, self.p_clean, self.b_title):
+                wd.setVisible(False)
+            self.b_del.setText(" Hapus gambar ini")
+        else:
+            s3.btn.setText("Teks bebas" if note else "Balon")
+            self.p_kind.setVisible(not note)
+            self.p_clean.setVisible(not note)
+            self.b_del.setText(" Hapus teks ini" if note else " Hapus balon ini")
+        self._img_on = on
 
     def _note_mode(self, on: bool):
         """Teks bebas (alat T) punya panel sendiri: tanpa OCR / terjemah, tanpa preset & jumlah baris,
@@ -2490,9 +2577,9 @@ class MainWindow(QMainWindow):
 
     def _on_prop_change(self, *_):
         b = self.sel
-        if self._loading or not b:
+        if self._loading or not b or b.kind == "image":     # lapisan gambar punya pengatur sendiri
             return
-        targets = self._targets()
+        targets = [t for t in self._targets() if t.kind != "image"]
         before = {f: getattr(b, f, None) for f in self.PROP_FIELDS}
         self._apply_props(b)
         changed = {f: getattr(b, f, None) for f in self.PROP_FIELDS if getattr(b, f, None) != before[f]}
@@ -3918,6 +4005,9 @@ class MainWindow(QMainWindow):
     def paste_title(self):
         """Ctrl+V saat kotak judul dipilih: tempel gambar judul dari clipboard."""
         b, p = self.sel, self.page()
+        if p and not self.thread and (b is None or b.kind != "title"):
+            self._paste_image_layer()
+            return
         if not p or b is None or b.kind != "title" or self.thread:
             return
         cb = QApplication.clipboard()
@@ -3945,6 +4035,146 @@ class MainWindow(QMainWindow):
         self.need_clean.add(p.path)
         self.render_current()
         self.log("Judul buatan sendiri ditempel ke kotak judul (atur ukurannya lewat 'Pembuat judul').")
+
+    # ================================================================== lapisan gambar
+    def _clip_image(self):
+        """Gambar di clipboard -> bytes PNG / path file, atau None."""
+        cb = QApplication.clipboard()
+        md = cb.mimeData()
+        if md is not None and md.hasImage() and not cb.image().isNull():
+            from PySide6.QtCore import QBuffer, QIODevice
+            buf = QBuffer()
+            buf.open(QIODevice.WriteOnly)
+            cb.image().save(buf, "PNG")
+            return bytes(buf.data())
+        if md is not None and md.hasUrls():
+            from core.models import IMAGE_EXTS
+            return next((u.toLocalFile() for u in md.urls()
+                         if u.isLocalFile() and Path(u.toLocalFile()).suffix.lower() in IMAGE_EXTS), None)
+        return None
+
+    def _paste_image_layer(self):
+        data = self._clip_image()
+        if not data:
+            self.status_lbl.setText("Clipboard tidak berisi gambar.")
+            return
+        self._place_image_layer(data)
+
+    def _pick_image_file(self, title="Pilih gambar"):
+        start = self.settings.get("last_image_dir", "") or str(Path.home() / "Pictures")
+        f, _ = QFileDialog.getOpenFileName(self, title, start,
+                                           "Gambar (*.png *.jpg *.jpeg *.webp *.bmp *.gif);;Semua file (*)")
+        if f:
+            self.settings["last_image_dir"] = str(Path(f).parent)
+        return f
+
+    def add_image_layer(self):
+        """Alat Gambar (I): pilih gambar dari galeri / folder lalu tempel sebagai lapisan di halaman ini
+        (mis. judul chapter, logo, kredit). Bisa digeser, diubah ukurannya, dan diberi opasitas."""
+        if not self.page() or self.thread:
+            return
+        f = self._pick_image_file("Tambah gambar ke halaman")
+        if f:
+            self._place_image_layer(f)
+
+    def _store_layer(self, src):
+        from core import titlelogo
+        try:
+            return titlelogo.store_image(src)     # salinan PNG di folder data aplikasi (aman bila file asli dihapus)
+        except Exception as e:
+            self.log(f"Gambar tidak bisa dibaca: {e}")
+            return ""
+
+    def _place_image_layer(self, src):
+        p = self.page()
+        if not p:
+            return
+        path = self._store_layer(src)
+        if not path:
+            return
+        from PySide6.QtGui import QImageReader
+        sz = QImageReader(path).size()
+        iw, ih = max(1, sz.width()), max(1, sz.height())
+        sr = self.cv_src.sceneRect()
+        pw, ph = max(1, int(sr.width())), max(1, int(sr.height()))
+        # muat di halaman: maks. 70% lebar halaman & 70% tinggi yang terlihat, tidak pernah diperbesar
+        vis = self.cv_src.mapToScene(self.cv_src.viewport().rect()).boundingRect().intersected(sr)
+        if vis.isEmpty():
+            vis = sr
+        k = min(1.0, pw * 0.7 / iw, max(40.0, vis.height() * 0.7) / ih)
+        w_, h_ = max(8, int(iw * k)), max(8, int(ih * k))
+        c = vis.center()                                    # di tengah bagian halaman yang sedang terlihat
+        x = int(min(max(0, c.x() - w_ / 2), max(0, pw - w_)))
+        y = int(min(max(0, c.y() - h_ / 2), max(0, ph - h_)))
+        self._snap()
+        b = TextBlock(x=x, y=y, w=w_, h=h_, kind="image", clean=False, note=True, source="", translation="",
+                      title_image=path, title_fit="stretch", title_keep_bg=True, opacity=1.0)
+        p.blocks.append(b)
+        self.sel, self.multi = b, []
+        self.set_tool("select")
+        self._show_current()
+        self.tabs.setCurrentIndex(0)
+        if p.cleaned_path and Path(p.cleaned_path).exists():
+            self._schedule_render()
+        elif all(getattr(x_, "note", False) for x_ in p.blocks):
+            self.render_current()          # halaman tanpa balon (mis. halaman judul): langsung jadi hasil
+        self.status_lbl.setText("Gambar ditambahkan — seret untuk memindahkan, tarik sudutnya untuk mengubah ukuran.")
+        self.log(f"Lapisan gambar ditambahkan ({iw}×{ih}px).")
+
+    def _layer_targets(self):
+        return [t for t in self._targets() if t.kind == "image"]
+
+    def _after_layer_edit(self):
+        p = self.page()
+        for cv in (self.cv_src, self.cv_out):
+            cv.reload_boxes()
+            for it in cv.boxes:
+                it.update()
+        self._fill_table()
+        if p:
+            self._schedule_render()
+
+    def _on_opacity(self, v):
+        if self._loading:
+            return
+        ts = self._layer_targets()
+        if not ts:
+            return
+        self._snap(("opacity", ts[0].id))
+        for t in ts:
+            t.opacity = max(0.0, min(1.0, float(v) / 100.0))
+        self._after_layer_edit()
+
+    def _swap_layer_image(self):
+        ts = self._layer_targets()
+        if not ts:
+            return
+        f = self._pick_image_file("Ganti gambar")
+        if not f:
+            return
+        path = self._store_layer(f)
+        if not path:
+            return
+        from PySide6.QtGui import QImageReader
+        sz = QImageReader(path).size()
+        self._snap()
+        for t in ts:
+            t.title_image = path
+            if sz.width() > 0 and sz.height() > 0:
+                t.h = max(8, int(round(t.w * sz.height() / sz.width())))
+        self._after_layer_edit()
+
+    def _layer_ratio(self):
+        ts = self._layer_targets()
+        if not ts:
+            return
+        from PySide6.QtGui import QImageReader
+        self._snap()
+        for t in ts:
+            sz = QImageReader(t.title_image).size()
+            if sz.width() > 0 and sz.height() > 0:
+                t.h = max(8, int(round(t.w * sz.height() / sz.width())))
+        self._after_layer_edit()
 
     def edit_credits(self):
         from .skillsdlg import CreditsDialog

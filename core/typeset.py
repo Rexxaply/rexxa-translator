@@ -949,7 +949,7 @@ def _render_page(img_bgr: np.ndarray, blocks: list[TextBlock], target_lang: str 
 
     for b in blocks:
         text = (b.translation or "").strip()
-        if not text or b.kind == "title":
+        if not text or b.kind in ("title", "image"):
             continue
         case = b.case or ("upper" if uppercase else "none")
         if not b.case and case == "upper" and latin:
