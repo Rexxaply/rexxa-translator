@@ -70,7 +70,7 @@ def main(out):
     w._select(p.blocks[1])
     pump(0.5)
     fc = w.p_font
-    print("jumlah font:", fc.count(), flush=True)
+    print("jumlah font:", fc.count(), [fc.itemText(i) for i in range(fc.count())], flush=True)
     le = fc.lineEdit()
     le.setFocus()
     pump(0.3)

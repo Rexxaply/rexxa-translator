@@ -159,6 +159,7 @@ class FontCombo(QComboBox):
         self.setCompleter(None)
         self._comp.setWidget(le)
         pop.clicked.connect(lambda ix: self._picked(ix.data()))
+        self._fresh = False
         le.textEdited.connect(self._typed)
         le.returnPressed.connect(self._enter)
         le.installEventFilter(self)
@@ -173,6 +174,17 @@ class FontCombo(QComboBox):
                     self.setItemData(i, f, Qt.FontRole)
 
     def _typed(self, text):
+        le = self.lineEdit()
+        if self._fresh:
+            # ketikan pertama setelah kotak diklik: nama font lama tidak ikut jadi kata kunci
+            self._fresh = False
+            cur = self.currentText()
+            if cur and text != cur and text.startswith(cur):
+                text = text[len(cur):]
+                le.setText(text)
+            elif cur and text != cur and text.endswith(cur):
+                text = text[:-len(cur)]
+                le.setText(text)
         self._ensure_fonts()
         self._proxy.set_query(text)
         pop = self._comp.popup()
@@ -215,7 +227,10 @@ class FontCombo(QComboBox):
         pop = self._comp.popup()
         if obj is le:
             if ev.type() == QEvent.FocusIn:
+                self._fresh = True
                 QTimer.singleShot(0, le.selectAll)
+            elif ev.type() == QEvent.MouseButtonRelease and self._fresh and not le.hasSelectedText():
+                le.selectAll()
             elif ev.type() == QEvent.FocusOut and not pop.isVisible():
                 self._revert()
         elif obj is pop and ev.type() == QEvent.KeyPress and ev.key() in (Qt.Key_Return, Qt.Key_Enter):
