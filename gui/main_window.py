@@ -500,12 +500,12 @@ class MainWindow(QMainWindow):
         self.pages.setWrapping(False)
         self.pages.setMovement(QListWidget.Snap)
         self.pages.setResizeMode(QListWidget.Adjust)
-        self.pages.setIconSize(QSize(40, 54))
-        self.pages.setGridSize(QSize(62, 86))
-        self.pages.setSpacing(2)
+        self.pages.setIconSize(QSize(28, 38))
+        self.pages.setGridSize(QSize(40, 56))
+        self.pages.setSpacing(1)
         self.pages.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.pages.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.pages.setFixedHeight(92)
+        self.pages.setFixedHeight(60)
         self.pages.currentRowChanged.connect(self.open_page)
         # tahan & seret halaman untuk mengubah urutan; klik kanan = tambah / hapus
         self.pages.setDragDropMode(QAbstractItemView.InternalMove)
@@ -649,28 +649,26 @@ class MainWindow(QMainWindow):
         film = GlassPanel(radius=20)
         film.setObjectName("film")
         fl = QHBoxLayout(film)
-        fl.setContentsMargins(14, 6, 10, 6)
+        fl.setContentsMargins(12, 3, 6, 3)
         fl.setSpacing(10)
         meta = QVBoxLayout()
-        meta.setSpacing(2)
-        th = QHBoxLayout()
-        th.setSpacing(2)
+        meta.setSpacing(1)
+        meta.setContentsMargins(0, 0, 0, 0)
+        th = QHBoxLayout()                          # baris 1: Halaman · n   ‹ 1/18 ›   +
+        th.setSpacing(0)
         th.addWidget(self.pages_hdr)
         th.addStretch()
-        th.addWidget(self.b_add_page)
+        for wd in (self.b_prev, self.page_lbl, self.b_next, self.b_add_page):
+            th.addWidget(wd)
+        self.b_prev.setIconSize(QSize(13, 13))
+        self.b_next.setIconSize(QSize(13, 13))
+        for b_ in (self.b_prev, self.b_next, self.b_add_page):
+            b_.setFixedSize(22, 22)
         meta.addLayout(th)
-        nav = QHBoxLayout()
-        nav.setSpacing(0)
-        for wd in (self.b_prev, self.page_lbl, self.b_next):
-            nav.addWidget(wd)
-        self.b_prev.setIconSize(QSize(14, 14))
-        self.b_next.setIconSize(QSize(14, 14))
-        nav.addStretch()
-        meta.addLayout(nav)
-        self._film_meta = meta                      # status & progres diisi _build_statusbar
+        self._film_meta = meta                      # baris 2 (jumlah balon · status) & progres: _build_statusbar
         mw_ = QWidget()
         mw_.setLayout(meta)
-        mw_.setFixedWidth(150)
+        mw_.setFixedWidth(196)
         fl.addWidget(mw_)
         sep = QFrame()
         sep.setObjectName("filmSep")
@@ -681,7 +679,7 @@ class MainWindow(QMainWindow):
         self._zoom_host = GlassPanel(radius=None)
         self._zoom_host.setObjectName("zoomCap")
         fl.addWidget(self._zoom_host, 0, Qt.AlignVCenter)
-        film.setFixedHeight(104)
+        film.setFixedHeight(68)
 
         # ---- isi editor
         editor = QWidget()
@@ -1133,11 +1131,15 @@ class MainWindow(QMainWindow):
         self.progress.setTextVisible(False)
         self.count_lbl = QLabel("0 balon")
         self.count_lbl.setObjectName("filmCount")
-        self._film_meta.addWidget(self.count_lbl)
-        self._film_meta.addWidget(self.status_lbl)
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        row.addWidget(self.count_lbl)
+        row.addWidget(self.status_lbl, 1)
+        self._film_meta.addLayout(row)
+        self.progress.setMaximumHeight(3)
         self._film_meta.addWidget(self.progress)
         zl = QHBoxLayout(self._zoom_host)
-        zl.setContentsMargins(4, 3, 4, 3)
+        zl.setContentsMargins(3, 1, 3, 1)
         zl.setSpacing(0)
         for b_ in (tool_btn("minus", "Perkecil", lambda: self._zoom_step(1 / 1.25)),):
             b_.setIconSize(QSize(14, 14))
@@ -1395,9 +1397,9 @@ class MainWindow(QMainWindow):
         if 0 <= i < self.pages.count():
             p = self.project.pages[i]
             it = self.pages.item(i)
-            it.setText(f"Hal {i + 1}\n{STATUS_TXT.get(p.status, p.status)}")
-            f = it.font(); f.setPointSizeF(8); it.setFont(f)
-            it.setToolTip(p.path)
+            it.setText(str(i + 1))           # strip halaman ringkas: nomor saja, status = warna + keterangan
+            f = it.font(); f.setPointSizeF(7.5); it.setFont(f)
+            it.setToolTip(f"Hal {i + 1} · {STATUS_TXT.get(p.status, p.status)}\n{p.path}")
             it.setForeground(QColor("#7ee2b8") if p.status == "selesai" else QColor("#c8cede"))
 
     def _step_page(self, d):
