@@ -504,7 +504,8 @@ class _Smooth(QObject):
         d = ev.angleDelta()
         horiz = abs(d.x()) > abs(d.y()) or bool(ev.modifiers() & Qt.ShiftModifier)
         vb = self.area.verticalScrollBar()
-        if not horiz and (vb is None or vb.maximum() <= vb.minimum()):
+        if not horiz and (vb is None or vb.maximum() - vb.minimum() < 10
+                          or self.area.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff):
             hb = self.area.horizontalScrollBar()          # daftar mendatar (strip halaman): roda = geser kiri/kanan
             if hb is not None and hb.maximum() > hb.minimum():
                 horiz = True
@@ -577,7 +578,11 @@ class _SmoothEverywhere(QObject):
             if isinstance(area, QAbstractItemView):      # gulir per piksel, bukan per baris
                 area.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
                 area.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
-            sm = area._smooth = _Smooth(area, 0, 10, 260, install=False)
+            from PySide6.QtWidgets import QPlainTextEdit
+            if isinstance(area, QPlainTextEdit):          # bilah gulirnya dalam satuan baris, bukan piksel
+                sm = area._smooth = _Smooth(area, 3, 0, 260, install=False, snap_fine=0)
+            else:
+                sm = area._smooth = _Smooth(area, 0, 10, 260, install=False)
             area._smooth_lazy = True
         elif not getattr(area, "_smooth_lazy", False):
             return False                                 # sudah punya penyaring sendiri
