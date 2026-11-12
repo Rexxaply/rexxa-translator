@@ -2694,6 +2694,8 @@ class MainWindow(QMainWindow):
 
     def _on_block_moving(self, _b):
         """Kotak sedang digeser / diubah ukurannya: teks & area hapus ikut bergerak seketika."""
+        import time as _t
+        self._box_move_t = _t.monotonic()
         p = self.page()
         if p and not self.thread and p.path not in self.need_clean and pipeline.can_render_live(p):
             self._live_timer.start()
@@ -2763,8 +2765,8 @@ class MainWindow(QMainWindow):
             self._live_kick()
 
     def _dragging_box(self) -> bool:
-        from PySide6.QtWidgets import QApplication as _QA
-        return bool(_QA.mouseButtons() & Qt.LeftButton)
+        import time as _t
+        return _t.monotonic() - getattr(self, "_box_move_t", 0.0) < 0.6
 
     def _live_commit(self):
         """Pengguna berhenti menyunting sejenak: simpan hasil, perbarui thumbnail & proyek."""
