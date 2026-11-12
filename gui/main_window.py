@@ -2435,10 +2435,10 @@ class MainWindow(QMainWindow):
             self.p_opacity.setValue(int(round(100 * (1.0 if op is None else float(op)))))
             self._image_mode(is_img)
             self._sync_img_tab(b if is_img else None)
-            n_all = len(self._all_bubbles())
-            self.b_sel_all.setVisible(not is_img and n < n_all)
-            if n > 1:
-                self.b_del.setText(f" Hapus {n} balon")
+            n_sel = len(self._targets())          # (jangan pakai `n`: tertimpa loop preset di atas)
+            self.b_sel_all.setVisible(not is_img and n_sel < len(self._all_bubbles()))
+            if n_sel > 1:
+                self.b_del.setText(f" Hapus {n_sel} balon")
         else:
             self._sync_img_tab(None)
             self._image_mode(False)
