@@ -35,6 +35,7 @@ SHORTCUTS = [
     ("brush_up", "Alat", "Perbesar kuas", "]", True),
     ("brush_down", "Alat", "Perkecil kuas", "[", True),
     ("delete", "Edit", "Hapus balon terpilih", "Delete", True),
+    ("select_all", "Edit", "Pilih semua balon di halaman ini", "Ctrl+A", True),
     ("paste_title", "Edit", "Tempel gambar judul ke kotak judul terpilih", "Ctrl+V", True),
 
     ("preset1", "Preset teks", "Terapkan Preset 1", "1", True),

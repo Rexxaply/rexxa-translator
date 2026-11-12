@@ -886,6 +886,10 @@ class MainWindow(QMainWindow):
         self.props_hint.setAlignment(Qt.AlignCenter)
         self.props_hint.setWordWrap(True)
         v.addWidget(self.props_hint)
+        self.b_sel_all_top = QPushButton(icon("box"), " Pilih semua balon di halaman ini")
+        self.b_sel_all_top.setToolTip("Pilih semua balon sekaligus (Ctrl+A) — ubahan gaya / hapus berlaku ke semuanya")
+        self.b_sel_all_top.clicked.connect(self.select_all_blocks)
+        v.addWidget(self.b_sel_all_top)
 
         # --- bar pilihan ganda (Ctrl+klik beberapa balon)
         self.multi_bar = QFrame()
@@ -922,16 +926,16 @@ class MainWindow(QMainWindow):
 
         # --- Terjemahan
         s1 = Section("Terjemahan")
-        self.e_src = QPlainTextEdit()
+        from .autotext import AutoText
+        self.e_src = AutoText(1, 3)                 # tinggi mengikuti isi: 1 baris kecil, maks. 3 baris + gulir
         self.e_src.setObjectName("srcText")
         self.e_src.setPlaceholderText("Teks asli (OCR)…")
         self.e_src.setToolTip("Teks asli hasil OCR (bisa diperbaiki)")
-        self.e_src.setFixedHeight(34)
         s1.lay.addWidget(self.e_src)
-        self.e_tr = QPlainTextEdit()
+        self.e_tr = AutoText(1, 3)
+        self.e_tr.setObjectName("trText")
         self.e_tr.setPlaceholderText("Tulis / perbaiki terjemahan…")
         self.e_tr.setToolTip("Terjemahan — hasil di gambar ikut berubah di setiap ketikan")
-        self.e_tr.setFixedHeight(58)
         s1.lay.addWidget(self.e_tr)
         row = QHBoxLayout()
         self.b_reocr = QPushButton(icon("scan"), " OCR")
@@ -1228,7 +1232,14 @@ class MainWindow(QMainWindow):
         ib.addWidget(hint)
         self.img_box.hide()
         s3.lay.addWidget(self.img_box)
-        s3.lay.addWidget(self.b_del)
+        self.b_sel_all = QPushButton(icon("box"), " Pilih semua")
+        self.b_sel_all.setToolTip("Pilih semua balon di halaman ini (Ctrl+A)")
+        self.b_sel_all.clicked.connect(self.select_all_blocks)
+        r_del = QHBoxLayout()
+        r_del.setSpacing(4)
+        r_del.addWidget(self.b_sel_all, 2)
+        r_del.addWidget(self.b_del, 3)
+        s3.lay.addLayout(r_del)
         self.p_kind.currentIndexChanged.connect(self._on_prop_change)
         self.p_clean.toggled.connect(self._on_prop_change)
 
@@ -1331,6 +1342,7 @@ class MainWindow(QMainWindow):
             "heal_cycle": lambda: self._cycle_group("heal"),
             "tool_text": lambda: self.set_tool("text"),
             "add_image": self.add_image_layer,
+            "select_all": self.select_all_blocks,
             "tool_line": lambda: self.set_tool("line"),
             "tool_patch": lambda: self.set_tool("patch"),
             "brush_up": lambda: self._brush_step(1.25),
@@ -2095,7 +2107,7 @@ class MainWindow(QMainWindow):
                 and self.center_stack.currentIndex() == 1:
             fw = QApplication.focusWidget()
             from PySide6.QtWidgets import QLineEdit as _LE
-            if not isinstance(fw, (QPlainTextEdit, _LE, QAbstractSpinBox, QTableWidget)):
+            if not isinstance(fw, (QPlainTextEdit, QTextEdit, _LE, QAbstractSpinBox, QTableWidget)):
                 self.toggle_inspector(not self.insp_slide.open)   # Tab = sembunyikan / tampilkan panel
                 return True
         if t in (QEvent.KeyPress, QEvent.KeyRelease) and ev.key() == Qt.Key_Space:
@@ -2298,6 +2310,23 @@ class MainWindow(QMainWindow):
         sm.blockSignals(False)
         self.table.blockSignals(False)
 
+    def _all_bubbles(self) -> list:
+        """Balon (bukan lapisan gambar / teks bebas) di halaman ini."""
+        p = self.page()
+        return [b for b in (p.blocks if p else []) if b.kind != "image" and not getattr(b, "note", False)]
+
+    def select_all_blocks(self):
+        """Pilih semua balon di halaman ini (Ctrl+A): gaya yang diubah di panel & Hapus berlaku ke semuanya."""
+        allb = self._all_bubbles()
+        if not allb:
+            self.status_lbl.setText("Belum ada balon di halaman ini.")
+            return
+        prim = self.sel if self.sel is not None and _has(allb, self.sel) else allb[0]
+        if self.tabs.currentWidget() is not self.tabs.widget(0):
+            self.tabs.setCurrentIndex(0)
+        self._select(prim, multi=allb if len(allb) > 1 else None)
+        self.status_lbl.setText(f"{len(allb)} balon dipilih · ubahan di panel kanan berlaku ke semuanya")
+
     def _targets(self) -> list:
         """Balon yang diubah oleh panel properti: semua yang dipilih (Ctrl+klik), atau balon aktif saja."""
         p = self.page()
@@ -2358,6 +2387,7 @@ class MainWindow(QMainWindow):
         self._loading = True
         on = b is not None
         self.props_hint.setVisible(not on)
+        self.b_sel_all_top.setVisible(not on and len(self._all_bubbles()) > 1)
         for s in self.sections:
             s.setEnabled(on)
         if b:
@@ -2405,6 +2435,10 @@ class MainWindow(QMainWindow):
             self.p_opacity.setValue(int(round(100 * (1.0 if op is None else float(op)))))
             self._image_mode(is_img)
             self._sync_img_tab(b if is_img else None)
+            n_sel = len(self._targets())          # (jangan pakai `n`: tertimpa loop preset di atas)
+            self.b_sel_all.setVisible(not is_img and n_sel < len(self._all_bubbles()))
+            if n_sel > 1:
+                self.b_del.setText(f" Hapus {n_sel} balon")
         else:
             self._sync_img_tab(None)
             self._image_mode(False)
@@ -2461,7 +2495,7 @@ class MainWindow(QMainWindow):
         for lbl in getattr(self, "_tr_labels", []):
             lbl.setVisible(not on)
         self.e_tr.setPlaceholderText("Tulis catatan / info di sini…" if on else "Tulis / perbaiki terjemahan…")
-        self.e_tr.setFixedHeight(84 if on else 58)
+        self.e_tr.set_lines(2 if on else 1, 5 if on else 3)
         self.p_size.setSpecialValueText("" if on else "Auto")
         self.p_size.setRange(8 if on else 0, 300)
         self.b_del.setText(" Hapus teks ini" if on else " Hapus balon ini")
@@ -4698,7 +4732,7 @@ QListView#fontSearch QScrollBar::add-line, QListView#fontSearch QScrollBar::sub-
 QComboBox QAbstractItemView QScrollBar:vertical { background: transparent; width: 8px; margin: 6px 2px; }
 QComboBox QAbstractItemView QScrollBar::handle:vertical { background: rgba(255,255,255,0.20); border-radius: 3px; min-height: 24px; }
 QComboBox QAbstractItemView QScrollBar::add-line, QComboBox QAbstractItemView QScrollBar::sub-line { height: 0; }
-QPlainTextEdit:focus, QLineEdit:focus { border-color: #7c6cff; }
+QPlainTextEdit:focus, QTextEdit:focus, QLineEdit:focus { border-color: #7c6cff; }
 QWidget#panel { background: #171b27; }
 QWidget#pagesHdr { background: #171b27; border-bottom: 1px solid #252b3b; }
 QWidget#pagesHdr QLabel#panelHeader { border-bottom: none; }
@@ -4727,7 +4761,7 @@ QKeySequenceEdit QLineEdit { background: #202636; }
 QWidget#field { background: #202636; border: 1px solid #313849; border-radius: 5px; min-height: 24px; }
 QWidget#propsPanel, QWidget#propsPanel QLabel, QWidget#propsPanel QComboBox, QWidget#propsPanel QPushButton,
 QWidget#propsPanel QToolButton, QWidget#propsPanel QSpinBox, QWidget#propsPanel QDoubleSpinBox,
-QWidget#propsPanel QPlainTextEdit, QWidget#propsPanel QCheckBox { font-size: 8pt; }
+QWidget#propsPanel QPlainTextEdit, QWidget#propsPanel QTextEdit, QWidget#propsPanel QCheckBox { font-size: 8pt; }
 QWidget#propsPanel QComboBox { padding: 2px 6px; min-height: 22px; }
 QWidget#propsPanel QPushButton { padding: 4px 6px; }
 QLabel#fieldIcon { color: #8b93ab; font-weight: 600; background: transparent; min-width: 16px; }
@@ -4802,7 +4836,7 @@ STYLE += """
   background: rgba(0,0,0,0.24); border: 1px solid rgba(255,255,255,0.07); border-radius: 11px; padding: 3px 9px; }
 #chrome QWidget#capR QComboBox { background: transparent; border: none; font-weight: 600; padding: 2px 4px; }
 #chrome QComboBox QLineEdit { background: transparent; border: none; padding: 0; }
-#chrome QPlainTextEdit:focus, #chrome QLineEdit:focus { border: 1px solid rgba(160,150,235,0.65); }
+#chrome QPlainTextEdit:focus, #chrome QTextEdit:focus, #chrome QLineEdit:focus { border: 1px solid rgba(160,150,235,0.65); }
 #chrome QComboBox QLineEdit:focus { border: none; }
 #chrome QLineEdit#numField { background: transparent; border: none; padding: 0 2px; }
 #chrome QWidget#field { background: rgba(0,0,0,0.24); border: 1px solid rgba(255,255,255,0.07); border-radius: 11px; }
@@ -4856,7 +4890,7 @@ STYLE += """
   padding: 3px 9px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(20,22,32,0.78); }
 #chrome QToolButton#viewPill::menu-indicator { image: none; width: 0; }
 #chrome QToolButton#viewPill:hover { background: rgba(40,44,62,0.9); }
-#chrome QPlainTextEdit#srcText { color: rgba(225,229,242,0.62); font-size: 8.5pt; }
+#chrome QPlainTextEdit#srcText, #chrome QTextEdit#srcText { color: rgba(225,229,242,0.62); font-size: 8.5pt; }
 #chrome QToolButton#primary::menu-indicator { image: none; width: 0; }
 #chrome QLabel#viewHeader { color: rgba(225,229,242,0.7); font-size: 7.5pt; letter-spacing: 1px; }
 #chrome QSplitter#viewsSplit::handle { background: transparent; }
