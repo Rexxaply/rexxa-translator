@@ -95,6 +95,33 @@ class _Delegate(QStyledItemDelegate):
         return QSize(s.width(), max(28, min(46, h)))
 
 
+class _Pop(QListView):
+    """Daftar hasil pencarian: panel kaca membulat digambar sendiri (stylesheet tidak bisa menggambar latar
+    jendela popup transparan)."""
+
+    def __init__(self):
+        super().__init__()
+        self.setFrameShape(QListView.NoFrame)
+        self.viewport().setAutoFillBackground(False)
+        self.setViewportMargins(0, 0, 0, 0)
+
+    def paintEvent(self, e):
+        from PySide6.QtGui import QLinearGradient, QPainter, QPainterPath, QPen
+        p = QPainter(self.viewport())
+        p.setRenderHint(QPainter.Antialiasing)
+        r = self.viewport().rect().adjusted(0, 0, -1, -1)
+        path = QPainterPath()
+        path.addRoundedRect(r, 12, 12)
+        g = QLinearGradient(r.topLeft(), r.bottomRight())
+        g.setColorAt(0, QColor(40, 45, 66, 250))
+        g.setColorAt(1, QColor(26, 29, 44, 250))
+        p.fillPath(path, g)
+        p.setPen(QPen(QColor(255, 255, 255, 46), 1))
+        p.drawPath(path)
+        p.end()
+        super().paintEvent(e)
+
+
 class _Filter(QSortFilterProxyModel):
     """Nama font yang MENGANDUNG ketikan (bukan hanya diawali), urut: yang diawali ketikan dulu."""
 
@@ -145,7 +172,7 @@ class FontCombo(QComboBox):
         self._comp.setCompletionMode(QCompleter.UnfilteredPopupCompletion)   # penyaringan diurus _Filter
         self._comp.setCaseSensitivity(Qt.CaseInsensitive)
         self._comp.setMaxVisibleItems(12)
-        pop = QListView()
+        pop = _Pop()
         pop.setObjectName("fontSearch")
         pop.setUniformItemSizes(False)
         pop.setItemDelegate(_Delegate(pop, query=lambda: self._proxy.q))

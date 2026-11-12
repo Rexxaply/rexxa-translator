@@ -49,7 +49,7 @@ def main(out):
     app.setStyle("Fusion")
     app.setStyleSheet(mw.STYLE)
     w = mw.MainWindow()
-    w.resize(1400, 900)
+    w.resize(1000, 740)
     w.move(10, 10)
     w.show()
 
