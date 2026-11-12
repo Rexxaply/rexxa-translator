@@ -81,6 +81,15 @@ def main(out):
         g = fc.mapToGlobal(fc.rect().topLeft())
         x0, y0 = g.x() - 40, g.y() - 40
         return ImageGrab.grab(bbox=(x0, y0, x0 + 420, y0 + 460), all_screens=True)
+    import traceback
+    _orig_rev = fc._revert
+
+    def _dbg_rev():
+        print("REVERT dipanggil dari:", " <- ".join(f"{f.name}:{f.lineno}" for f in traceback.extract_stack()[-6:-1]), flush=True)
+        _orig_rev()
+    fc._revert = _dbg_rev
+    le.textChanged.connect(lambda t: print("   teks ->", repr(t), flush=True))
+    _ofi, _ofo = fc.focusInEvent, fc.focusOutEvent
     typed = ""
     for ch in ("a", "r", "i", "x", "BS"):
         if ch == "BS":
