@@ -31,9 +31,11 @@ class AutoText(QTextEdit):
         self._fit(animate=False)
 
     def _chrome_h(self) -> int:
+        """Bingkai + padding stylesheet = tinggi kotak dikurangi tinggi area teks (diukur, bukan ditebak)."""
+        if self.isVisible() and self.height() > self.viewport().height() > 0:
+            return self.height() - self.viewport().height()
         m = self.contentsMargins()
-        vm = self.viewportMargins()
-        return m.top() + m.bottom() + vm.top() + vm.bottom() + 2 * self.frameWidth()
+        return m.top() + m.bottom()
 
     def _target(self) -> tuple[int, bool]:
         ls = self.fontMetrics().lineSpacing()
@@ -42,7 +44,7 @@ class AutoText(QTextEdit):
         lo = self.min_lines * ls + dm
         hi = self.max_lines * ls + dm
         content = max(lo, doc_h)
-        return min(content, hi) + self._chrome_h() + 2, content > hi + 1
+        return min(content, hi) + self._chrome_h(), content > hi + 1
 
     def _fit(self, animate: bool = True):
         h, overflow = self._target()
