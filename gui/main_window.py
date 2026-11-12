@@ -1921,6 +1921,22 @@ class MainWindow(QMainWindow):
                     else:
                         self.status_lbl.setText(getattr(self, "_space_msg", ""))
             return True              # jangan sampai Spasi menekan tombol yang sedang fokus
+        if t in (QEvent.KeyPress, QEvent.KeyRelease) and ev.key() == Qt.Key_Control and not ev.isAutoRepeat():
+            on = t == QEvent.KeyPress
+            # alat Garis memakai Ctrl+klik sendiri (edit titik garis), jadi tidak ikut
+            busy_tool = getattr(self, "tool", "select") not in ("select", "line") or self.b_box.isChecked()
+            if on and busy_tool and self._space_allowed() and not PageCanvas.ctrl_held:
+                for cv in (self.cv_src, self.cv_out):
+                    cv.set_temp_select(True)
+                self._ctrl_msg = self.status_lbl.text()
+                self.status_lbl.setText("Ctrl: pilih & geser balon (lepas Ctrl = kembali ke alat)")
+            elif not on and PageCanvas.ctrl_held:
+                for cv in (self.cv_src, self.cv_out):
+                    cv.set_temp_select(False)
+                self.status_lbl.setText(getattr(self, "_ctrl_msg", ""))
+        if t == QEvent.WindowDeactivate and obj is self and PageCanvas.ctrl_held:
+            for cv in (self.cv_src, self.cv_out):
+                cv.set_temp_select(False)
         if t == QEvent.WindowDeactivate and PageCanvas.space_held and obj is self:
             for cv in (self.cv_src, self.cv_out):
                 cv.set_space(False)
