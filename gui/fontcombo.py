@@ -238,6 +238,11 @@ class FontCombo(QComboBox):
         if ix.isValid():
             pop.setCurrentIndex(ix)
             pop.scrollTo(ix, QListView.PositionAtCenter)
+        # nama font lama terseleksi: huruf pertama yang diketik langsung menggantikannya
+        self._fresh = True
+        le = self.lineEdit()
+        le.selectAll()
+        QTimer.singleShot(0, le.selectAll)
 
     def _picked(self, text):
         i = self.findText(text or "", Qt.MatchExactly)
