@@ -239,6 +239,10 @@ class MainWindow(QMainWindow):
         self._build_statusbar()
         self._build_shortcuts()
         self._set_busy(False)
+        self._sync_opt_cap()
+        for cv in (self.cv_src, self.cv_out):          # latar kanvas = latar kaca jendela (bukan kotak gelap)
+            cv.setBackgroundBrush(Qt.NoBrush)
+            cv.setFrameShape(QFrame.NoFrame)
         self._update_title()
         QApplication.instance().installEventFilter(self)     # tahan Spasi = mode tangan
         self._show_current(fit=True)
@@ -257,10 +261,12 @@ class MainWindow(QMainWindow):
 
     # ================================================================== toolbar
     def _build_toolbar(self):
-        tb = QToolBar("Utama")
-        tb.setMovable(False)
-        tb.setIconSize(QSize(20, 20))
-        self.addToolBar(tb)
+        # Tidak ada QToolBar lagi: tombol-tombol dibuat di sini lalu disusun ke panel kaca di _build_center
+        class _Sink:
+            @staticmethod
+            def addWidget(wd):
+                return wd
+        tb = _Sink()
 
         m_open = QMenu(self)
         m_open.aboutToShow.connect(lambda: self._fill_open_menu(m_open))
@@ -269,6 +275,7 @@ class MainWindow(QMainWindow):
         b.setMenu(m_open)
         b.setPopupMode(QToolButton.InstantPopup)
         tb.addWidget(b)
+        self.b_open = b
         self.b_save = tool_btn("save", "Simpan proyek (Ctrl+S)", self.save_project)
         self.b_undo = tool_btn("undo", "Undo (Ctrl+Z) · maks. 5 langkah", self.undo)
         self.b_redo = tool_btn("redo", "Redo (Ctrl+Y)", self.redo)
@@ -303,26 +310,28 @@ class MainWindow(QMainWindow):
         self.b_box.setMenu(m_box)
         self.b_box.setPopupMode(QToolButton.MenuButtonPopup)
         tb.addWidget(self.b_box)
-        # alat sunting gambar
+        # alat sunting gambar: grup ala Photoshop (klik kiri = pakai, klik kanan = pilih isi grup)
+        from .chrome import GroupToolButton
+        self.b_box.hide()                     # diganti tombol grup "Balon terjemah" di kolom alat
+        self.g_box = GroupToolButton([("box_rect", "box", "Balon kotak", "B"),
+                                      ("box_oval", "oval_box", "Balon oval", "B")], "Balon terjemah")
+        self.g_box.set_current("box_oval" if self.settings.get("box_shape") == "oval" else "box_rect")
+        self.g_box.picked.connect(self._pick_box_tool)
         self.tool_btns = {}
-        for tid, ico, tip in (("select", "cursor", "Pilih / geser kotak (V)"),
-                              ("pen", "pen", "Pen tool (P): klik titik-titik mengelilingi area, klik titik awal / "
-                                             "klik kanan / Enter = selesai. Lalu pilih: hapus dengan AI, isi warna, dll."),
-                              ("shape", "shape", "Shape tool (A): seret kotak / oval (Shift = persegi). "
-                                                 "Tekan A lagi untuk ganti kotak ↔ oval"),
-                              ("heal", "heal", "Healing brush (J): sapukan di atas noda / sisa teks / objek, "
-                                               "AI (LaMa) membuat ulang latarnya. [ dan ] = ukuran kuas"),
-                              ("patch", "patch", "Patch tool (K): lingkari area yang belum rapi (seret seperti "
-                                                 "lasso). AI mencari area latar yang sama persis di halaman lalu "
-                                                 "menambalnya dengan pembauran halus — seperti Patch Tool Photoshop"),
-                              ("line", "line", "Alat garis (L): gambar garis sendiri, mis. tepi balon yang hilang. "
-                                               "Seret = garis bebas, Shift + seret = garis lurus. "
-                                               "[ dan ] = tebal garis, klik kotak warna untuk ganti warna")):
-            b = tool_btn(ico, tip, checkable=True)
-            b.clicked.connect(lambda _=False, t=tid: self.set_tool(t))
-            self.tool_btns[tid] = b
-            tb.addWidget(b)
-        self.tool_btns["select"].setChecked(True)
+        groups = (("select", [("select", "cursor", "Pilih / geser kotak", "V")], ""),
+                  ("shape", [("shape_rect", "rect_sel", "Seleksi kotak", "A"),
+                             ("shape_oval", "oval_sel", "Seleksi oval", "A")], "Seleksi"),
+                  ("heal", [("heal", "heal", "Healing brush", "J"), ("patch", "patch", "Patch tool", "K")],
+                   "Perbaikan"),
+                  ("line", [("line", "line", "Alat garis", "L")], ""))
+        self.tool_groups = {}
+        for gid, variants, title in groups:
+            g = GroupToolButton(variants, title)
+            g.picked.connect(self._pick_group_tool)
+            self.tool_groups[gid] = g
+            for vid, *_ in variants:
+                self.tool_btns[{"shape_rect": "shape", "shape_oval": "shape"}.get(vid, vid)] = g
+        self.tool_groups["select"].setChecked(True)
         self.brush_field = NumField(1, 200, 1, 0, default=14)
         self.brush_field.setToolTip("Ukuran kuas healing brush / tebal garis (px)  ·  [ dan ]")
         self.brush_field.setFixedWidth(44)
@@ -463,6 +472,7 @@ class MainWindow(QMainWindow):
         b.setMenu(m_set)
         b.setPopupMode(QToolButton.InstantPopup)
         tb.addWidget(b)
+        self.b_settings = b
 
     def _on_lang(self, *_):
         self.project.source_lang = self.src.currentData()
@@ -474,30 +484,28 @@ class MainWindow(QMainWindow):
 
     # ================================================================== area tengah
     def _build_center(self):
-        # ---- kiri: daftar halaman dengan thumbnail
-        left = QWidget()
-        left.setObjectName("panel")
-        ll = QVBoxLayout(left)
-        ll.setContentsMargins(0, 0, 0, 0)
-        ll.setSpacing(0)
-        self.pages_hdr = QLabel("HALAMAN (0)")
-        self.pages_hdr.setObjectName("panelHeader")
+        # ---- bawah: strip halaman (thumbnail berjajar mendatar)
+        self.pages_hdr = QLabel("Halaman")
+        self.pages_hdr.setObjectName("filmTitle")
         self.b_add_page = QToolButton()
         self.b_add_page.setObjectName("hdrBtn")
         self.b_add_page.setIcon(icon("plus"))
         self.b_add_page.setIconSize(QSize(14, 14))
         self.b_add_page.setToolTip("Tambah gambar / halaman baru")
         self.b_add_page.clicked.connect(lambda: self.add_pages())
-        hdr = QWidget()
-        hdr.setObjectName("pagesHdr")
-        hh = QHBoxLayout(hdr)
-        hh.setContentsMargins(0, 0, 6, 0)
-        hh.setSpacing(0)
-        hh.addWidget(self.pages_hdr, 1)
-        hh.addWidget(self.b_add_page)
         self.pages = QListWidget()
-        self.pages.setIconSize(QSize(34, 48))
+        self.pages.setObjectName("filmstrip")
+        self.pages.setViewMode(QListWidget.IconMode)
+        self.pages.setFlow(QListWidget.LeftToRight)
+        self.pages.setWrapping(False)
+        self.pages.setMovement(QListWidget.Snap)
+        self.pages.setResizeMode(QListWidget.Adjust)
+        self.pages.setIconSize(QSize(40, 54))
+        self.pages.setGridSize(QSize(62, 86))
         self.pages.setSpacing(2)
+        self.pages.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.pages.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.pages.setFixedHeight(92)
         self.pages.currentRowChanged.connect(self.open_page)
         # tahan & seret halaman untuk mengubah urutan; klik kanan = tambah / hapus
         self.pages.setDragDropMode(QAbstractItemView.InternalMove)
@@ -506,12 +514,9 @@ class MainWindow(QMainWindow):
         self.pages.model().rowsMoved.connect(self._on_pages_moved)
         self.pages.setContextMenuPolicy(Qt.CustomContextMenu)
         self.pages.customContextMenuRequested.connect(self._pages_menu)
-        self.pages_empty = QLabel("Seret folder chapter\nke sini, atau klik\nikon folder di atas.")
+        self.pages_empty = QLabel("Seret folder chapter ke sini, atau klik ikon folder di atas.")
         self.pages_empty.setObjectName("dim")
         self.pages_empty.setAlignment(Qt.AlignCenter)
-        ll.addWidget(hdr)
-        ll.addWidget(self.pages, 1)
-        ll.addWidget(self.pages_empty, 1)
 
         # ---- tengah: Asli | Hasil
         self.cv_src = PageCanvas(editable=True)
@@ -527,6 +532,8 @@ class MainWindow(QMainWindow):
             cv.block_geometry_changed.connect(self._on_geom_changed)
             cv.block_double_clicked.connect(self._focus_translation)
         self.cv_src.box_drawn.connect(self._add_box)
+        for cv in (self.cv_src, self.cv_out):
+            cv.box_shape = "oval" if self.settings.get("box_shape") == "oval" else "rect"
         for cv in (self.cv_src, self.cv_out):
             cv.heal_stroke.connect(self._on_heal)
             cv.patch_done.connect(self._on_patch)
@@ -595,22 +602,169 @@ class MainWindow(QMainWindow):
         self.logbox.setMaximumBlockCount(3000)
         self.tabs.addTab(self.logbox, "LOG")
 
-        split = QSplitter(Qt.Horizontal)
-        split.addWidget(left)
-        split.addWidget(self.views)
-        split.addWidget(self.tabs)
-        # sidebar ramping (seperti editor lettering): fokus ke halaman manga
-        left.setMinimumWidth(96)
-        self.tabs.setMinimumWidth(220)
-        split.setSizes([128, 1300, 240])
-        split.setStretchFactor(0, 0)
-        split.setStretchFactor(1, 1)
-        split.setStretchFactor(2, 0)
-        split.setChildrenCollapsible(False)
-        split.splitterMoved.connect(lambda *_: QTimer.singleShot(0, self._fit_both))
-        # layar awal (belum ada gambar) <-> editor; panel samping hanya muncul di editor
         from PySide6.QtWidgets import QStackedWidget
+        from .chrome import Backdrop, GlassPanel, SlidePanel
         from .welcome import WelcomeView
+
+        # ---- kanan: panel properti kaca, bisa disembunyikan (Tab) dengan animasi pegas
+        self.b_insp_close = QToolButton()
+        self.b_insp_close.setObjectName("hdrBtn")
+        self.b_insp_close.setIcon(icon("panel_close"))
+        self.b_insp_close.setIconSize(QSize(13, 13))
+        self.b_insp_close.setToolTip("Sembunyikan panel (Tab)")
+        self.b_insp_close.clicked.connect(lambda: self.toggle_inspector(False))
+        self.tabs.setCornerWidget(self.b_insp_close, Qt.TopRightCorner)
+        insp = GlassPanel(radius=20)
+        insp.setObjectName("inspector")
+        il = QVBoxLayout(insp)
+        il.setContentsMargins(8, 8, 6, 8)
+        il.addWidget(self.tabs)
+        self.insp_slide = SlidePanel(insp, 236)
+        self.insp_slide.toggled.connect(lambda _on: QTimer.singleShot(0, self._fit_both))
+
+        # ---- kiri: kolom alat mengambang
+        rail = GlassPanel(radius=22)
+        rail.setObjectName("rail")
+        rl = QVBoxLayout(rail)
+        rl.setContentsMargins(5, 6, 5, 6)
+        rl.setSpacing(3)
+        self.b_layers = tool_btn("layers", "Tampilkan / sembunyikan kotak balon & nomornya (H)", checkable=True)
+        self.b_layers.setChecked(True)
+        self.b_layers.toggled.connect(self._toggle_boxes)
+        for wd in (self.tool_groups["select"], self.g_box, self.tool_groups["shape"], self.tool_groups["heal"],
+                   self.tool_groups["line"], "sep", self.b_split, self.b_layers):
+            if wd == "sep":
+                ln = QFrame()
+                ln.setObjectName("railSep")
+                ln.setFixedHeight(1)
+                rl.addWidget(ln)
+                continue
+            wd.setFixedSize(32, 32)
+            wd.setIconSize(QSize(18, 18))
+            rl.addWidget(wd, 0, Qt.AlignHCenter)
+        rail.setFixedWidth(44)
+        rail.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Maximum)
+
+        # ---- bawah: strip halaman
+        film = GlassPanel(radius=20)
+        film.setObjectName("film")
+        fl = QHBoxLayout(film)
+        fl.setContentsMargins(14, 6, 10, 6)
+        fl.setSpacing(10)
+        meta = QVBoxLayout()
+        meta.setSpacing(2)
+        th = QHBoxLayout()
+        th.setSpacing(2)
+        th.addWidget(self.pages_hdr)
+        th.addStretch()
+        th.addWidget(self.b_add_page)
+        meta.addLayout(th)
+        nav = QHBoxLayout()
+        nav.setSpacing(0)
+        for wd in (self.b_prev, self.page_lbl, self.b_next):
+            nav.addWidget(wd)
+        self.b_prev.setIconSize(QSize(14, 14))
+        self.b_next.setIconSize(QSize(14, 14))
+        nav.addStretch()
+        meta.addLayout(nav)
+        self._film_meta = meta                      # status & progres diisi _build_statusbar
+        mw_ = QWidget()
+        mw_.setLayout(meta)
+        mw_.setFixedWidth(150)
+        fl.addWidget(mw_)
+        sep = QFrame()
+        sep.setObjectName("filmSep")
+        sep.setFixedWidth(1)
+        fl.addWidget(sep)
+        fl.addWidget(self.pages, 1)
+        fl.addWidget(self.pages_empty, 1)
+        self._zoom_host = GlassPanel(radius=None)
+        self._zoom_host.setObjectName("zoomCap")
+        fl.addWidget(self._zoom_host, 0, Qt.AlignVCenter)
+        film.setFixedHeight(104)
+
+        # ---- isi editor
+        editor = QWidget()
+        grid = QGridLayout(editor)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(12)
+        grid.addWidget(rail, 0, 0, Qt.AlignTop)
+        grid.addWidget(self.views, 0, 1)
+        grid.addWidget(self.insp_slide, 0, 2, 2, 1)
+        grid.addWidget(film, 1, 0, 1, 2)
+        grid.setColumnStretch(1, 1)
+        grid.setRowStretch(0, 1)
+        self._editor = editor
+        # tombol buka lagi panel (muncul saat panel disembunyikan)
+        self.b_insp_open = QToolButton(editor)
+        self.b_insp_open.setObjectName("floatBtn")
+        self.b_insp_open.setIcon(icon("panel_open"))
+        self.b_insp_open.setIconSize(QSize(15, 15))
+        self.b_insp_open.setFixedSize(36, 36)
+        self.b_insp_open.setToolTip("Tampilkan panel (Tab)")
+        self.b_insp_open.clicked.connect(lambda: self.toggle_inspector(True))
+        self.b_insp_open.hide()
+        editor.installEventFilter(self)
+
+        # ---- bar atas: dua kapsul kaca
+        def capsule(*items, name=""):
+            c = GlassPanel(radius=None)
+            c.setObjectName(name or "capsule")
+            h = QHBoxLayout(c)
+            h.setContentsMargins(6, 4, 6, 4)
+            h.setSpacing(2)
+            for it in items:
+                if it == "sep":
+                    ln = QFrame()
+                    ln.setObjectName("capSep")
+                    ln.setFixedSize(1, 18)
+                    h.addWidget(ln)
+                elif isinstance(it, int):
+                    h.addSpacing(it)
+                else:
+                    h.addWidget(it)
+            return c
+        logo = QLabel()
+        from PySide6.QtGui import QPixmap as _QP
+        try:
+            from core.paths import code_dir as _cd
+            ip = _cd() / "assets" / "icon.png"
+        except Exception:
+            ip = None
+        pm = _QP(str(ip)) if ip and ip.exists() else _QP()
+        if pm.isNull():
+            pm = self.windowIcon().pixmap(28, 28)
+        logo.setPixmap(pm.scaled(28, 28, Qt.KeepAspectRatio, Qt.SmoothTransformation) if not pm.isNull() else pm)
+        logo.setFixedSize(30, 30)
+        self.title_lbl = QLabel(APP_NAME)
+        self.title_lbl.setObjectName("capTitle")
+        self.sub_lbl = QLabel("")
+        self.sub_lbl.setObjectName("capSub")
+        tl = QVBoxLayout()
+        tl.setSpacing(0)
+        tl.addWidget(self.title_lbl)
+        tl.addWidget(self.sub_lbl)
+        tw = QWidget()
+        tw.setLayout(tl)
+        cap_l = capsule(logo, 4, tw, 8, "sep", self.b_open, self.b_save, self.b_undo, self.b_redo, name="capL")
+        self.cap_opt = capsule(self.b_line_color, self.brush_field, self.b_line_ok, self.b_line_cancel, name="capOpt")
+        arrow = QLabel("→")
+        arrow.setObjectName("dim")
+        cap_r = capsule(self.src, arrow, self.tgt, 6, self.b_go, self.b_stop, "sep", self.b_export, self.b_skill,
+                        self.b_settings, name="capR")
+        for b_ in (self.b_open, self.b_save, self.b_undo, self.b_redo, self.b_stop, self.b_export, self.b_skill,
+                   self.b_settings):
+            b_.setIconSize(QSize(17, 17))
+        top = QHBoxLayout()
+        top.setSpacing(12)
+        top.addWidget(cap_l)
+        top.addStretch()
+        top.addWidget(self.cap_opt)
+        top.addStretch()
+        top.addWidget(cap_r)
+
+        # layar awal (belum ada gambar) <-> editor
         self.welcome = WelcomeView()
         self.welcome.open_folder.connect(self.open_folder)
         self.welcome.open_images.connect(self.open_images)
@@ -622,9 +776,16 @@ class MainWindow(QMainWindow):
         self._show_recent()
         self.center_stack = QStackedWidget()
         self.center_stack.addWidget(self.welcome)
-        self.center_stack.addWidget(split)
+        self.center_stack.addWidget(editor)
         self.center_stack.setCurrentIndex(0)
-        self.setCentralWidget(self.center_stack)
+        root = Backdrop()
+        rv = QVBoxLayout(root)
+        rv.setContentsMargins(12, 12, 12, 12)
+        rv.setSpacing(12)
+        rv.addLayout(top)
+        rv.addWidget(self.center_stack, 1)
+        self.setCentralWidget(root)
+        self._chrome = root
 
     def _build_props(self):
         w = QWidget()
@@ -955,32 +1116,45 @@ class MainWindow(QMainWindow):
         return self.table
 
     def _build_statusbar(self):
-        sb = self.statusBar()
+        """Status, progres & jumlah balon di strip halaman; zoom di kapsul kanan strip (tanpa status bar)."""
+        self.statusBar().hide()
         self.status_lbl = QLabel("Siap")
+        self.status_lbl.setObjectName("filmStatus")
+        self.status_lbl.setWordWrap(False)
+        self.status_lbl.setMinimumWidth(10)
+        self.status_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.progress = QProgressBar()
-        self.progress.setMaximumWidth(220)
-        self.progress.setMaximumHeight(10)
+        self.progress.setMaximumHeight(4)
         self.progress.setTextVisible(False)
-        sb.addWidget(self.status_lbl)
-        sb.addWidget(self.progress)
-        zb = QWidget()
-        zl = QHBoxLayout(zb)
-        zl.setContentsMargins(0, 0, 0, 0)
-        zl.setSpacing(2)
-        zl.addWidget(tool_btn("minus", "Perkecil", lambda: self._zoom_step(1 / 1.25)))
+        self.count_lbl = QLabel("0 balon")
+        self.count_lbl.setObjectName("filmCount")
+        self._film_meta.addWidget(self.count_lbl)
+        self._film_meta.addWidget(self.status_lbl)
+        self._film_meta.addWidget(self.progress)
+        zl = QHBoxLayout(self._zoom_host)
+        zl.setContentsMargins(4, 3, 4, 3)
+        zl.setSpacing(0)
+        for b_ in (tool_btn("minus", "Perkecil", lambda: self._zoom_step(1 / 1.25)),):
+            b_.setIconSize(QSize(14, 14))
+            zl.addWidget(b_)
         self.zoom_lbl = QLabel("100%")
+        self.zoom_lbl.setObjectName("zoomLbl")
         self.zoom_lbl.setMinimumWidth(44)
         self.zoom_lbl.setAlignment(Qt.AlignCenter)
         zl.addWidget(self.zoom_lbl)
-        zl.addWidget(tool_btn("plus", "Perbesar", lambda: self._zoom_step(1.25)))
-        zl.addWidget(tool_btn("fit", "Pas layar (F)", self._fit_both))
-        sb.addPermanentWidget(zb)
-        self.count_lbl = QLabel("0 balon")
-        self.count_lbl.setObjectName("dim")
-        sb.addPermanentWidget(self.count_lbl)
+        for b_ in (tool_btn("plus", "Perbesar", lambda: self._zoom_step(1.25)),
+                   tool_btn("fit", "Pas layar (F)", self._fit_both)):
+            b_.setIconSize(QSize(14, 14))
+            zl.addWidget(b_)
+        if not self.settings.get("inspector_open", True):
+            QTimer.singleShot(0, lambda: (self.insp_slide.set_open(False, animate=False),
+                                          self.b_insp_open.show(), self._place_float_btn()))
 
     def _build_shortcuts(self):
         """Buat aksi untuk setiap pintasan di gui/shortcuts.py; tombolnya bisa diubah di Pengaturan."""
+        from PySide6.QtGui import QShortcut
+        self._sc_layers = QShortcut(QKeySequence("H"), self)
+        self._sc_layers.activated.connect(lambda: self.b_layers.isEnabled() and self.b_layers.toggle())
         handlers = {
             "open": self.open_folder,
             "save": self.save_project,
@@ -995,7 +1169,7 @@ class MainWindow(QMainWindow):
             "undo": self.undo,
             "redo": self.redo,
             "redo_alt": self.redo,
-            "box": lambda: (self.b_box.toggle(), self.toggle_draw()),
+            "box": self._box_key,
             "tool_select": lambda: self.set_tool("select"),
             "tool_pen": lambda: self.set_tool("pen"),
             "tool_shape": self._shape_key,
@@ -1045,6 +1219,9 @@ class MainWindow(QMainWindow):
         name = Path(self.project.file).name if self.project.file else (p.name if p else "")
         mark = " •" if getattr(self, "_dirty", False) else ""
         self.setWindowTitle(f"{APP_NAME} {__version__}" + (f" — {name}{mark}" if name else ""))
+        if hasattr(self, "sub_lbl"):          # kapsul kiri atas: nama proyek / halaman
+            self.sub_lbl.setText((name + mark) if name else f"versi {__version__}")
+            self.sub_lbl.setToolTip(self.project.file or (p.path if p else ""))
 
     def _set_busy(self, busy: bool):
         self.b_go.setEnabled(not busy)
@@ -1252,6 +1429,26 @@ class MainWindow(QMainWindow):
 
     def _zoom_step(self, f):
         self.cv_src.set_zoom(self.cv_src.zoom() * f, emit=True)
+
+    def toggle_inspector(self, on: bool):
+        """Panel properti kanan: tutup / buka dengan animasi pegas; area halaman ikut melebar / menyempit."""
+        self.insp_slide.set_open(on)
+        self.b_insp_open.setVisible(not on)
+        self._place_float_btn()
+        self.settings["inspector_open"] = bool(on)
+        pipeline.save_settings(self.settings)
+
+    def _place_float_btn(self):
+        ed = getattr(self, "_editor", None)
+        if ed is not None:
+            self.b_insp_open.move(ed.width() - self.b_insp_open.width(), 0)
+            self.b_insp_open.raise_()
+
+    def _toggle_boxes(self, on: bool):
+        """Lapisan kotak balon & nomornya: tampil / sembunyi (H) -- untuk melihat halaman bersih."""
+        for cv in (self.cv_src, self.cv_out):
+            cv.set_boxes_visible(on)
+        self.status_lbl.setText("Kotak balon ditampilkan." if on else "Kotak balon disembunyikan (H untuk menampilkan).")
 
     def _toggle_split(self, on):
         self.col_out.setVisible(on)
@@ -1630,7 +1827,7 @@ class MainWindow(QMainWindow):
         busy = bool(self.thread)
         # tombol yang butuh halaman: mati (redup) bila belum ada gambar yang dibuka
         n = len(self.project.pages)
-        for w_ in (self.b_box, *self.tool_btns.values(), self.b_split):
+        for w_ in (self.b_box, self.g_box, *self.tool_groups.values(), self.b_split, self.b_layers):
             w_.setEnabled(has and not busy)
         self.brush_field.setEnabled(has and getattr(self, "tool", "select") in ("heal", "line"))
         self.b_line_color.setEnabled(has and getattr(self, "tool", "select") in ("line", "pen", "shape"))
@@ -1647,6 +1844,16 @@ class MainWindow(QMainWindow):
     def eventFilter(self, obj, ev):
         from PySide6.QtCore import QEvent
         t = ev.type()
+        if t == QEvent.Resize and obj is getattr(self, "_editor", None):
+            self._place_float_btn()
+        if t == QEvent.KeyPress and ev.key() == Qt.Key_Tab and not ev.modifiers() \
+                and QApplication.activeWindow() is self and QApplication.activeModalWidget() is None \
+                and self.center_stack.currentIndex() == 1:
+            fw = QApplication.focusWidget()
+            from PySide6.QtWidgets import QLineEdit as _LE
+            if not isinstance(fw, (QPlainTextEdit, _LE, QAbstractSpinBox, QTableWidget)):
+                self.toggle_inspector(not self.insp_slide.open)   # Tab = sembunyikan / tampilkan panel
+                return True
         if t in (QEvent.KeyPress, QEvent.KeyRelease) and ev.key() == Qt.Key_Space:
             if not self._space_allowed():
                 return False
@@ -2296,6 +2503,10 @@ class MainWindow(QMainWindow):
             return
         b = TextBlock(x=int(rect.x()), y=int(rect.y()), w=int(rect.width()), h=int(rect.height()),
                       kind="free", stroke_width=int(self.settings.get("default_stroke", 0)))
+        if self.settings.get("box_shape") == "oval" and not getattr(self, "_title_box", False):
+            from core.models import ellipse_poly
+            b.kind, b.shape = "bubble", "oval"            # balon oval: teks & area hapus mengikuti bentuk oval
+            b.mask_poly = ellipse_poly(b.x, b.y, b.w, b.h)
         if getattr(self, "_title_box", False):          # Skill -> Kotak judul
             self._title_box = False
             self._snap()
@@ -2339,12 +2550,23 @@ class MainWindow(QMainWindow):
 
     # ================================================================== alat sunting gambar
     def set_tool(self, tool):
+        if tool == "pen":                     # path tool sekarang = seleksi kotak (seret dari pojok ke pojok)
+            tool = "shape"
+            for cv in (self.cv_src, self.cv_out):
+                cv.shape_kind = "rect"
+            self.tool_groups["shape"].set_current("shape_rect")
         self.tool = tool
-        for t, b in self.tool_btns.items():
-            b.setChecked(t == tool)
+        active = self.tool_btns.get(tool)
+        for g in self.tool_groups.values():
+            g.setChecked(g is active)
+        if tool in ("heal", "patch"):
+            self.tool_groups["heal"].set_current(tool)
+        if tool == "shape":
+            self.tool_groups["shape"].set_current("shape_oval" if self.cv_src.shape_kind == "ellipse" else "shape_rect")
         if tool != "select" and self.b_box.isChecked():
             self.b_box.setChecked(False)
             self.cv_src.set_draw_mode(False)
+        self.g_box.setChecked(self.b_box.isChecked())
         if tool in self._tool_sizes:
             self.brush_field.setValue(self._tool_sizes[tool])
         for cv in (self.cv_src, self.cv_out):
@@ -2353,6 +2575,7 @@ class MainWindow(QMainWindow):
             cv.set_brush(int(self.brush_field.value()))
         self.brush_field.setEnabled(tool in ("heal", "line"))
         self.b_line_color.setEnabled(tool in ("line", "pen", "shape"))
+        self._sync_opt_cap()
         hints = {"select": "Pilih / geser kotak teks.",
                  "pen": "Pen: klik titik-titik di sekeliling area. Klik titik awal / klik kanan / Enter = selesai, "
                         "Backspace = hapus titik terakhir, Esc = batal.",
@@ -2364,6 +2587,43 @@ class MainWindow(QMainWindow):
                  "line": "Garis: klik = tambah titik, seret = gambar bebas (Shift = lurus). Hasilnya pratinjau "
                          "putus-putus yang bisa diedit; Enter / tombol 'Jadikan garis' = jadi garis."}
         self.status_lbl.setText(hints.get(tool, ""))
+
+    def _sync_opt_cap(self):
+        """Kapsul tengah atas = pilihan alat aktif (warna/tebal garis, ukuran kuas, Jadikan garis)."""
+        cap = getattr(self, "cap_opt", None)
+        if cap is None:
+            return
+        tool = getattr(self, "tool", "select")
+        self.b_line_color.setVisible(tool in ("line", "shape"))
+        self.brush_field.setVisible(tool in ("heal", "line"))
+        cap.setVisible(tool in ("line", "shape", "heal") or self._a_line_ok.isVisible())
+
+    def _pick_group_tool(self, vid):
+        """Tombol grup dipakai (klik kiri) atau isinya diganti (klik kanan)."""
+        if vid in ("shape_rect", "shape_oval"):
+            for cv in (self.cv_src, self.cv_out):
+                cv.shape_kind = "ellipse" if vid == "shape_oval" else "rect"
+            self.set_tool("shape")
+        else:
+            self.set_tool(vid)
+
+    def _pick_box_tool(self, vid):
+        """Balon terjemah: kotak / oval. Klik saat sudah aktif = matikan."""
+        shape = "oval" if vid == "box_oval" else "rect"
+        if self.settings.get("box_shape") != shape:
+            self.settings["box_shape"] = shape
+            pipeline.save_settings(self.settings)
+        for cv in (self.cv_src, self.cv_out):
+            cv.box_shape = shape
+        self.b_box.setChecked(self.g_box.isChecked())   # klik kiri = nyala/mati; pilih dari menu = nyala
+        self.toggle_draw()
+
+    def _box_key(self):
+        """B: nyalakan balon terjemah; B lagi saat sudah aktif = ganti kotak <-> oval."""
+        if self.b_box.isChecked():
+            self.g_box.cycle()
+        self.g_box.setChecked(True)
+        self._pick_box_tool(self.g_box.current)
 
     def _shape_key(self):
         if getattr(self, "tool", "select") == "shape":
@@ -2424,6 +2684,7 @@ class MainWindow(QMainWindow):
         has = self._draft_canvas() is not None
         self._a_line_ok.setVisible(has)
         self._a_line_cancel.setVisible(has)
+        self._sync_opt_cap()
         c = self._draft_canvas()
         self.b_line_ok.setEnabled(bool(c and c.has_draft()))
         if has and getattr(self, "tool", "") == "line":
@@ -2584,6 +2845,13 @@ class MainWindow(QMainWindow):
             self.set_tool("select")
             self.b_box.setChecked(True)
         self.cv_src.set_draw_mode(on)
+        if hasattr(self, "g_box"):
+            self.g_box.setChecked(on)
+            if on:
+                for g in self.tool_groups.values():
+                    g.setChecked(False)
+            else:
+                self.tool_groups["select"].setChecked(getattr(self, "tool", "select") == "select")
         if on:
             self.status_lbl.setText("Seret di gambar ASLI untuk membuat kotak teks baru.")
 
@@ -3682,6 +3950,78 @@ QMenu::separator { height: 1px; background: rgba(255,255,255,0.09); margin: 5px 
 QMenu::icon { padding-left: 6px; }
 QCheckBox { spacing: 8px; background: transparent; }
 QToolTip { background: #1f2434; color: #e9ecf6; border: 1px solid rgba(170,160,255,0.35); border-radius: 10px; padding: 7px 10px; font-size: 9pt; }
+"""
+
+# ---- Liquid Glass jendela utama: semua isi di atas latar kaca (#chrome = latar jendela) --------------------
+STYLE += """
+#chrome QWidget { background: transparent; }
+#chrome QLabel { background: transparent; }
+#chrome QLabel#capTitle { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; font-weight: 700; font-size: 10pt; color: #eef0f7; }
+#chrome QLabel#capSub { color: rgba(225,229,242,0.56); font-size: 8pt; }
+#chrome QFrame#capSep, #chrome QFrame#filmSep { background: rgba(255,255,255,0.12); border: none; }
+#chrome QFrame#railSep { background: rgba(255,255,255,0.12); border: none; margin: 3px 8px; }
+#chrome QToolButton { background: transparent; border: none; border-radius: 15px; padding: 6px; color: #dfe3f0; }
+#chrome QToolButton:hover { background: rgba(255,255,255,0.08); }
+#chrome QToolButton:checked { color: white; border: none;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.24), stop:1 rgba(255,255,255,0.08)); }
+#chrome QToolButton:disabled { background: transparent; color: #4a5168; }
+#chrome QToolButton#primary { color: white; border-radius: 15px; padding: 6px 14px; font-weight: 700;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(111,143,232,0.85), stop:1 rgba(143,120,224,0.85)); }
+#chrome QToolButton#primary:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(127,159,240,0.95), stop:1 rgba(159,136,236,0.95)); }
+#chrome QToolButton#primary::menu-button { border-left: 1px solid rgba(255,255,255,0.35); width: 18px;
+  border-top-right-radius: 15px; border-bottom-right-radius: 15px; }
+#chrome QToolButton#primary:disabled { background: rgba(111,143,232,0.30); color: rgba(255,255,255,0.55); }
+#chrome QToolButton#floatBtn { border-radius: 18px; border: 1px solid rgba(255,255,255,0.22);
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(60,66,92,0.92), stop:1 rgba(36,40,58,0.92)); }
+#chrome QToolButton#hdrBtn { border-radius: 10px; padding: 3px; }
+#chrome QComboBox, #chrome QPlainTextEdit, #chrome QLineEdit, #chrome QSpinBox, #chrome QDoubleSpinBox, #chrome QTextEdit {
+  background: rgba(0,0,0,0.24); border: 1px solid rgba(255,255,255,0.07); border-radius: 11px; padding: 3px 9px; }
+#chrome QWidget#capR QComboBox { background: transparent; border: none; font-weight: 600; padding: 2px 4px; }
+#chrome QComboBox QLineEdit { background: transparent; border: none; padding: 0; }
+#chrome QPlainTextEdit:focus, #chrome QLineEdit:focus { border: 1px solid rgba(160,150,235,0.65); }
+#chrome QComboBox QLineEdit:focus { border: none; }
+#chrome QLineEdit#numField { background: transparent; border: none; padding: 0 2px; }
+#chrome QWidget#field { background: rgba(0,0,0,0.24); border: 1px solid rgba(255,255,255,0.07); border-radius: 11px; }
+#chrome QToolButton#mini, #chrome QToolButton#presetBtn { background: rgba(0,0,0,0.24); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px; padding: 0; color: rgba(225,229,242,0.75); }
+#chrome QToolButton#mini:hover, #chrome QToolButton#presetBtn:hover { background: rgba(255,255,255,0.09); }
+#chrome QToolButton#mini:checked, #chrome QToolButton#presetBtn:checked { color: white; border: none;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.30), stop:1 rgba(255,255,255,0.10)); }
+#chrome QToolButton#sectionHeader { background: transparent; color: #e6e9f4; font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif;
+  font-weight: 700; font-size: 8pt; padding: 4px 2px; border-radius: 6px; }
+#chrome QToolButton#sectionHeader:hover { background: rgba(255,255,255,0.05); }
+#chrome QPushButton { color: #e6e9f4; border: none; border-radius: 12px; padding: 5px 10px;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.13), stop:1 rgba(255,255,255,0.05)); }
+#chrome QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.20), stop:1 rgba(255,255,255,0.08)); }
+#chrome QPushButton#swatch { border: 2px solid rgba(255,255,255,0.40); border-radius: 11px; }
+#chrome QPushButton#danger { color: #ff8a95; }
+#chrome QTabWidget#rightTabs::pane { border: none; background: transparent; top: 4px; }
+#chrome QTabWidget#rightTabs QTabBar { background: transparent; }
+#chrome QTabWidget#rightTabs QTabBar::tab { background: transparent; color: rgba(225,229,242,0.56); border: none;
+  padding: 5px 9px; margin: 2px 1px; border-radius: 11px; font-size: 7.5pt; font-weight: 700; }
+#chrome QTabWidget#rightTabs QTabBar::tab:selected { color: white;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.22), stop:1 rgba(255,255,255,0.07)); }
+#chrome QTabWidget#rightTabs QTabBar::tab:hover { color: #e6e9f4; }
+#chrome QTableWidget { background: transparent; border: none; gridline-color: rgba(255,255,255,0.06); }
+#chrome QHeaderView::section { background: rgba(255,255,255,0.05); color: rgba(225,229,242,0.7); border: none; padding: 5px; }
+#chrome QListWidget#filmstrip { background: transparent; border: none; }
+#chrome QListWidget#filmstrip::item { color: rgba(225,229,242,0.6); border-radius: 10px; padding: 2px; border: none; }
+#chrome QListWidget#filmstrip::item:hover { background: rgba(255,255,255,0.06); }
+#chrome QListWidget#filmstrip::item:selected { color: white; border: none;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.20), stop:1 rgba(255,255,255,0.06)); }
+#chrome QLabel#filmTitle { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; font-weight: 700; font-size: 9pt; color: #eef0f7; }
+#chrome QLabel#pageLbl { color: rgba(225,229,242,0.75); font-size: 8.5pt; }
+#chrome QLabel#filmCount { color: #8fe0b7; font-size: 8pt; }
+#chrome QLabel#filmStatus { color: rgba(225,229,242,0.5); font-size: 7.5pt; }
+#chrome QLabel#zoomLbl { font-weight: 600; font-size: 8.5pt; }
+#chrome QProgressBar { background: rgba(255,255,255,0.08); border: none; border-radius: 2px; }
+#chrome QWidget#viewHeaderBar { background: transparent; border: none; }
+#chrome QLabel#viewHeader { color: rgba(225,229,242,0.7); font-size: 7.5pt; letter-spacing: 1px; }
+#chrome QSplitter#viewsSplit::handle { background: transparent; }
+#chrome QSplitter#viewsSplit::handle:hover { background: rgba(160,150,235,0.5); }
+#chrome QScrollBar:vertical, #chrome QScrollBar:horizontal { background: transparent; width: 8px; height: 8px; }
+#chrome QScrollBar::handle { background: rgba(255,255,255,0.16); border-radius: 4px; }
+#chrome QCheckBox { color: #dfe3f0; }
 """
 
 

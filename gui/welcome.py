@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QMenu, 
 from .icons import icon
 
 STYLE = """
-QWidget#welcome { background: #11141c; }
+QWidget#welcome { background: transparent; }
 QLabel#wTitle { font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif; color: #e9edf6; font-size: 18pt; font-weight: 800; background: transparent; }
 QLabel#wSub { color: #7c84a0; font-size: 10pt; background: transparent; }
 QLabel#wHint { color: #56607a; font-size: 8.5pt; background: transparent; }

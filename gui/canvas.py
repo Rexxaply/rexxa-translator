@@ -210,6 +210,9 @@ class BoxItem(QGraphicsRectItem):
                 b.mask_poly = []
                 b.text_rect = []
             b.x, b.y, b.w, b.h = nx, ny, nw, nh
+            if getattr(b, "shape", "") == "oval":       # balon oval buatan sendiri: kontur ikut kotak
+                from core.models import ellipse_poly
+                b.mask_poly = ellipse_poly(nx, ny, nw, nh)
 
     def reload(self):
         """Ambil ulang posisi dari data blok (mis. setelah diubah di kanvas lain / undo)."""
@@ -255,6 +258,7 @@ class PageCanvas(QGraphicsView):
         self.boxes: list[BoxItem] = []
         self.show_boxes = True
         self.draw_mode = False
+        self.box_shape = "rect"                  # balon terjemah baru: "rect" | "oval"
         self.selected = None
         self.multi = []                          # pilihan ganda (Ctrl+klik), termasuk self.selected
         self._draw_start = None
@@ -918,7 +922,8 @@ class PageCanvas(QGraphicsView):
             self._draw_start = self.mapToScene(pos)
             pen = QPen(QColor("#06d6a0"), 2, Qt.DashLine)
             pen.setCosmetic(True)
-            self._draw_rect = self.scene().addRect(QRectF(self._draw_start, self._draw_start), pen)
+            add = self.scene().addEllipse if getattr(self, "box_shape", "rect") == "oval" else self.scene().addRect
+            self._draw_rect = add(QRectF(self._draw_start, self._draw_start), pen, QBrush(QColor(6, 214, 160, 30)))
             self._draw_rect.setZValue(20)
             return
         if e.button() == Qt.MiddleButton or (e.button() == Qt.LeftButton and self._item_at(pos) is None):
@@ -933,7 +938,14 @@ class PageCanvas(QGraphicsView):
         if self._pan is None and self._tool_move(e):
             return
         if self._draw_rect is not None:
-            self._draw_rect.setRect(QRectF(self._draw_start, self.mapToScene(pos)).normalized())
+            r = QRectF(self._draw_start, self.mapToScene(pos)).normalized()
+            if e.modifiers() & Qt.ShiftModifier:      # Shift = persegi / lingkaran (dari titik awal)
+                side = max(r.width(), r.height())
+                end = self.mapToScene(pos)
+                sx = 1 if end.x() >= self._draw_start.x() else -1
+                sy = 1 if end.y() >= self._draw_start.y() else -1
+                r = QRectF(self._draw_start, self._draw_start + QPointF(sx * side, sy * side)).normalized()
+            self._draw_rect.setRect(r)
             return
         if self._pan is not None:
             d = pos - self._pan["start"]
