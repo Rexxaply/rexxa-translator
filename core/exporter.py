@@ -248,7 +248,7 @@ def export_psd(project: Project, out_path: str, indices: list[int], settings: di
         for b, im, x, y in layers:
             n = p.blocks.index(b) + 1 if b in p.blocks else 0
             txt = " ".join((b.translation or project.series_title or "").split())
-            label = "Judul seri" if b.kind == "title" else f"Teks {n}"
+            label = "Judul seri" if b.kind == "title" else f"Gambar {n}" if b.kind == "image" else f"Teks {n}"
             tl.append((f"{label}: {txt[:40]}", im, x, y))
         name = f"{i + 1:0{pad}d}_{safe_name(Path(p.path).stem, 'halaman')}.psd"
         f = tmp / name

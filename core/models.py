@@ -15,7 +15,7 @@ class TextBlock:
     h: int
     source: str = ""          # teks asli hasil OCR
     translation: str = ""     # teks terjemahan (bisa diedit manual)
-    kind: str = "bubble"      # bubble | free (teks di luar balon / SFX) | title (logo judul seri)
+    kind: str = "bubble"      # bubble | free (teks di luar balon / SFX) | title (logo judul seri) | image (lapisan gambar)
     sfx: bool = False         # teks spesial besar (huruf kuas/tebal); font dicocokkan otomatis
     vertical: bool = False    # teks asli vertikal (JP/ZH)
     font: str = ""            # kosong = pakai font default
@@ -51,6 +51,14 @@ class TextBlock:
     title_scale: float = 1.0  # skala gambar judul di dalam kotak
     title_keep_bg: bool = False  # True = logo asli TIDAK dihapus sebelum gambar ditempel
     shape: str = ""           # "" = kotak, "oval" = balon oval buatan sendiri (kontur ikut kotak saat diubah)
+    opacity: float = 1.0      # lapisan gambar (kind "image"): 0..1
+    layer_name: str = ""      # lapisan gambar: nama file aslinya (untuk daftar di tab Gambar)
+    layer_src: str = ""       # lapisan gambar: gambar asli (title_image = hasil setelah latar dihapus)
+    key_mode: str = ""        # hapus latar: "" | auto | white | green | blue | black | custom
+    key_color: str = ""       # warna latar pilihan sendiri (mode custom)
+    key_tol: float = 30.0     # toleransi warna latar 0..100
+    key_soft: float = 20.0    # kehalusan tepi 0..100
+    key_edge: bool = True     # hanya latar yang tersambung ke tepi gambar
     note: bool = False        # teks bebas dari alat Teks (catatan / info): tidak di-OCR / diterjemah / dihapus latarnya
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
 

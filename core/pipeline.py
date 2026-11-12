@@ -482,6 +482,12 @@ def _clean_sig(b) -> tuple:
             (b.translation or "").strip() == (b.source or "").strip())
 
 
+def _sigs(blocks) -> dict:
+    """Sidik hapus-teks semua blok, kecuali teks bebas & lapisan gambar (tidak pernah menghapus apa pun,
+    jadi menggeser / menambahnya tidak memicu hapus teks ulang)."""
+    return {b.id: _clean_sig(b) for b in blocks if not getattr(b, "note", False)}
+
+
 def _rect_pad(r, pad, W, H):
     x, y, w, h = r[:4]
     return max(0, x - pad), max(0, y - pad), min(W, x + w + pad), min(H, y + h + pad)
@@ -508,7 +514,7 @@ def mark_clean_valid(project: Project):
     """Proyek dibuka: hasil bersih yang tersimpan dianggap cocok dengan balon yang tersimpan."""
     for pg in project.pages:
         if pg.cleaned_path and Path(pg.cleaned_path).exists():
-            pg._clean_sigs = {b.id: _clean_sig(b) for b in pg.blocks}
+            pg._clean_sigs = _sigs(pg.blocks)
 
 
 def step_clean(page: Page, settings: dict, incremental: bool = True):
@@ -517,7 +523,7 @@ def step_clean(page: Page, settings: dict, incremental: bool = True):
     img = detector.load_image(page.path)
     H, W = img.shape[:2]
     method = settings["clean_method"]
-    sigs_new = {b.id: _clean_sig(b) for b in page.blocks}
+    sigs_new = _sigs(page.blocks)
     old = getattr(page, "_clean_sigs", None)
     cached = page.cleaned_path if page.cleaned_path and Path(page.cleaned_path).exists() else ""
     cleaned = None
@@ -577,6 +583,77 @@ def _title_image(b) -> str:
     return f if f and Path(f).exists() else ""
 
 
+_IMG_SRC: dict = {}       # path -> (mtime, RGBA numpy) gambar lapisan, ukuran asli
+_IMG_FIT: dict = {}       # (path, mtime, w, h) -> (BGR float32, alpha float32) sudah diubah ukurannya
+
+
+def image_layers(blocks) -> list:
+    return [b for b in blocks if b.kind == "image" and _title_image(b)]
+
+
+def _layer_rgba(b):
+    """Gambar lapisan sesuai ukuran kotaknya -> (BGR float32, alpha 0..1 float32). Di-cache: menggeser
+    kotak tidak menghitung ulang, mengubah ukuran memakai salinan asli yang tersimpan di memori."""
+    import cv2
+    path = b.title_image
+    try:
+        mt = Path(path).stat().st_mtime
+    except OSError:
+        return None
+    w, h = max(1, int(b.w)), max(1, int(b.h))
+    key = (path, mt, w, h)
+    hit = _IMG_FIT.get(key)
+    if hit is not None:
+        return hit
+    src = _IMG_SRC.get(path)
+    if src is None or src[0] != mt:
+        from PIL import Image
+        src = (mt, np.asarray(Image.open(path).convert("RGBA")))
+        if len(_IMG_SRC) > 8:
+            _IMG_SRC.clear()
+        _IMG_SRC[path] = src
+    arr = src[1]
+    interp = cv2.INTER_AREA if w * h < arr.shape[0] * arr.shape[1] else cv2.INTER_CUBIC
+    rs = cv2.resize(arr, (w, h), interpolation=interp)
+    hit = (np.ascontiguousarray(rs[..., 2::-1]).astype(np.float32), rs[..., 3:4].astype(np.float32) / 255.0)
+    if len(_IMG_FIT) > 24:
+        _IMG_FIT.pop(next(iter(_IMG_FIT)))
+    _IMG_FIT[key] = hit
+    return hit
+
+
+def apply_images(img, blocks, collect: list | None = None):
+    """Tempel lapisan gambar (alat Gambar: judul, logo, panel tambahan...) ke halaman, sesuai urutan.
+    Teks terjemahan digambar SETELAHNYA, jadi teks bisa ditulis di atas gambar. collect: untuk PSD."""
+    layers = image_layers(blocks)
+    if not layers:
+        return img
+    out = img.copy()
+    H, W = out.shape[:2]
+    for b in layers:
+        try:
+            got = _layer_rgba(b)
+        except Exception:
+            got = None
+        if got is None:
+            continue
+        bgr, a = got
+        x, y = int(b.x), int(b.y)
+        X0, Y0, X1, Y1 = max(0, x), max(0, y), min(W, x + bgr.shape[1]), min(H, y + bgr.shape[0])
+        if X1 <= X0 or Y1 <= Y0:
+            continue
+        op = max(0.0, min(1.0, float(getattr(b, "opacity", 1.0) if getattr(b, "opacity", None) is not None else 1.0)))
+        al = a[Y0 - y:Y1 - y, X0 - x:X1 - x] * op
+        fg = bgr[Y0 - y:Y1 - y, X0 - x:X1 - x]
+        reg = out[Y0:Y1, X0:X1].astype(np.float32)
+        out[Y0:Y1, X0:X1] = np.clip(reg * (1 - al) + fg * al, 0, 255).astype(np.uint8)
+        if collect is not None:
+            from PIL import Image
+            rgba = np.dstack([fg[..., ::-1], al * 255]).clip(0, 255).astype(np.uint8)
+            collect.append((b, Image.fromarray(np.ascontiguousarray(rgba), "RGBA"), X0, Y0))
+    return out
+
+
 def _apply_titles(page: Page, project: Project, settings: dict, final):
     titles = [b for b in page.blocks if b.kind == "title"
               and (_title_image(b) or (b.translation or project.series_title).strip())]
@@ -615,7 +692,7 @@ def render_layers(page: Page, project: Project, settings: dict):
                             base_key=f"{page.cleaned_path}:{mt}")
     sync_default_style(settings)
     layers: list = []
-    final = typeset.render_page(base, page.blocks, project.target_lang, settings.get("font", ""),
+    final = typeset.render_page(apply_images(base, page.blocks, collect=layers), page.blocks, project.target_lang, settings.get("font", ""),
                                 settings.get("uppercase", True), int(settings.get("max_font_size", 48)),
                                 italic=settings.get("italic", True),
                                 default_size=int(settings.get("default_font_size", 0) or 0),
@@ -642,7 +719,7 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
     else:
         base = detector.load_image(page.cleaned_path)
         if getattr(page, "_clean_sigs", None) is None:     # proyek baru dibuka: hasil bersih tersimpan = sah
-            page._clean_sigs = {b.id: _clean_sig(b) for b in page.blocks}
+            page._clean_sigs = _sigs(page.blocks)
     if page.edits:      # suntingan manual (healing brush, hapus area, isi warna) di atas hasil bersih
         from . import edits as ED
         try:
@@ -652,7 +729,8 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
         base = ED.apply_all(page, base, detector.load_image(page.path), settings["clean_method"],
                             base_key=f"{page.cleaned_path}:{mt}")
     sync_default_style(settings)
-    final = typeset.render_page(base, page.blocks, project.target_lang, settings.get("font", ""),
+    final = typeset.render_page(apply_images(base, page.blocks), page.blocks, project.target_lang,
+                                settings.get("font", ""),
                                 settings.get("uppercase", True), int(settings.get("max_font_size", 48)),
                                 italic=settings.get("italic", True),
                                 default_size=int(settings.get("default_font_size", 0) or 0),
@@ -714,7 +792,7 @@ def _clean_preview(page: Page, settings: dict, blocks: list, base):
     old = getattr(page, "_clean_sigs", None)
     if old is None:
         return base, False
-    new = {b.id: _clean_sig(b) for b in blocks}
+    new = _sigs(blocks)
     # hanya perubahan kotak (posisi/ukuran/bentuk/hapus-tidaknya) -- mengetik terjemahan tidak menghapus
     # ulang apa pun (bagian akhir sig = ada/tidaknya terjemahan)
     changed = [bid for bid, sg in new.items() if old.get(bid) is None or old[bid][:-2] != sg[:-2]]
@@ -752,10 +830,10 @@ def render_live(page: Page, project: Project, settings: dict, blocks: list):
     (kotak sedang digeser), hasil kualitas penuh menyusul lewat render biasa."""
     base = _live_base(page, settings)
     if getattr(page, "_clean_sigs", None) is None:
-        page._clean_sigs = {b.id: _clean_sig(b) for b in page.blocks}
+        page._clean_sigs = _sigs(page.blocks)
     base, previewed = _clean_preview(page, settings, blocks, base)
     sync_default_style(settings)
-    final = typeset.render_page(base, blocks, project.target_lang, settings.get("font", ""),
+    final = typeset.render_page(apply_images(base, blocks), blocks, project.target_lang, settings.get("font", ""),
                                 settings.get("uppercase", True), int(settings.get("max_font_size", 48)),
                                 italic=settings.get("italic", True),
                                 default_size=int(settings.get("default_font_size", 0) or 0),
