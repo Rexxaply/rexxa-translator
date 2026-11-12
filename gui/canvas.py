@@ -73,7 +73,7 @@ class BoxItem(QGraphicsRectItem):
                 pen.setStyle(Qt.DashLine)
             self.setPen(pen)
             fill = QColor(col)
-            fill.setAlpha(0 if self.ghost else (45 if self.selected else 25))
+            fill.setAlpha(0 if (self.ghost or self.block.kind == "image") else (45 if self.selected else 25))
             self.setBrush(QBrush(fill))
         if self.label:
             self.label.setVisible(True)
