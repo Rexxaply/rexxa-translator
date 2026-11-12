@@ -173,6 +173,10 @@ def main(out):
     w.set_tool("select")
     w._select(None)
     pump(0.6)
+    w.cv_src.set_zoom(0.9)
+    pump(0.3)
+    w.cv_src.centerOn(450, 2500)
+    pump(0.8)
     shot("5_teks_bebas.png")
     for i_, cv_ in enumerate((w.cv_src, w.cv_out)):
         cv_.grab().save(str(out / f"5_kanvas_{i_}.png"))
