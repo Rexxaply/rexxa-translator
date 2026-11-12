@@ -1770,7 +1770,7 @@ class MainWindow(QMainWindow):
         m.addAction(icon("image"), "Buka gambar…", self.open_images)
         m.addAction(icon("project"), "Buka proyek (.mtproj)…", self.open_project)
         rec = m.addMenu(icon("project"), "Proyek terakhir")
-        items = [p for p in (self.settings.get("recent_projects") or []) if Path(p).exists()][:10]
+        items = [p for p in (self.settings.get("recent_projects") or []) if Path(p).exists()][:5]
         cur = os.path.normcase(os.path.abspath(self.project.file)) if self.project.file else ""
         for n, f in enumerate(items, 1):
             from .welcome import ago
@@ -1836,7 +1836,7 @@ class MainWindow(QMainWindow):
                                 self.settings.get("recent_opened") or {})
 
     def _add_recent(self, f):
-        """Catat proyek yang baru dibuka / disimpan: naik ke urutan teratas (maks. 10 diingat)."""
+        """Catat proyek yang baru dibuka / disimpan: naik ke urutan teratas (maks. 5 diingat)."""
         if not f:
             return
         import time
@@ -1844,7 +1844,7 @@ class MainWindow(QMainWindow):
         key = os.path.normcase(f)
         lst = [p for p in (self.settings.get("recent_projects") or [])
                if os.path.normcase(os.path.abspath(p)) != key]
-        self.settings["recent_projects"] = [f] + lst[:9]
+        self.settings["recent_projects"] = [f] + lst[:4]      # riwayat maksimal 5 proyek
         opened = {k: v for k, v in (self.settings.get("recent_opened") or {}).items()
                   if k in self.settings["recent_projects"]}
         opened[f] = time.time()

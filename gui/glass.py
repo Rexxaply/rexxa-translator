@@ -485,9 +485,12 @@ class GlassDialog(QDialog):
 class _Smooth(QObject):
     """Roda mouse -> bilah gulir meluncur ke tujuan dengan perlambatan (OutCubic, ±220 ms)."""
 
-    def __init__(self, area: QAbstractScrollArea):
+    def __init__(self, area: QAbstractScrollArea, step: int = 0, snap: int = 0, duration: int = 220):
         super().__init__(area)
         self.area = area
+        self.step = step              # piksel per satu klik roda (0 = otomatis dari ukuran daftar)
+        self.snap = snap              # >0: posisi selalu kelipatan sekian piksel
+        self.duration = duration
         self.anims = {}
         self.target = {}
         area.viewport().installEventFilter(self)
@@ -501,30 +504,38 @@ class _Smooth(QObject):
         if bar is None or bar.maximum() <= bar.minimum():
             return False
         delta = (d.x() or d.y()) if horiz else d.y()
-        if not delta:
+        px = ev.pixelDelta()
+        pxd = (px.x() or px.y()) if horiz else px.y()
+        if not delta and not pxd:
             return False
-        step = max(24, bar.singleStep() * 3, bar.pageStep() // 6)
+        step = self.step or max(24, bar.singleStep() * 3, bar.pageStep() // 6)
         key = "h" if horiz else "v"
         anim = self.anims.get(key)
         base = self.target.get(key) if anim is not None and anim.state() == QPropertyAnimation.Running else bar.value()
-        tgt = max(bar.minimum(), min(bar.maximum(), int(base - delta / 120.0 * step)))
+        move = pxd if pxd else delta / 120.0 * step       # touchpad: piksel asli; roda: per klik
+        if self.snap:                                     # gerak per kelipatan (mis. 10 px), minimal satu langkah
+            n = round(move / self.snap) or (1 if move > 0 else -1)
+            move = n * self.snap
+        tgt = max(bar.minimum(), min(bar.maximum(), int(round(base - move))))
+        if self.snap and tgt not in (bar.minimum(), bar.maximum()):
+            tgt = int(round(tgt / self.snap) * self.snap)
         self.target[key] = tgt
         if anim is None:
             anim = QPropertyAnimation(bar, b"value", self)
             anim.setEasingCurve(QEasingCurve.OutCubic)
             self.anims[key] = anim
         anim.stop()
-        anim.setDuration(220)
+        anim.setDuration(self.duration)
         anim.setStartValue(bar.value())
         anim.setEndValue(tgt)
         anim.start()
         return True
 
 
-def smooth_scroll(area: QAbstractScrollArea):
+def smooth_scroll(area: QAbstractScrollArea, step: int = 0, snap: int = 0, duration: int = 220):
     """Aktifkan gulir halus pada QScrollArea / QListWidget / QTableWidget / QTextEdit."""
     if isinstance(area, QAbstractScrollArea) and not getattr(area, "_smooth", None):
-        area._smooth = _Smooth(area)
+        area._smooth = _Smooth(area, step, snap, duration)
         from PySide6.QtWidgets import QAbstractItemView
         if isinstance(area, QAbstractItemView):          # daftar: gulir per piksel, bukan per baris
             area.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)

@@ -34,6 +34,11 @@ QLabel#rMeta { color: #7c84a0; font-size: 8pt; background: transparent; }
 QLabel#rWhen { color: #a598ff; font-size: 8pt; font-weight: 600; background: transparent; }
 QLabel#rThumb { background: #0e1118; border-radius: 6px; }
 QScrollArea#recentScroll, QWidget#recentInner { background: transparent; border: none; }
+QScrollArea#recentScroll QScrollBar:vertical { background: transparent; width: 6px; margin: 2px 0 2px 0; }
+QScrollArea#recentScroll QScrollBar::handle:vertical { background: rgba(255,255,255,0.18); border-radius: 3px; min-height: 30px; }
+QScrollArea#recentScroll QScrollBar::handle:vertical:hover { background: rgba(165,152,255,0.55); }
+QScrollArea#recentScroll QScrollBar::add-line, QScrollArea#recentScroll QScrollBar::sub-line { height: 0; }
+QScrollArea#recentScroll QScrollBar::add-page, QScrollArea#recentScroll QScrollBar::sub-page { background: transparent; }
 """
 
 
@@ -172,7 +177,8 @@ class WelcomeView(QWidget):
     open_recent = Signal(str)
     remove_recent = Signal(str)
     clear_recent = Signal()
-    MAX_SHOWN = 3              # layar awal: 3 proyek terbaru (semua riwayat ada di menu ikon folder)
+    MAX_SHOWN = 5              # riwayat: 5 proyek terbaru; tampil 3 kartu, sisanya digulir
+    VISIBLE = 3
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -251,6 +257,11 @@ class WelcomeView(QWidget):
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.NoFrame)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        from .glass import smooth_scroll
+        # gulir halus: meluncur (OutCubic), posisi per kelipatan 10 px; 1 klik roda = 40 px
+        smooth_scroll(self.scroll, step=40, snap=10, duration=280)
+        self.scroll.verticalScrollBar().setSingleStep(10)
         inner = QWidget()
         inner.setObjectName("recentInner")
         self.grid = QGridLayout(inner)
@@ -304,7 +315,11 @@ class WelcomeView(QWidget):
             self.grid.addWidget(c, n // cols, n % cols)
         self.recent_box.setVisible(bool(infos))
         rows = (len(infos) + cols - 1) // cols
-        self.scroll.setMinimumHeight(min(rows, 3) * 114)
+        vis = min(rows, self.VISIBLE)             # tinggi pas 3 kartu; kartu ke-4 & 5 digulir
+        ch = self._cards[0].sizeHint().height() if self._cards else 104
+        sp = self.grid.spacing()
+        self.scroll.setFixedHeight(max(0, vis * ch + max(0, vis - 1) * sp))
+        self.scroll.verticalScrollBar().setValue(0)
         self._cols = cols
 
     def _tick(self):
