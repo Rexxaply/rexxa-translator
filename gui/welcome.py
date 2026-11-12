@@ -282,7 +282,10 @@ class WelcomeView(QWidget):
         while self.grid.count():
             it = self.grid.takeAt(0)
             if it.widget():
-                it.widget().deleteLater()
+                old = it.widget()
+                old.hide()                    # langsung hilang (latar transparan: kartu lama tak boleh tertinggal)
+                old.setParent(None)
+                old.deleteLater()
         infos = []
         for p in paths:
             i = project_info(p, opened.get(p))
