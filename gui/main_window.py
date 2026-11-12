@@ -4128,7 +4128,8 @@ class MainWindow(QMainWindow):
         y = int(min(max(0, c.y() - h_ / 2 + offset), max(0, ph - h_)))
         self._snap()
         b = TextBlock(x=x, y=y, w=w_, h=h_, kind="image", clean=False, note=True, source="", translation="",
-                      title_image=path, layer_src=path, title_fit="stretch", title_keep_bg=True, opacity=1.0)
+                      title_image=path, layer_src=path, title_fit="stretch", title_keep_bg=True, opacity=1.0,
+                      layer_name=Path(src).name if isinstance(src, str) else "Tempelan clipboard")
         p.blocks.append(b)
         self.sel, self.multi = b, []
         self.set_tool("select")
@@ -4208,7 +4209,7 @@ class MainWindow(QMainWindow):
 
         page_w = QWidget()
         v = QVBoxLayout(page_w)
-        v.setContentsMargins(4, 6, 4, 6)
+        v.setContentsMargins(2, 6, 12, 6)
         v.setSpacing(8)
         self.drop_zone = DropZone()
         v.addWidget(self.drop_zone)
@@ -4342,7 +4343,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QListWidgetItem
         for b in layers:
             n = p.blocks.index(b) + 1
-            name = Path(b.layer_src or b.title_image or "").name
+            name = b.layer_name or Path(b.layer_src or b.title_image or "").name
             extra = {"auto": "latar otomatis", "white": "tanpa putih", "green": "tanpa hijau",
                      "blue": "tanpa biru", "black": "tanpa hitam", "custom": "tanpa warna"}.get(b.key_mode, "")
             it = QListWidgetItem(self._checker_icon(b.title_image),
@@ -4379,7 +4380,10 @@ class MainWindow(QMainWindow):
             self.key_btns["custom"].setStyleSheet(f"border-left: 5px solid {b.key_color};")
         else:
             self.key_btns["custom"].setStyleSheet("")
-        self.key_info.setText("" if on else "Pilih gambar di daftar / di halaman.")
+        if not on:
+            self.key_info.setText("Pilih gambar di daftar / di halaman.")
+        elif not b.key_mode:
+            self.key_info.setText("")
         self._loading = was
         if hasattr(self, "_img_layers"):
             self.img_list.blockSignals(True)
@@ -4482,6 +4486,7 @@ class MainWindow(QMainWindow):
         self._snap()
         for t in ts:
             t.title_image = t.layer_src = path
+            t.layer_name = Path(f).name
             if sz.width() > 0 and sz.height() > 0:
                 t.h = max(8, int(round(t.w * sz.height() / sz.width())))
             if t.key_mode:

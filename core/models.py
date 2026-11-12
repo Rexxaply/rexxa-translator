@@ -52,6 +52,7 @@ class TextBlock:
     title_keep_bg: bool = False  # True = logo asli TIDAK dihapus sebelum gambar ditempel
     shape: str = ""           # "" = kotak, "oval" = balon oval buatan sendiri (kontur ikut kotak saat diubah)
     opacity: float = 1.0      # lapisan gambar (kind "image"): 0..1
+    layer_name: str = ""      # lapisan gambar: nama file aslinya (untuk daftar di tab Gambar)
     layer_src: str = ""       # lapisan gambar: gambar asli (title_image = hasil setelah latar dihapus)
     key_mode: str = ""        # hapus latar: "" | auto | white | green | blue | black | custom
     key_color: str = ""       # warna latar pilihan sendiri (mode custom)
