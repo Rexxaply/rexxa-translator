@@ -711,7 +711,9 @@ def _clean_preview(page: Page, settings: dict, blocks: list, base):
     if old is None:
         return base, False
     new = {b.id: _clean_sig(b) for b in blocks}
-    changed = [bid for bid, sg in new.items() if old.get(bid) != sg]
+    # hanya perubahan kotak (posisi/ukuran/bentuk/hapus-tidaknya) -- mengetik terjemahan tidak menghapus
+    # ulang apa pun (bagian akhir sig = ada/tidaknya terjemahan)
+    changed = [bid for bid, sg in new.items() if old.get(bid) is None or old[bid][:-2] != sg[:-2]]
     removed = [bid for bid in old if bid not in new]
     if not changed and not removed:
         return base, False
