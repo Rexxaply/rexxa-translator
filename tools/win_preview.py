@@ -82,7 +82,13 @@ def main():
     f = str(d / "big.mtproj")
     Project(pages=pages, source_lang="en", target_lang="id").save(f)
     timed("buka proyek 30 halaman", lambda: w._load_project(f), prof=True)
-    pump(2.0)
+    t_ = time.time()
+    first = w.pages.item(29).icon().cacheKey()
+    while time.time() - t_ < 5 and w.pages.item(29).icon().cacheKey() == first:
+        pump(0.02)
+    print(f"thumbnail semua halaman siap dalam {(time.time() - t_) * 1000:.0f} ms (latar, tampilan tetap responsif)",
+          "| ukuran ikon", w.pages.item(29).icon().availableSizes(), flush=True)
+    pump(1.0)
     timed("render halaman 1 (penuh)", lambda: (w.render_current(), [pump(0.05) for _ in range(400) if w.thread]))
     pump(1.0)
     for i in (1, 2, 3):
