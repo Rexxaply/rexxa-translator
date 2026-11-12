@@ -1,13 +1,16 @@
 """Pilihan font yang menampilkan nama tiap font DENGAN font itu sendiri (pratinjau langsung),
 jadi font yang cocok bisa dipilih tanpa mencoba satu per satu.
 
+Kotaknya juga bisa diketik: daftar langsung tersaring ke font yang namanya mengandung ketikan
+(di bagian mana saja, huruf besar/kecil tidak berpengaruh), bagian yang cocok disorot.
+
 Font baru didaftarkan ke Qt saat daftar pertama kali dibuka (bukan saat aplikasi mulai),
 dan hasilnya disimpan supaya membuka daftar berikutnya instan."""
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, QSize, Qt
-from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
-from PySide6.QtWidgets import QComboBox, QStyle, QStyledItemDelegate
+from PySide6.QtCore import QEvent, QRect, QSize, QSortFilterProxyModel, Qt, QTimer
+from PySide6.QtGui import QColor, QFont, QFontDatabase, QFontMetrics
+from PySide6.QtWidgets import QComboBox, QCompleter, QListView, QStyle, QStyledItemDelegate
 
 PREVIEW_PT = 11.5
 _cache: dict = {}            # path -> QFont | None
@@ -48,7 +51,12 @@ def qfont_for(path: str, pt: float = PREVIEW_PT):
 
 
 class _Delegate(QStyledItemDelegate):
-    """Menggambar teks tiap baris dengan font miliknya (stylesheet aplikasi tidak menimpanya)."""
+    """Menggambar teks tiap baris dengan font miliknya (stylesheet aplikasi tidak menimpanya).
+    `query`: teks pencarian -> bagian nama yang cocok diberi sorotan."""
+
+    def __init__(self, parent=None, query=None):
+        super().__init__(parent)
+        self.query = query or (lambda: "")
 
     def paint(self, painter, option, index):
         self.initStyleOption(option, index)
@@ -65,7 +73,19 @@ class _Delegate(QStyledItemDelegate):
         painter.setPen(Qt.white if sel else option.palette.text().color())
         r = QRect(option.rect.adjusted(10, 0, -6, 0))
         fm = QFontMetrics(painter.font())
-        painter.drawText(r, Qt.AlignVCenter | Qt.AlignLeft, fm.elidedText(text, Qt.ElideRight, r.width()))
+        shown = fm.elidedText(text, Qt.ElideRight, r.width())
+        q = (self.query() or "").strip()
+        k = shown.lower().find(q.lower()) if q else -1
+        if k >= 0:                       # sorot bagian yang cocok dengan ketikan
+            x = r.left() + fm.horizontalAdvance(shown[:k])
+            wq = fm.horizontalAdvance(shown[k:k + len(q)])
+            hl = QRect(x - 1, r.center().y() - fm.height() // 2, wq + 2, fm.height())
+            painter.setRenderHint(painter.RenderHint.Antialiasing)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(160, 150, 235, 95))
+            painter.drawRoundedRect(hl, 3, 3)
+            painter.setPen(Qt.white if sel else option.palette.text().color())
+        painter.drawText(r, Qt.AlignVCenter | Qt.AlignLeft, shown)
         painter.restore()
 
     def sizeHint(self, option, index):
@@ -75,18 +95,191 @@ class _Delegate(QStyledItemDelegate):
         return QSize(s.width(), max(28, min(46, h)))
 
 
+class _Pop(QListView):
+    """Daftar hasil pencarian: panel kaca membulat digambar sendiri (stylesheet tidak bisa menggambar latar
+    jendela popup transparan)."""
+
+    def __init__(self):
+        super().__init__()
+        self.setFrameShape(QListView.NoFrame)
+        self.viewport().setAutoFillBackground(False)
+        self.setViewportMargins(0, 0, 0, 0)
+
+    def paintEvent(self, e):
+        from PySide6.QtGui import QLinearGradient, QPainter, QPainterPath, QPen
+        p = QPainter(self.viewport())
+        p.setRenderHint(QPainter.Antialiasing)
+        r = self.viewport().rect().adjusted(0, 0, -1, -1)
+        path = QPainterPath()
+        path.addRoundedRect(r, 12, 12)
+        g = QLinearGradient(r.topLeft(), r.bottomRight())
+        g.setColorAt(0, QColor(40, 45, 66, 250))
+        g.setColorAt(1, QColor(26, 29, 44, 250))
+        p.fillPath(path, g)
+        p.setPen(QPen(QColor(255, 255, 255, 46), 1))
+        p.drawPath(path)
+        p.end()
+        super().paintEvent(e)
+
+
+class _Filter(QSortFilterProxyModel):
+    """Nama font yang MENGANDUNG ketikan (bukan hanya diawali), urut: yang diawali ketikan dulu."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.q = ""
+        self.setFilterCaseSensitivity(Qt.CaseInsensitive)
+
+    def set_query(self, q: str):
+        self.q = (q or "").strip().lower()
+        self.invalidate()
+        self.sort(0 if self.q else -1)
+
+    def filterAcceptsRow(self, row, parent):
+        if not self.q:
+            return True
+        t = (self.sourceModel().index(row, 0, parent).data() or "").lower()
+        return all(w in t for w in self.q.split())
+
+    def lessThan(self, a, b):
+        ta, tb = (a.data() or "").lower(), (b.data() or "").lower()
+        ka, kb = (not ta.startswith(self.q), a.row()), (not tb.startswith(self.q), b.row())
+        return ka < kb
+
+
 class FontCombo(QComboBox):
+    """Dropdown font yang bisa diketik untuk mencari (tersaring seketika di setiap ketikan)."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setItemDelegate(_Delegate(self))
         self.setMaxVisibleItems(14)          # sisanya digulir (scroll)
+        self.setEditable(True)
+        self.setInsertPolicy(QComboBox.NoInsert)
+        le = self.lineEdit()
+        le.setPlaceholderText("Ketik untuk cari font…")
+        try:
+            from .icons import icon
+            from PySide6.QtWidgets import QLineEdit
+            le.addAction(icon("search", "#9aa3bb"), QLineEdit.LeadingPosition)
+        except Exception:
+            pass
+        # pencarian: daftar tersaring seketika, fokus tetap di kotak ketik
+        self._proxy = _Filter(self)
+        self._proxy.setSourceModel(self.model())
+        self._comp = QCompleter(self)
+        self._comp.setModel(self._proxy)
+        self._comp.setCompletionMode(QCompleter.UnfilteredPopupCompletion)   # penyaringan diurus _Filter
+        self._comp.setCaseSensitivity(Qt.CaseInsensitive)
+        self._comp.setMaxVisibleItems(12)
+        pop = _Pop()
+        pop.setObjectName("fontSearch")
+        pop.setUniformItemSizes(False)
+        pop.setItemDelegate(_Delegate(pop, query=lambda: self._proxy.q))
+        pop.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._comp.setPopup(pop)
+        # panel membulat tanpa pojok hitam: jendela transparan + tanpa bingkai (lihat glass._PopupFx._prep);
+        # latar panelnya digambar stylesheet QListView#fontSearch
+        pop.setAttribute(Qt.WA_TranslucentBackground, True)
+        pop.setWindowFlags(pop.windowFlags() | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
+        self.setCompleter(None)
+        self._comp.setWidget(le)
+        pop.clicked.connect(lambda ix: self._picked(ix.data()))
+        self._fresh = False
+        le.textEdited.connect(self._typed)
+        le.returnPressed.connect(self._enter)
+        le.installEventFilter(self)
+        pop.installEventFilter(self)
 
-    def showPopup(self):
+    # ---------------------------------------------------------------- pencarian
+    def _ensure_fonts(self):
         for i in range(self.count()):
             if self.itemData(i, Qt.FontRole) is None:
                 f = qfont_for(self.itemData(i) or "")
                 if f is not None:
                     self.setItemData(i, f, Qt.FontRole)
+
+    def _typed(self, text):
+        le = self.lineEdit()
+        if self._fresh:
+            # ketikan pertama setelah kotak diklik: nama font lama tidak ikut jadi kata kunci
+            self._fresh = False
+            cur = self.currentText()
+            if cur and text != cur and text.startswith(cur):
+                text = text[len(cur):]
+                le.setText(text)
+            elif cur and text != cur and text.endswith(cur):
+                text = text[:-len(cur)]
+                le.setText(text)
+        self._ensure_fonts()
+        self._proxy.set_query(text)
+        pop = self._comp.popup()
+        if self._proxy.rowCount() == 0:
+            pop.hide()
+            return
+        r = self.lineEdit().rect()
+        r.setWidth(max(self.width(), 260))
+        self._comp.complete(r)
+        pop.setCurrentIndex(self._proxy.index(0, 0))
+
+    def _picked(self, text):
+        i = self.findText(text or "", Qt.MatchExactly)
+        self._comp.popup().hide()
+        if i >= 0:
+            if i == self.currentIndex():
+                self.lineEdit().setText(self.itemText(i))
+            self.setCurrentIndex(i)
+        else:
+            self._revert()
+        self.lineEdit().selectAll()
+
+    def _enter(self):
+        pop = self._comp.popup()
+        if pop.isVisible():
+            ix = pop.currentIndex()
+            if not ix.isValid() and self._proxy.rowCount():
+                ix = self._proxy.index(0, 0)
+            if ix.isValid():
+                self._picked(ix.data())
+                return
+        self._revert()
+
+    def _revert(self):
+        self._proxy.set_query("")
+        self.lineEdit().setText(self.currentText() if self.currentIndex() >= 0 else "")
+
+    def eventFilter(self, obj, ev):
+        le = self.lineEdit()
+        pop = self._comp.popup()
+        if obj is le:
+            if ev.type() == QEvent.MouseButtonRelease and self._fresh and not le.hasSelectedText():
+                le.selectAll()
+        elif obj is pop and ev.type() == QEvent.KeyPress and ev.key() in (Qt.Key_Return, Qt.Key_Enter):
+            ix = pop.currentIndex()
+            if ix.isValid():
+                self._picked(ix.data())
+                return True
+        return super().eventFilter(obj, ev)
+
+    # QComboBox meneruskan fokus ke kotak ketiknya secara langsung (tanpa event filter), jadi ditangani di sini
+    def focusInEvent(self, e):
+        super().focusInEvent(e)
+        if e.reason() in (Qt.PopupFocusReason, Qt.ActiveWindowFocusReason):
+            return                        # fokus kembali dari daftar hasil: ketikan jangan diganggu
+        self._fresh = True
+        QTimer.singleShot(0, self.lineEdit().selectAll)
+
+    def focusOutEvent(self, e):
+        super().focusOutEvent(e)
+        if e.reason() in (Qt.PopupFocusReason, Qt.ActiveWindowFocusReason):
+            return
+        if not self._comp.popup().isVisible():
+            self._revert()
+
+    def showPopup(self):
+        self._comp.popup().hide()
+        self._proxy.set_query("")
+        self._ensure_fonts()
         w = max(self.width(), 260)
         self.view().setMinimumWidth(w)
         super().showPopup()
