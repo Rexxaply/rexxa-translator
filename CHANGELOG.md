@@ -8,6 +8,14 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 3.1.0 · Minor update
+- Tab baru GAMBAR di panel kanan: seret & lepas gambar ke halaman, klik untuk pilih dari folder (bisa banyak sekaligus), atau Ctrl+V. Cocok untuk judul chapter, logo, atau kredit.
+- Gambar jadi lapisan di halaman: bisa digeser, diubah ukurannya (tarik sudut = rasio tetap, Shift = bebas), diatur opasitasnya, diganti, dan ikut masuk ke hasil, Export, serta PSD. Teks terjemahan tetap bisa ditulis di atasnya.
+- Hapus latar (chroma key): Otomatis (termasuk latar kotak-kotak "transparan palsu"), Putih, Hijau, Biru, atau warna pilihan sendiri, dengan pengatur toleransi & halus tepi. Isi gambar yang warnanya sama dengan latar tetap aman. Gambar asli tidak diubah.
+- Tombol Gambar (I) di kolom alat langsung membuka tab Gambar.
+- Zoom dengan roda mouse kini mengarah ke kursor; tombol + / − di bawah zoom dari tengah tampilan; saat diperkecil halaman berada di tengah.
+- Membuka / menutup panel atau mengubah ukuran jendela tidak lagi melompat ke atas halaman, dan zoom yang kamu atur sendiri tidak di-reset.
+
 ## 3.0.0 · Major update
 - Tampilan baru Liquid Glass: latar gelap bercahaya lembut, panel kaca mengambang, area halaman manga jauh lebih luas.
 - Toolbar atas diganti kapsul ringkas: buka/simpan/undo di kiri, bahasa JP → ID dan tombol Terjemahkan (dengan menu pilihan) di kanan.
@@ -38,8 +46,3 @@ Penomoran MAJOR.MINOR.PATCH:
 - Mengubah warna, ukuran, font, perataan, posisi teks, serta undo/redo juga langsung terlihat.
 - Menggeser / mengubah ukuran kotak balon: teks asli di posisi lama kembali, area baru langsung dihapus dan teks ikut pindah. Setelah kotak dilepas, area itu dihapus ulang dengan kualitas penuh.
 - Hasil, thumbnail, dan proyek disimpan otomatis setelah berhenti menyunting sejenak.
-
-## 2.3.6 · Patch update
-- Membuka Pengaturan: tidak ada lagi jendela kecil berbar judul "Rexxa Translator" yang muncul sesaat sebelum pop-up.
-- Animasi pop-up tidak lagi tertahan di panel kaca kosong lalu meloncat; kalau PC sempat tersendat, animasi berhenti sejenak lalu lanjut mulus.
-- Animasi pop-up lebih ringan: jendela utama tidak lagi digambar ulang di setiap frame.
