@@ -27,7 +27,12 @@ def main():
             time.sleep(0.002)
 
     def shot(name, widget):
-        pm = widget.grab()
+        if widget is not w:
+            from PySide6.QtCore import QRect
+            r = QRect(widget.mapTo(w, widget.rect().topLeft()), widget.size())
+            pm = w.grab(r)
+        else:
+            pm = widget.grab()
         pm.save(f"{name}.png")
         print("===B64===", name)
         print(base64.b64encode(Path(f"{name}.png").read_bytes()).decode())
