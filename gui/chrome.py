@@ -207,3 +207,39 @@ class SlidePanel(QWidget):
         self.setFixedWidth(self.full if self.open else 0)
         self.inner.setVisible(self.open)
         self.toggled.emit(self.open)
+
+
+def code_only(combo):
+    """Kotak bahasa ringkas: saat tertutup hanya kode ("JP"), daftar lengkap ("JP  Japanese") saat dibuka."""
+    from PySide6.QtCore import QObject, QEvent
+    from PySide6.QtWidgets import QComboBox, QSizePolicy
+
+    class _P(QObject):
+        def eventFilter(self, obj, ev):
+            if ev.type() == QEvent.Paint:
+                p = QPainter(obj)
+                p.setRenderHint(QPainter.Antialiasing)
+                r = QRectF(obj.rect()).adjusted(1, 3, -1, -3)
+                if obj.underMouse():
+                    path = QPainterPath()
+                    path.addRoundedRect(r, r.height() / 2, r.height() / 2)
+                    p.fillPath(path, QColor(255, 255, 255, 20))
+                f = obj.font()
+                f.setBold(True)
+                p.setFont(f)
+                p.setPen(QColor(236, 239, 248) if obj.isEnabled() else QColor(110, 116, 136))
+                code = (obj.currentText() or "").split()[0] if obj.currentText() else ""
+                p.drawText(r, Qt.AlignCenter, code)
+                p.end()
+                return True
+            if ev.type() in (QEvent.Enter, QEvent.Leave):
+                obj.update()
+            return False
+    f = _P(combo)
+    combo.installEventFilter(f)
+    combo._code_painter = f
+    combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+    combo.setMinimumContentsLength(2)
+    combo.setFixedWidth(40)
+    combo.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+    combo.view().setMinimumWidth(200)

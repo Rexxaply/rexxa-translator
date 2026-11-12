@@ -388,10 +388,15 @@ class MainWindow(QMainWindow):
 
         # tombol utama: satu klik = deteksi + OCR + terjemah + render
         m_go = QMenu(self)
+        m_go.setObjectName("toolFly")
+        hd_ = m_go.addAction("TERJEMAHKAN")
+        hd_.setEnabled(False)
+        m_go.addAction(icon("translate_go"), "Halaman ini  (F5)", self.translate_page)
+        m_go.addAction(icon("zapall"), "SEMUA halaman  (F6)", self.run_all)
+        m_go.addSeparator()
         self.m_engine = m_go.addMenu(icon("translate"), "Preset engine")
         self.m_engine.aboutToShow.connect(self._fill_engine_menu)
         m_go.addSeparator()
-        m_go.addAction(icon("zapall"), "Terjemahkan SEMUA halaman  (F6)", self.run_all)
         m_go.addAction(icon("zap"), "Terjemahkan ulang halaman ini dari awal (deteksi ulang)",
                        lambda: self.run_stages(["detect", "ocr", "translate", "render"]))
         m_go.addSeparator()
@@ -411,10 +416,10 @@ class MainWindow(QMainWindow):
         self.b_go.setIcon(icon("translate_go", "#ffffff"))
         self.b_go.setIconSize(QSize(18, 18))
         self.b_go.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.b_go.setToolTip("Deteksi → OCR → terjemah → hapus teks → typeset halaman ini (F5)")
-        self.b_go.setPopupMode(QToolButton.MenuButtonPopup)
+        self.b_go.setToolTip("Klik untuk memilih: halaman ini, semua halaman, deteksi / OCR saja, dll.\n"
+                             "F5 = langsung terjemahkan halaman ini")
+        self.b_go.setPopupMode(QToolButton.InstantPopup)   # klik kiri = daftar pilihan (seperti grup alat)
         self.b_go.setMenu(m_go)
-        self.b_go.clicked.connect(self.translate_page)
         tb.addWidget(self.b_go)
         self.b_stop = tool_btn("stop", "Hentikan proses", self.stop_job)
         tb.addWidget(self.b_stop)
@@ -549,25 +554,22 @@ class MainWindow(QMainWindow):
             a.verticalScrollBar().valueChanged.connect(b.verticalScrollBar().setValue)
 
         def column(title, canvas, extra=None):
+            """Kanvas penuh + label kapsul kecil mengambang di pojok kiri atas (ASLI / HASIL)."""
             w = QWidget()
             v = QVBoxLayout(w)
             v.setContentsMargins(0, 0, 0, 0)
             v.setSpacing(0)
-            h = QHBoxLayout()
-            h.setContentsMargins(0, 0, 0, 0)
-            lbl = QLabel(title)
-            lbl.setObjectName("viewHeader")
-            lbl.setAlignment(Qt.AlignCenter)
-            h.addWidget(lbl, 1)
-            if extra:
-                h.addWidget(extra)
-            hw = QWidget()
-            hw.setObjectName("viewHeaderBar")
-            hw.setLayout(h)
-            hw.setFixedHeight(34)   # kedua header sama tinggi -> dua gambar sejajar
-            v.addWidget(hw)
             v.addWidget(canvas, 1)
-            w.header = lbl
+            pill = QToolButton(w)
+            pill.setObjectName("viewPill")
+            pill.setText(title)
+            pill.setToolButtonStyle(Qt.ToolButtonTextOnly)
+            if extra is not None:
+                pill.setMenu(extra)
+                pill.setPopupMode(QToolButton.InstantPopup)
+            pill.move(10, 10)
+            pill.raise_()
+            w.header = pill
             # lebar ditentukan layout (50:50), bukan isi panel -> kedua panel selalu sama lebar
             w.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
             w.setMinimumWidth(120)
@@ -578,13 +580,18 @@ class MainWindow(QMainWindow):
         self.out_mode.addItem("Bersih", "bersih")
         self.out_mode.setToolTip("Tampilkan hasil akhir, atau gambar yang teksnya sudah dihapus")
         self.out_mode.currentIndexChanged.connect(lambda: self._show_current())
-        self.col_out = column("TERJEMAHAN", self.cv_out, self.out_mode)
+        m_out = QMenu(self)                     # klik label HASIL = pilih tampilan hasil / bersih
+        for i_, (t_, tip_) in enumerate((("Hasil", "hasil akhir"), ("Bersih", "teks sudah dihapus"))):
+            a_ = m_out.addAction(f"{t_}  ·  {tip_}")
+            a_.triggered.connect(lambda _c=False, k=i_: self.out_mode.setCurrentIndex(k))
+        self.col_out = column("HASIL", self.cv_out, m_out)
         # ASLI | TERJEMAHAN: bisa digeser, default 50:50 (klik dua kali pembatas = kembali 50:50)
         self.views = EqualSplitter(Qt.Horizontal)
         self.views.setObjectName("viewsSplit")
         self.views.setHandleWidth(6)
         self.views.setChildrenCollapsible(False)
         self.col_src = column("ASLI", self.cv_src)
+        self.views.setHandleWidth(10)
         self.views.addWidget(self.col_src)
         self.views.addWidget(self.col_out)
         self.views.setStretchFactor(0, 1)
@@ -749,12 +756,10 @@ class MainWindow(QMainWindow):
         self.cap_opt = capsule(self.b_line_color, self.brush_field, self.b_line_ok, self.b_line_cancel, name="capOpt")
         arrow = QLabel("→")
         arrow.setObjectName("dim")
-        for cb in (self.src, self.tgt):           # ringkas: kapsul tidak melar; daftar tetap lebar
-            cb.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
-            cb.setMinimumContentsLength(10)
-            cb.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            cb.view().setMinimumWidth(220)
-        cap_r = capsule(self.src, arrow, self.tgt, 6, self.b_go, self.b_stop, "sep", self.b_export, self.b_skill,
+        from .chrome import code_only
+        for cb in (self.src, self.tgt):           # ringkas "JP → ID"; daftar lengkap saat diklik
+            code_only(cb)
+        cap_r = capsule(self.src, arrow, self.tgt, 4, self.b_go, self.b_stop, 4, self.b_skill, self.b_export,
                         self.b_settings, name="capR")
         for b_ in (self.b_open, self.b_save, self.b_undo, self.b_redo, self.b_stop, self.b_export, self.b_skill,
                    self.b_settings):
@@ -837,20 +842,23 @@ class MainWindow(QMainWindow):
 
         # --- Terjemahan
         s1 = Section("Terjemahan")
-        s1.lay.addWidget(small_label("Teks asli (OCR)"))
         self.e_src = QPlainTextEdit()
-        self.e_src.setPlaceholderText("Teks asli hasil OCR…")
-        self.e_src.setFixedHeight(52)
+        self.e_src.setObjectName("srcText")
+        self.e_src.setPlaceholderText("Teks asli (OCR)…")
+        self.e_src.setToolTip("Teks asli hasil OCR (bisa diperbaiki)")
+        self.e_src.setFixedHeight(34)
         s1.lay.addWidget(self.e_src)
-        s1.lay.addWidget(small_label("Terjemahan"))
         self.e_tr = QPlainTextEdit()
-        self.e_tr.setPlaceholderText("Tulis / perbaiki terjemahan…  (hasil diperbarui otomatis)")
-        self.e_tr.setFixedHeight(72)
+        self.e_tr.setPlaceholderText("Tulis / perbaiki terjemahan…")
+        self.e_tr.setToolTip("Terjemahan — hasil di gambar ikut berubah di setiap ketikan")
+        self.e_tr.setFixedHeight(58)
         s1.lay.addWidget(self.e_tr)
         row = QHBoxLayout()
-        self.b_reocr = QPushButton(icon("scan"), " OCR ulang")
+        self.b_reocr = QPushButton(icon("scan"), " OCR")
+        self.b_reocr.setToolTip("OCR ulang balon ini")
         self.b_reocr.clicked.connect(lambda: self._block_job("ocr"))
-        self.b_retr = QPushButton(icon("translate"), " Terjemah ulang")
+        self.b_retr = QPushButton(icon("translate"), " Terjemah")
+        self.b_retr.setToolTip("Terjemahkan ulang balon ini")
         self.b_retr.clicked.connect(lambda: self._block_job("tr"))
         row.addWidget(self.b_reocr)
         row.addWidget(self.b_retr)
@@ -1095,6 +1103,10 @@ class MainWindow(QMainWindow):
         for s in self.sections:
             v.addWidget(s)
         v.addStretch()
+        tab_hint = QLabel("Tab = sembunyikan panel")
+        tab_hint.setObjectName("dim")
+        tab_hint.setAlignment(Qt.AlignCenter)
+        v.addWidget(tab_hint)
         w.setObjectName("propsPanel")
         sc = QScrollArea()
         sc.setWidgetResizable(True)
@@ -1232,6 +1244,7 @@ class MainWindow(QMainWindow):
 
     def _set_busy(self, busy: bool):
         self.b_go.setEnabled(not busy)
+        self.b_stop.setVisible(busy)              # tombol stop hanya muncul saat proses berjalan
         self.b_stop.setEnabled(busy)
         self.b_reocr.setEnabled(not busy)
         self.b_retr.setEnabled(not busy)
@@ -1934,7 +1947,8 @@ class MainWindow(QMainWindow):
         if not p:
             self.cv_src.set_page(None, [])
             self.cv_out.set_page(None, [])
-            self.col_out.header.setText("TERJEMAHAN")
+            self.col_out.header.setText("HASIL")
+            self.col_out.header.adjustSize()
             self._fill_table()
             self._load_props(None)
             self.count_lbl.setText("0 balon")
@@ -1946,10 +1960,11 @@ class MainWindow(QMainWindow):
         out, kind = self._out_image(p)
         self.cv_out.set_page(out, p.blocks, fit=False)
         self.col_out.header.setText({
-            "TERJEMAHAN": "TERJEMAHAN",
-            "BERSIH": "TERJEMAHAN · TEKS DIHAPUS",
-            "PRATINJAU": "TERJEMAHAN · belum diproses — klik ⚡ Terjemahkan",
+            "TERJEMAHAN": "HASIL",
+            "BERSIH": "HASIL · BERSIH",
+            "PRATINJAU": "HASIL · belum diterjemahkan",
         }[kind])
+        self.col_out.header.adjustSize()
         if fit:
             QTimer.singleShot(0, self._fit_both)
         else:
@@ -4022,7 +4037,12 @@ STYLE += """
 #chrome QLabel#filmStatus { color: rgba(225,229,242,0.5); font-size: 7.5pt; }
 #chrome QLabel#zoomLbl { font-weight: 600; font-size: 8.5pt; }
 #chrome QProgressBar { background: rgba(255,255,255,0.08); border: none; border-radius: 2px; }
-#chrome QWidget#viewHeaderBar { background: transparent; border: none; }
+#chrome QToolButton#viewPill { color: rgba(235,238,248,0.9); font-size: 7pt; font-weight: 800; letter-spacing: 1px;
+  padding: 3px 9px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(20,22,32,0.78); }
+#chrome QToolButton#viewPill::menu-indicator { image: none; width: 0; }
+#chrome QToolButton#viewPill:hover { background: rgba(40,44,62,0.9); }
+#chrome QPlainTextEdit#srcText { color: rgba(225,229,242,0.62); font-size: 8.5pt; }
+#chrome QToolButton#primary::menu-indicator { image: none; width: 0; }
 #chrome QLabel#viewHeader { color: rgba(225,229,242,0.7); font-size: 7.5pt; letter-spacing: 1px; }
 #chrome QSplitter#viewsSplit::handle { background: transparent; }
 #chrome QSplitter#viewsSplit::handle:hover { background: rgba(160,150,235,0.5); }
