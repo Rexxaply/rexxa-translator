@@ -916,7 +916,11 @@ class MainWindow(QMainWindow):
             h = QHBoxLayout(box)
             h.setContentsMargins(6, 1, 4, 1)
             h.setSpacing(3)
-            ic = QLabel(icon_text)
+            ic = QLabel()
+            if icon_text.startswith("icon:"):          # ikon gambar (mis. jarak baris)
+                ic.setPixmap(icon(icon_text[5:], "#aab2c8").pixmap(14, 14))
+            else:
+                ic.setText(icon_text)
             ic.setObjectName("fieldIcon")
             h.addWidget(ic)
             h.addWidget(widget, 1)
@@ -1000,7 +1004,7 @@ class MainWindow(QMainWindow):
         self.p_rot = spin(-180, 180, 1, 0, None, "°", default=0)
         r3 = QHBoxLayout()                          # ≡ 1.20 | AV 0.0 | ↻ 0°
         r3.setSpacing(4)
-        r3.addWidget(field("≡", self.p_lsp, "Jarak antar baris (1.20 = default dari Pengaturan → Teks)"), 1)
+        r3.addWidget(field("icon:line_spacing", self.p_lsp, "Jarak antar baris (1.20 = default dari Pengaturan → Teks)"), 1)
         r3.addWidget(field("AV", self.p_ls, "Jarak antar huruf (piksel)"), 1)
         r3.addWidget(field("↻", self.p_rot, "Putar teks (derajat)"), 1)
         s2.lay.addLayout(r3)

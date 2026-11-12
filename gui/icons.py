@@ -18,6 +18,7 @@ ICONS = {
     "oval_box": '<ellipse cx="12" cy="12" rx="9" ry="7"/><path d="M12 9v6M9 12h6"/>',
     "panel_close": '<path d="M13 6l6 6-6 6M5 6l6 6-6 6"/>',
     "panel_open": '<path d="M11 6l-6 6 6 6M19 6l-6 6 6 6"/>',
+    "line_spacing": '<path d="M6 4v16M3 7l3-3 3 3M3 17l3 3 3-3"/><path d="M12 6.5h9M12 12h6.5M12 17.5h9"/>',
     "search": '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
     "info": '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
     "layers": '<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
