@@ -519,7 +519,7 @@ class MainWindow(QMainWindow):
         self.pages.setViewMode(QListWidget.IconMode)
         self.pages.setFlow(QListWidget.LeftToRight)
         self.pages.setWrapping(False)
-        self.pages.setMovement(QListWidget.Snap)
+        self.pages.setMovement(QListWidget.Static)   # Static: seret = pindah urutan halaman (bukan geser posisi bebas)
         self.pages.setResizeMode(QListWidget.Adjust)
         self.pages.setIconSize(QSize(28, 38))
         self.pages.setGridSize(QSize(40, 56))
