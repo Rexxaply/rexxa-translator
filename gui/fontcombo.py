@@ -238,11 +238,15 @@ class FontCombo(QComboBox):
     # QComboBox meneruskan fokus ke kotak ketiknya secara langsung (tanpa event filter), jadi ditangani di sini
     def focusInEvent(self, e):
         super().focusInEvent(e)
+        if e.reason() in (Qt.PopupFocusReason, Qt.ActiveWindowFocusReason):
+            return                        # fokus kembali dari daftar hasil: ketikan jangan diganggu
         self._fresh = True
         QTimer.singleShot(0, self.lineEdit().selectAll)
 
     def focusOutEvent(self, e):
         super().focusOutEvent(e)
+        if e.reason() in (Qt.PopupFocusReason, Qt.ActiveWindowFocusReason):
+            return
         if not self._comp.popup().isVisible():
             self._revert()
 
