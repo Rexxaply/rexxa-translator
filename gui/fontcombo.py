@@ -217,10 +217,32 @@ class FontCombo(QComboBox):
         if self._proxy.rowCount() == 0:
             pop.hide()
             return
+        self._comp.complete(self._popup_rect())
+        pop.setCurrentIndex(self._proxy.index(0, 0))
+
+    def _popup_rect(self):
         r = self.lineEdit().rect()
         r.setWidth(max(self.width(), 260))
-        self._comp.complete(r)
-        pop.setCurrentIndex(self._proxy.index(0, 0))
+        return r
+
+    def _show_all(self):
+        """Daftar semua font (belum disaring), font yang sedang dipakai terpilih & terlihat di tengah.
+        Langsung mengetik = menyaring daftar ini."""
+        self._ensure_fonts()
+        self._proxy.set_query("")
+        if self._proxy.rowCount() == 0:
+            return
+        self._comp.complete(self._popup_rect())
+        pop = self._comp.popup()
+        ix = self._proxy.mapFromSource(self.model().index(max(0, self.currentIndex()), 0))
+        if ix.isValid():
+            pop.setCurrentIndex(ix)
+            pop.scrollTo(ix, QListView.PositionAtCenter)
+        # nama font lama terseleksi: huruf pertama yang diketik langsung menggantikannya
+        self._fresh = True
+        le = self.lineEdit()
+        le.selectAll()
+        QTimer.singleShot(0, le.selectAll)
 
     def _picked(self, text):
         i = self.findText(text or "", Qt.MatchExactly)
@@ -252,8 +274,11 @@ class FontCombo(QComboBox):
         le = self.lineEdit()
         pop = self._comp.popup()
         if obj is le:
-            if ev.type() == QEvent.MouseButtonRelease and self._fresh and not le.hasSelectedText():
-                le.selectAll()
+            if ev.type() == QEvent.MouseButtonRelease and ev.button() == Qt.LeftButton:
+                if self._fresh and not le.hasSelectedText():
+                    le.selectAll()
+                if not pop.isVisible():
+                    QTimer.singleShot(0, self._show_all)    # klik kotak = langsung tampil semua font
         elif obj is pop and ev.type() == QEvent.KeyPress and ev.key() in (Qt.Key_Return, Qt.Key_Enter):
             ix = pop.currentIndex()
             if ix.isValid():
