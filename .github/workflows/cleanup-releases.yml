@@ -1,0 +1,51 @@
+# Hapus rilis lama di halaman Releases, sisakan N rilis terbaru.
+# Hanya berjalan saat ditekan manual: tab Actions -> "Bersihkan rilis lama" -> Run workflow.
+# Tag git (vX.Y.Z) tidak ikut dihapus, riwayat kode tetap utuh. Pengecek update di aplikasi
+# hanya membaca rilis terbaru, jadi menghapus rilis lama tidak mengganggu update otomatis.
+name: Bersihkan rilis lama
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "Jumlah rilis terbaru yang disisakan"
+        required: true
+        default: "5"
+      dry_run:
+        description: "Coba dulu (hanya tampilkan daftar, tidak menghapus)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hapus rilis lama
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          KEEP: ${{ inputs.keep }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          case "$KEEP" in ''|*[!0-9]*) echo "keep harus angka"; exit 1;; esac
+          if [ "$KEEP" -lt 1 ]; then echo "Sisakan minimal 1 rilis"; exit 1; fi
+          # urut dari yang terbaru (tanggal dibuat), lewati rilis draft
+          gh api "repos/$REPO/releases?per_page=100" --paginate \
+            --jq '.[] | select(.draft | not) | "\(.created_at) \(.id) \(.tag_name)"' \
+            | sort -r > all.txt
+          echo "Total rilis: $(wc -l < all.txt)"
+          echo "Disisakan:"; head -n "$KEEP" all.txt | awk '{print "  " $3}'
+          tail -n +"$((KEEP + 1))" all.txt > old.txt
+          echo "Akan dihapus: $(wc -l < old.txt)"
+          while read -r _ id tag; do
+            if [ "$DRY" = "true" ]; then
+              echo "  (coba) $tag"
+            else
+              gh api -X DELETE "repos/$REPO/releases/$id" && echo "  dihapus $tag"
+            fi
+          done < old.txt
+          echo "Selesai. Tag git tetap disimpan."
