@@ -612,9 +612,16 @@ class MainWindow(QMainWindow):
         # sinkron zoom & geser
         self.cv_src.zoom_changed.connect(lambda s: self._sync_zoom(self.cv_src, self.cv_out, s))
         self.cv_out.zoom_changed.connect(lambda s: self._sync_zoom(self.cv_out, self.cv_src, s))
+        def follow(a, b, horiz):
+            dst = b.horizontalScrollBar() if horiz else b.verticalScrollBar()
+
+            def go(v):
+                if not (a.zooming or b.zooming):      # sedang zoom: posisi akhir disalin sesudahnya
+                    dst.setValue(v)
+            return go
         for a, b in ((self.cv_src, self.cv_out), (self.cv_out, self.cv_src)):
-            a.horizontalScrollBar().valueChanged.connect(b.horizontalScrollBar().setValue)
-            a.verticalScrollBar().valueChanged.connect(b.verticalScrollBar().setValue)
+            a.horizontalScrollBar().valueChanged.connect(follow(a, b, True))
+            a.verticalScrollBar().valueChanged.connect(follow(a, b, False))
 
         def column(title, canvas, extra=None):
             """Kanvas penuh + label kapsul kecil mengambang di pojok kiri atas (ASLI / HASIL)."""
@@ -1617,6 +1624,9 @@ class MainWindow(QMainWindow):
         for cv in (self.cv_src, self.cv_out):
             if cv.pix_item and abs(cv.zoom() - s) > 1e-4:
                 cv.set_zoom(s)
+        if self.cv_out.pix_item:
+            self.cv_out.horizontalScrollBar().setValue(self.cv_src.horizontalScrollBar().value())
+            self.cv_out.verticalScrollBar().setValue(self.cv_src.verticalScrollBar().value())
         self.zoom_lbl.setText(f"{round(s * 100)}%")
 
     def resizeEvent(self, e):

@@ -139,13 +139,14 @@ def main():
     if out is not None:
         print("piksel tengah lapisan", out[b.y + 30, b.x + 8].tolist(), "luar", out[5, 5].tolist(), flush=True)
     shot("z2_lapisan")
-    w.p_opacity.setValue(50)
+    w.p_opacity.setValue(50, emit=True)
     pump(2.0)
     print("opasitas", b.opacity, flush=True)
     out = cv2.imread(p.output_path)
     if out is not None:
         print("piksel 50%", out[b.y + 30, b.x + 8].tolist(), flush=True)
     # geser lapisan
+    w._snap()
     b.x += 120
     b.y += 60
     w._on_geom_changed(b)

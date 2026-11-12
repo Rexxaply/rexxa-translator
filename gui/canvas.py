@@ -279,6 +279,7 @@ class PageCanvas(QGraphicsView):
         self.setMouseTracking(True)
         self.viewport().setCursor(Qt.ArrowCursor)
         self.pix_item: QGraphicsPixmapItem | None = None
+        self.zooming = False
         self.draw_layers = False                 # gambar lapisan gambar di kotaknya (halaman belum dirender)
         self._layer_pms: dict = {}
         self.boxes: list[BoxItem] = []
@@ -475,13 +476,17 @@ class PageCanvas(QGraphicsView):
         vp = self.viewport().rect()
         a = QPointF(anchor) if anchor is not None else QPointF(vp.width() / 2, vp.height() / 2)
         target = self.mapToScene(a.toPoint()) if self.pix_item is not None else None
-        self.setTransform(QTransform.fromScale(s, s))
-        if target is not None:
-            # geser supaya titik gambar yang tadi di bawah jangkar kembali ke posisi jangkar
-            now = self.mapFromScene(target)
-            hb, vb = self.horizontalScrollBar(), self.verticalScrollBar()
-            hb.setValue(hb.value() + int(round(now.x() - a.x())))
-            vb.setValue(vb.value() + int(round(now.y() - a.y())))
+        self.zooming = True              # gulir sementara selama zoom tidak ikut disalin ke kanvas pasangan
+        try:
+            self.setTransform(QTransform.fromScale(s, s))
+            if target is not None:
+                # geser supaya titik gambar yang tadi di bawah jangkar kembali ke posisi jangkar
+                now = self.mapFromScene(target)
+                hb, vb = self.horizontalScrollBar(), self.verticalScrollBar()
+                hb.setValue(hb.value() + int(round(now.x() - a.x())))
+                vb.setValue(vb.value() + int(round(now.y() - a.y())))
+        finally:
+            self.zooming = False
         for b in self.boxes:
             b.prepareGeometryChange()   # ukuran pegangan bergantung zoom
         if emit:
