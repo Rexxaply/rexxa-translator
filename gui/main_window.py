@@ -327,19 +327,22 @@ class MainWindow(QMainWindow):
         from .chrome import GroupToolButton
         self.b_box.hide()                     # diganti tombol grup "Balon terjemah" di kolom alat
         self.g_box = GroupToolButton([("box_rect", "box", "Balon kotak", "B"),
-                                      ("box_oval", "oval_box", "Balon oval", "B")], "Balon terjemah")
+                                      ("box_oval", "oval_box", "Balon oval", "B")], "Balon terjemah",
+                                     cycle_key="Ctrl+Shift+B")
         self.g_box.set_current("box_oval" if self.settings.get("box_shape") == "oval" else "box_rect")
         self.g_box.picked.connect(self._pick_box_tool)
         self.tool_btns = {}
-        groups = (("select", [("select", "cursor", "Pilih / geser kotak", "V")], ""),
+        groups = (("select", [("select", "cursor", "Pilih / geser kotak", "V")], "", ""),
                   ("shape", [("shape_rect", "rect_sel", "Seleksi kotak", "A"),
-                             ("shape_oval", "oval_sel", "Seleksi oval", "A")], "Seleksi"),
+                             ("shape_oval", "oval_sel", "Seleksi oval", "A")], "Seleksi", "Ctrl+Shift+A"),
                   ("heal", [("heal", "heal", "Healing brush", "J"),
-                            ("pen", "patch", "Patch / Path (seret kotak)", "P / K")], "Perbaikan"),
-                  ("line", [("line", "line", "Alat garis", "L")], ""))
+                            ("path", "patch", "Patch (seret kotak)", "J")], "Perbaikan", "Ctrl+Shift+J"),
+                  ("pen", [("pen", "pen", "Pen tool (klik titik-titik)", "P")], "", ""),
+                  ("line", [("line", "line", "Alat garis", "L")], "", ""),
+                  ("text", [("text", "type", "Teks bebas (klik lalu ketik)", "T")], "", ""))
         self.tool_groups = {}
-        for gid, variants, title in groups:
-            g = GroupToolButton(variants, title)
+        for gid, variants, title, cyc in groups:
+            g = GroupToolButton(variants, title, cycle_key=cyc)
             g.picked.connect(self._pick_group_tool)
             self.tool_groups[gid] = g
             for vid, *_ in variants:
@@ -551,6 +554,8 @@ class MainWindow(QMainWindow):
             cv.block_double_clicked.connect(self._focus_translation)
         self.cv_src.box_drawn.connect(self._add_box)
         for cv in (self.cv_src, self.cv_out):
+            cv.text_click.connect(self._add_text_at)
+        for cv in (self.cv_src, self.cv_out):
             cv.box_shape = "oval" if self.settings.get("box_shape") == "oval" else "rect"
         for cv in (self.cv_src, self.cv_out):
             cv.heal_stroke.connect(self._on_heal)
@@ -653,7 +658,8 @@ class MainWindow(QMainWindow):
         self.b_layers.setChecked(True)
         self.b_layers.toggled.connect(self._toggle_boxes)
         for wd in (self.tool_groups["select"], self.g_box, self.tool_groups["shape"], self.tool_groups["heal"],
-                   self.tool_groups["line"], "sep", self.b_split, self.b_layers):
+                   self.tool_groups["pen"], self.tool_groups["line"], self.tool_groups["text"], "sep",
+                   self.b_split, self.b_layers):
             if wd == "sep":
                 ln = QFrame()
                 ln.setObjectName("railSep")
@@ -1225,7 +1231,11 @@ class MainWindow(QMainWindow):
             "tool_select": lambda: self.set_tool("select"),
             "tool_pen": lambda: self.set_tool("pen"),
             "tool_shape": self._shape_key,
-            "tool_heal": lambda: self.set_tool("heal"),
+            "tool_heal": self._heal_key,
+            "box_cycle": lambda: self._cycle_group("box"),
+            "shape_cycle": lambda: self._cycle_group("shape"),
+            "heal_cycle": lambda: self._cycle_group("heal"),
+            "tool_text": lambda: self.set_tool("text"),
             "tool_line": lambda: self.set_tool("line"),
             "tool_patch": lambda: self.set_tool("patch"),
             "brush_up": lambda: self._brush_step(1.25),
@@ -2569,6 +2579,24 @@ class MainWindow(QMainWindow):
             self.need_clean.add(p.path)
             self._schedule_render()
 
+    def _add_text_at(self, pt):
+        """Alat Teks: klik di gambar = teks bebas baru di titik itu (tanpa menghapus gambar di bawahnya),
+        lalu langsung ke kolom ketik."""
+        p = self.page()
+        if not p:
+            return
+        self._snap()
+        w_, h_ = 280, 90
+        b = TextBlock(x=int(pt.x() - w_ / 2), y=int(pt.y() - h_ / 2), w=w_, h=h_, kind="free", clean=False,
+                      source="", translation="",
+                      stroke_width=int(self.settings.get("default_stroke", 0)))
+        p.blocks.append(b)
+        self.sel = b
+        self._show_current()
+        self.tabs.setCurrentIndex(0)
+        self.e_tr.setFocus()
+        self.status_lbl.setText("Ketik teksnya — hasil langsung terlihat. Klik tempat lain untuk teks baru.")
+
     def _add_box(self, rect: QRectF):
         p = self.page()
         if not p:
@@ -2622,14 +2650,14 @@ class MainWindow(QMainWindow):
 
     # ================================================================== alat sunting gambar
     def set_tool(self, tool):
-        if tool == "patch":                   # Patch & Path digabung: satu alat seret kotak + menu (tambal, hapus AI, ...)
-            tool = "pen"
-        path = tool == "pen"
-        if path:                              # path tool = seleksi kotak (seret dari pojok ke pojok), di grup Perbaikan
+        if tool == "patch":                   # Patch = seret kotak + menu (tambal area serupa, hapus AI, isi warna, ...)
+            tool = "path"
+        path = tool == "path"
+        if path:                              # di grup Perbaikan; di kanvas = seleksi kotak
             tool = "shape"
             for cv in (self.cv_src, self.cv_out):
                 cv.shape_kind = "rect"
-            self.tool_groups["heal"].set_current("pen")
+            self.tool_groups["heal"].set_current("path")
         self.tool = tool
         self.path_mode = path
         active = self.tool_groups["heal"] if path else self.tool_btns.get(tool)
@@ -2653,10 +2681,11 @@ class MainWindow(QMainWindow):
         self.b_line_color.setEnabled(tool in ("line", "pen", "shape"))
         self._sync_opt_cap()
         if path:
-            self.status_lbl.setText("Patch / Path: seret kotak di area yang mau diperbaiki (Shift = persegi), lalu "
+            self.status_lbl.setText("Patch: seret kotak di area yang mau diperbaiki (Shift = persegi), lalu "
                                     "pilih: tambal dengan area serupa, hapus AI, isi warna, dll.")
             return
         hints = {"select": "Pilih / geser kotak teks.",
+                 "text": "Teks bebas: klik di gambar, lalu langsung ketik. Ctrl+seret = pindahkan teks.",
                  "pen": "Pen: klik titik-titik di sekeliling area. Klik titik awal / klik kanan / Enter = selesai, "
                         "Backspace = hapus titik terakhir, Esc = batal.",
                  "shape": f"Shape ({'oval' if self.cv_src.shape_kind == 'ellipse' else 'kotak'}): seret di gambar. "
@@ -2674,9 +2703,9 @@ class MainWindow(QMainWindow):
         if cap is None:
             return
         tool = getattr(self, "tool", "select")
-        self.b_line_color.setVisible(tool in ("line", "shape"))
+        self.b_line_color.setVisible(tool in ("line", "shape", "pen"))
         self.brush_field.setVisible(tool in ("heal", "line"))
-        cap.setVisible(tool in ("line", "shape", "heal") or self._a_line_ok.isVisible())
+        cap.setVisible(tool in ("line", "shape", "heal", "pen") or self._a_line_ok.isVisible())
 
     def _pick_group_tool(self, vid):
         """Tombol grup dipakai (klik kiri) atau isinya diganti (klik kanan)."""
@@ -2699,18 +2728,26 @@ class MainWindow(QMainWindow):
         self.toggle_draw()
 
     def _box_key(self):
-        """B: nyalakan balon terjemah; B lagi saat sudah aktif = ganti kotak <-> oval."""
-        if self.b_box.isChecked():
-            self.g_box.cycle()
+        """B: alat Balon terjemah (pilihan terakhir: kotak / oval)."""
         self.g_box.setChecked(True)
         self._pick_box_tool(self.g_box.current)
 
+    def _cycle_group(self, gid):
+        """Ctrl+Shift+pintasan grup = ganti ke alat berikutnya dalam grup itu (dan langsung dipakai)."""
+        if gid == "box":
+            self.g_box.cycle()
+            self._box_key()
+            return
+        g = self.tool_groups[gid]
+        self._pick_group_tool(g.cycle())
+
     def _shape_key(self):
-        if getattr(self, "tool", "select") == "shape":
-            kind = "ellipse" if self.cv_src.shape_kind == "rect" else "rect"
-            for cv in (self.cv_src, self.cv_out):
-                cv.shape_kind = kind
-        self.set_tool("shape")
+        """A: alat Seleksi (pilihan terakhir: kotak / oval). Ganti isi grup: Ctrl+Shift+A."""
+        self._pick_group_tool(self.tool_groups["shape"].current)
+
+    def _heal_key(self):
+        """J: grup Perbaikan (pilihan terakhir: Healing brush / Patch). Ganti isi grup: Ctrl+Shift+J."""
+        self._pick_group_tool(self.tool_groups["heal"].current)
 
     def _brush_step(self, f):
         v = int(round(self.brush_field.value() * f))

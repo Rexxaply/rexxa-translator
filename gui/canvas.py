@@ -235,6 +235,7 @@ class PageCanvas(QGraphicsView):
     box_drawn = Signal(QRectF)
     zoom_changed = Signal(float)
     heal_stroke = Signal(list, int)          # healing brush: titik-titik goresan, jari-jari kuas
+    text_click = Signal(object)              # alat Teks: klik di gambar (posisi adegan) -> teks baru
     region_done = Signal(list, object)       # pen / bentuk: titik poligon, posisi layar (QPoint) untuk menu
     patch_done = Signal(list)                # patch tool: titik poligon area yang ditambal
     line_stroke = Signal(list, int)          # (lama) garis langsung jadi
@@ -478,7 +479,7 @@ class PageCanvas(QGraphicsView):
             return Qt.ArrowCursor
         if self.draw_mode:
             return Qt.CrossCursor
-        return {"heal": Qt.BlankCursor, "pen": Qt.CrossCursor, "shape": Qt.CrossCursor,
+        return {"heal": Qt.BlankCursor, "pen": Qt.CrossCursor, "shape": Qt.CrossCursor, "text": Qt.IBeamCursor,
                 "line": Qt.CrossCursor, "patch": Qt.CrossCursor}.get(self.tool, Qt.ArrowCursor)
 
     def set_space(self, on: bool):
@@ -557,6 +558,14 @@ class PageCanvas(QGraphicsView):
             return True
         if e.button() != Qt.LeftButton:
             return False
+        if self.tool == "text":                  # klik teks yang ada = sunting; klik tempat kosong = teks baru
+            hit = self._item_at(e.position().toPoint())
+            if hit is not None:
+                self.request_select(hit.block)
+                self.block_double_clicked.emit(hit.block)
+            else:
+                self.text_click.emit(sp)
+            return True
         if self.tool == "patch":                 # lasso: seret melingkari area
             self._stroke = [(x, y)]
             pen = self._pen("#ffd166", 1.5, Qt.DashLine)
@@ -633,7 +642,7 @@ class PageCanvas(QGraphicsView):
                 r.setHeight(side)
             self._shape_item.setRect(r)
             return True
-        return self.tool in ("pen", "shape", "line", "patch")
+        return self.tool in ("pen", "shape", "line", "patch", "text")
 
     def _tool_release(self, e) -> bool:
         if self.tool == "select" or self.pix_item is None or (PageCanvas.ctrl_held and self._stroke is None):
@@ -668,7 +677,7 @@ class PageCanvas(QGraphicsView):
                        [int(r.right()), int(r.bottom())], [int(r.left()), int(r.bottom())]]
             self.region_done.emit(pts, e.globalPosition().toPoint())
             return True
-        return self.tool in ("pen", "heal", "shape", "line", "patch")
+        return self.tool in ("pen", "heal", "shape", "line", "patch", "text")
 
     # ------------------------------------------------------------ alat garis: pratinjau yang bisa diedit
     def has_draft(self) -> bool:

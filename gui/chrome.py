@@ -77,8 +77,9 @@ class GroupToolButton(QToolButton):
     variants: [(id, ikon, nama, pintasan)]. Sinyal picked(id) setiap kali alat dipakai / diganti."""
     picked = Signal(str)
 
-    def __init__(self, variants, tip_title: str, parent=None):
+    def __init__(self, variants, tip_title: str, parent=None, cycle_key: str = ""):
         super().__init__(parent)
+        self.cycle_key = cycle_key
         self.variants = list(variants)
         self.tip_title = tip_title
         self.current = self.variants[0][0]
@@ -97,7 +98,7 @@ class GroupToolButton(QToolButton):
         vid, ico, name, key = self._v(self.current)
         self.setIcon(icon(ico))
         others = ", ".join(v[2] for v in self.variants if v[0] != vid)
-        self.setToolTip(f"{name} ({key})" + (f"  ·  klik kanan: {others}" if len(self.variants) > 1 else ""))
+        self.setToolTip(f"{name} ({key})" + (f"\nKlik kanan / {self.cycle_key}: {others}" if len(self.variants) > 1 else ""))
 
     def set_current(self, vid):
         if any(v[0] == vid for v in self.variants):
@@ -125,6 +126,9 @@ class GroupToolButton(QToolButton):
             grp.addAction(a)
             m.addAction(a)
         m.addSeparator()
+        if self.cycle_key:
+            t1 = m.addAction(f"{self.cycle_key} = ganti cepat dalam grup")
+            t1.setEnabled(False)
         tip = m.addAction("Tahan Shift saat menyeret = persegi / lingkaran")
         tip.setEnabled(False)
         a = m.exec(self.mapToGlobal(QPoint(self.width() + 6, 0)))
