@@ -8,6 +8,11 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 3.2.0 · Minor update
+- Pilih semua balon di halaman sekaligus: tombol "Pilih semua" di kartu Balon, tombol di atas panel saat belum ada yang dipilih, atau Ctrl+A di gambar. Gaya yang diubah dan tombol "Hapus N balon" berlaku ke semuanya (teks bebas & gambar tidak ikut).
+- Kotak teks asli & terjemahan kini menyesuaikan isinya: 1 baris = kotak kecil, bertambah sampai 3 baris, lebih dari itu bisa digulir dengan halus. Tingginya berubah dengan animasi lembut saat mengetik.
+- Kotak tulis teks bebas (alat T) 2–5 baris.
+
 ## 3.1.0 · Minor update
 - Tab baru GAMBAR di panel kanan: seret & lepas gambar ke halaman, klik untuk pilih dari folder (bisa banyak sekaligus), atau Ctrl+V. Cocok untuk judul chapter, logo, atau kredit.
 - Gambar jadi lapisan di halaman: bisa digeser, diubah ukurannya (tarik sudut = rasio tetap, Shift = bebas), diatur opasitasnya, diganti, dan ikut masuk ke hasil, Export, serta PSD. Teks terjemahan tetap bisa ditulis di atasnya.
@@ -40,9 +45,3 @@ Penomoran MAJOR.MINOR.PATCH:
 - Cari font di panel properti: ketik di kotak font, daftar langsung tersaring di setiap huruf (nama boleh cocok di bagian mana saja, bisa beberapa kata).
 - Bagian nama yang cocok disorot; font yang diawali ketikan tampil paling atas.
 - Pilih dengan klik atau ↑/↓ + Enter; Enter langsung memakai hasil teratas. Daftar lengkap tetap bisa dibuka lewat panah.
-
-## 2.4.0 · Minor update
-- Render langsung: hasil terjemahan berubah di setiap ketikan, tanpa menunggu dan tanpa tampilan berkedip.
-- Mengubah warna, ukuran, font, perataan, posisi teks, serta undo/redo juga langsung terlihat.
-- Menggeser / mengubah ukuran kotak balon: teks asli di posisi lama kembali, area baru langsung dihapus dan teks ikut pindah. Setelah kotak dilepas, area itu dihapus ulang dengan kualitas penuh.
-- Hasil, thumbnail, dan proyek disimpan otomatis setelah berhenti menyunting sejenak.
