@@ -226,21 +226,27 @@ class FontCombo(QComboBox):
         le = self.lineEdit()
         pop = self._comp.popup()
         if obj is le:
-            if ev.type() == QEvent.FocusIn:
-                self._fresh = True
-                QTimer.singleShot(0, le.selectAll)
-            elif ev.type() == QEvent.MouseButtonRelease and self._fresh and not le.hasSelectedText():
+            if ev.type() == QEvent.MouseButtonRelease and self._fresh and not le.hasSelectedText():
                 le.selectAll()
-            elif ev.type() == QEvent.FocusOut and not pop.isVisible():
-                self._revert()
         elif obj is pop and ev.type() == QEvent.KeyPress and ev.key() in (Qt.Key_Return, Qt.Key_Enter):
             ix = pop.currentIndex()
             if ix.isValid():
                 self._picked(ix.data())
                 return True
         elif obj is pop and ev.type() == QEvent.Hide:
-            QTimer.singleShot(0, lambda: (not le.hasFocus()) and self._revert())
-        return False
+            QTimer.singleShot(0, lambda: (not self.hasFocus()) and self._revert())
+        return super().eventFilter(obj, ev)
+
+    # QComboBox meneruskan fokus ke kotak ketiknya secara langsung (tanpa event filter), jadi ditangani di sini
+    def focusInEvent(self, e):
+        super().focusInEvent(e)
+        self._fresh = True
+        QTimer.singleShot(0, self.lineEdit().selectAll)
+
+    def focusOutEvent(self, e):
+        super().focusOutEvent(e)
+        if not self._comp.popup().isVisible():
+            self._revert()
 
     def showPopup(self):
         self._comp.popup().hide()
