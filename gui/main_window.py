@@ -334,8 +334,8 @@ class MainWindow(QMainWindow):
         groups = (("select", [("select", "cursor", "Pilih / geser kotak", "V")], ""),
                   ("shape", [("shape_rect", "rect_sel", "Seleksi kotak", "A"),
                              ("shape_oval", "oval_sel", "Seleksi oval", "A")], "Seleksi"),
-                  ("heal", [("heal", "heal", "Healing brush", "J"), ("patch", "patch", "Patch tool", "K")],
-                   "Perbaikan"),
+                  ("heal", [("heal", "heal", "Healing brush", "J"), ("patch", "patch", "Patch tool", "K"),
+                            ("pen", "pen", "Path tool (seret kotak)", "P")], "Perbaikan"),
                   ("line", [("line", "line", "Alat garis", "L")], ""))
         self.tool_groups = {}
         for gid, variants, title in groups:
@@ -2622,18 +2622,20 @@ class MainWindow(QMainWindow):
 
     # ================================================================== alat sunting gambar
     def set_tool(self, tool):
-        if tool == "pen":                     # path tool sekarang = seleksi kotak (seret dari pojok ke pojok)
+        path = tool == "pen"
+        if path:                              # path tool = seleksi kotak (seret dari pojok ke pojok), di grup Perbaikan
             tool = "shape"
             for cv in (self.cv_src, self.cv_out):
                 cv.shape_kind = "rect"
-            self.tool_groups["shape"].set_current("shape_rect")
+            self.tool_groups["heal"].set_current("pen")
         self.tool = tool
-        active = self.tool_btns.get(tool)
+        self.path_mode = path
+        active = self.tool_groups["heal"] if path else self.tool_btns.get(tool)
         for g in self.tool_groups.values():
             g.setChecked(g is active)
         if tool in ("heal", "patch"):
             self.tool_groups["heal"].set_current(tool)
-        if tool == "shape":
+        if tool == "shape" and not path:
             self.tool_groups["shape"].set_current("shape_oval" if self.cv_src.shape_kind == "ellipse" else "shape_rect")
         if tool != "select" and self.b_box.isChecked():
             self.b_box.setChecked(False)
@@ -2648,6 +2650,10 @@ class MainWindow(QMainWindow):
         self.brush_field.setEnabled(tool in ("heal", "line"))
         self.b_line_color.setEnabled(tool in ("line", "pen", "shape"))
         self._sync_opt_cap()
+        if path:
+            self.status_lbl.setText("Path: seret kotak di area yang mau diperbaiki (Shift = persegi), lalu pilih "
+                                    "tambal / hapus AI / isi warna dari menu.")
+            return
         hints = {"select": "Pilih / geser kotak teks.",
                  "pen": "Pen: klik titik-titik di sekeliling area. Klik titik awal / klik kanan / Enter = selesai, "
                         "Backspace = hapus titik terakhir, Esc = batal.",
