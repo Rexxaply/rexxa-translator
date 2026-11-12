@@ -161,11 +161,20 @@ def main(out):
     x0, y0 = b.x, b.y
     item = next(bx for bx in cv.boxes if bx.block is b)
     c = cv.mapFromScene(item.sceneBoundingRect().center())
-    QTest.mousePress(cv.viewport(), Qt.LeftButton, Qt.ControlModifier, c)
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtCore import QPointF as _PF
+
+    def me(kind, pt, btns):
+        g = cv.viewport().mapToGlobal(pt)
+        return QMouseEvent(kind, _PF(pt), _PF(g), Qt.LeftButton if kind != _E.MouseMove else Qt.NoButton,
+                           btns, Qt.ControlModifier)
+    QApplication.sendEvent(cv.viewport(), me(_E.MouseButtonPress, c, Qt.LeftButton))
+    pump(0.05)
+    print("setelah klik: balon terpilih =", w.sel is b, flush=True)
     for k in range(1, 9):
-        QTest.mouseMove(cv.viewport(), c + QPoint(k * 6, k * 4))
+        QApplication.sendEvent(cv.viewport(), me(_E.MouseMove, c + QPoint(k * 6, k * 4), Qt.LeftButton))
         pump(0.03)
-    QTest.mouseRelease(cv.viewport(), Qt.LeftButton, Qt.ControlModifier, c + QPoint(48, 32))
+    QApplication.sendEvent(cv.viewport(), me(_E.MouseButtonRelease, c + QPoint(48, 32), Qt.NoButton))
     pump(0.3)
     QApplication.sendEvent(cv, QKeyEvent(_E.KeyRelease, Qt.Key_Control, Qt.NoModifier))
     pump(0.5)
