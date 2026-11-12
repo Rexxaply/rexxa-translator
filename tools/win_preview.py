@@ -71,7 +71,8 @@ def main():
     w._select(w.page().blocks[0])
     pump(0.4)
     w.e_tr.setFocus()
-    w.e_tr.moveCursor(w.e_tr.textCursor().End)
+    from PySide6.QtGui import QTextCursor
+    w.e_tr.moveCursor(QTextCursor.End)
     hs = [w.e_tr.height()]
     QTest.keyClicks(w.e_tr, " ini kalimat tambahan yang panjang supaya kotaknya ikut bertambah tinggi")
     t0 = time.time()
