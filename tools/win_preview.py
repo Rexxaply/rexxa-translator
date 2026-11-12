@@ -34,10 +34,24 @@ def main():
         print("===END===")
 
     pump(0.6)
+    import tempfile
+    import cv2
+    import numpy as np
+    from core.models import Page, Project, TextBlock
+    d = Path(tempfile.mkdtemp())
+    img = np.full((1400, 900, 3), 235, np.uint8)
+    cv2.ellipse(img, (450, 400), (230, 140), 0, 0, 360, (0, 0, 0), 4)
+    cv2.imwrite(str(d / "a.png"), img)
+    pg = Page(path=str(d / "a.png"), blocks=[TextBlock(x=230, y=270, w=440, h=260, source="HELLO",
+                                                         translation="Halo", src_h=28)])
+    f = str(d / "t.mtproj")
+    Project(pages=[pg], source_lang="en", target_lang="id").save(f)
+    w._load_project(f)
+    pump(0.6)
     w.toggle_inspector(True)
     pump(0.8)
-    for s in w.sections:
-        s.setEnabled(True)
+    w._select(w.page().blocks[0])
+    pump(0.4)
     sec = w.sections[1]
     full = sec.body.height()
     print("tinggi awal Tipografi:", full, "visible", sec.body.isVisible())
