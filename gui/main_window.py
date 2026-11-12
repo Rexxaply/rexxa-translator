@@ -79,15 +79,19 @@ def _friendly(e: Exception) -> str:
 
 # ====================================================================== widget kecil
 class Section(QWidget):
-    """Kelompok di panel properti: judul tebal + chip info di kanan (mis. "Balon #1"). Klik judul = lipat."""
+    """Kartu kaca di panel properti: ⌄ judul + chip info (mis. "Balon #1"); klik judul = lipat / buka."""
 
     def __init__(self, title: str, parent=None):
         super().__init__(parent)
-        self.btn = QToolButton(text=title)
+        self.setObjectName("sectionCard")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.btn = QToolButton(text=" " + title)
         self.btn.setObjectName("sectionHeader")
         self.btn.setCheckable(True)
         self.btn.setChecked(True)
-        self.btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self.btn.setIcon(icon("mv_down"))
+        self.btn.setIconSize(QSize(12, 12))
+        self.btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.btn.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         self.btn.toggled.connect(self._toggle)
         self.chip = QLabel("")
@@ -102,10 +106,10 @@ class Section(QWidget):
         self.body = QWidget()
         self.body.setObjectName("sectionBody")
         self.lay = QVBoxLayout(self.body)
-        self.lay.setContentsMargins(0, 2, 0, 4)
-        self.lay.setSpacing(4)
+        self.lay.setContentsMargins(0, 4, 0, 0)
+        self.lay.setSpacing(6)
         v = QVBoxLayout(self)
-        v.setContentsMargins(0, 0, 0, 4)
+        v.setContentsMargins(10, 7, 10, 10)
         v.setSpacing(0)
         v.addLayout(hd)
         v.addWidget(self.body)
@@ -115,6 +119,7 @@ class Section(QWidget):
         self.chip.setVisible(bool(text))
 
     def _toggle(self, on):
+        self.btn.setIcon(icon("mv_down" if on else "mv_right"))
         self.body.setVisible(on)
 
 
@@ -638,7 +643,7 @@ class MainWindow(QMainWindow):
         il = QVBoxLayout(insp)
         il.setContentsMargins(6, 8, 4, 8)
         il.addWidget(self.tabs)
-        self.insp_slide = SlidePanel(insp, 236)
+        self.insp_slide = SlidePanel(insp, 252)
         self.insp_slide.toggled.connect(lambda _on: QTimer.singleShot(0, self._fit_both))
 
         # ---- kiri: kolom alat mengambang
@@ -813,8 +818,8 @@ class MainWindow(QMainWindow):
     def _build_props(self):
         w = QWidget()
         v = QVBoxLayout(w)
-        v.setContentsMargins(6, 6, 6, 6)
-        v.setSpacing(4)
+        v.setContentsMargins(2, 4, 6, 6)
+        v.setSpacing(8)
 
         self.props_hint = QLabel("Klik sebuah balon di gambar ASLI\nuntuk mengedit teks & gayanya.")
         self.props_hint.setObjectName("dim")
@@ -857,22 +862,24 @@ class MainWindow(QMainWindow):
 
         # --- Terjemahan
         s1 = Section("Terjemahan")
+        s1.lay.addWidget(small_label("Teks asli (OCR)"))
         self.e_src = QPlainTextEdit()
         self.e_src.setObjectName("srcText")
         self.e_src.setPlaceholderText("Teks asli (OCR)…")
         self.e_src.setToolTip("Teks asli hasil OCR (bisa diperbaiki)")
         self.e_src.setFixedHeight(34)
         s1.lay.addWidget(self.e_src)
+        s1.lay.addWidget(small_label("Terjemahan"))
         self.e_tr = QPlainTextEdit()
         self.e_tr.setPlaceholderText("Tulis / perbaiki terjemahan…")
         self.e_tr.setToolTip("Terjemahan — hasil di gambar ikut berubah di setiap ketikan")
         self.e_tr.setFixedHeight(58)
         s1.lay.addWidget(self.e_tr)
         row = QHBoxLayout()
-        self.b_reocr = QPushButton(icon("scan"), " OCR")
+        self.b_reocr = QPushButton(icon("scan"), " OCR ulang")
         self.b_reocr.setToolTip("OCR ulang balon ini")
         self.b_reocr.clicked.connect(lambda: self._block_job("ocr"))
-        self.b_retr = QPushButton(icon("translate"), " Terjemah")
+        self.b_retr = QPushButton(icon("translate"), " Terjemah ulang")
         self.b_retr.setToolTip("Terjemahkan ulang balon ini")
         self.b_retr.clicked.connect(lambda: self._block_job("tr"))
         row.addWidget(self.b_reocr)
@@ -949,6 +956,21 @@ class MainWindow(QMainWindow):
         self.p_match.clicked.connect(self._match_font)
         s2.lay.addLayout(row((self.p_font, 1), self.p_match))
 
+        def seg(*btns):
+            """Beberapa tombol kecil dalam satu kotak membulat (segmen)."""
+            box = QWidget()
+            box.setObjectName("seg")
+            box.setAttribute(Qt.WA_StyledBackground, True)
+            h = QHBoxLayout(box)
+            h.setContentsMargins(3, 2, 3, 2)
+            h.setSpacing(1)
+            for b_ in btns:
+                b_.setObjectName("segBtn" if b_.objectName() != "presetBtn" else "presetBtn")
+                h.addWidget(b_, 1)
+            box.setFixedHeight(28)
+            box.setSizePolicy(EXP, QSizePolicy.Fixed)
+            return box
+
         # ukuran | preset 1–5
         self.p_size = spin(0, 300, 1, 0, "Auto")
         self.p_presets = []
@@ -963,7 +985,7 @@ class MainWindow(QMainWindow):
         r1 = QHBoxLayout()
         r1.setSpacing(6)
         r1.addWidget(field("A", self.p_size, "Ukuran font (Auto = menyesuaikan balon)"), 5)
-        r1.addLayout(prow, 6)
+        r1.addWidget(seg(*self.p_presets), 6)
         s2.lay.addLayout(r1)
         self._update_preset_tips()
 
@@ -984,23 +1006,19 @@ class MainWindow(QMainWindow):
             b.clicked.connect(lambda _=False, k=k: self._set_align(k))
             self.p_al[k] = b
         r2 = QHBoxLayout()
-        r2.setSpacing(2)
-        for b in (self.p_bold, self.p_ital, *self.p_case.values()):
-            r2.addWidget(b, 1)
-        r2.addSpacing(6)
-        for b in self.p_al.values():
-            r2.addWidget(b, 1)
+        r2.setSpacing(6)
+        r2.addWidget(seg(self.p_bold, self.p_ital, *self.p_case.values()), 5)
+        r2.addWidget(seg(*self.p_al.values()), 3)
         s2.lay.addLayout(r2)
 
         # jarak baris | jarak huruf
         self.p_lsp = spin(0.5, 3.0, 0.05, 2, default=float(self.settings.get("line_spacing", 1.2) or 1.2))
         self.p_ls = spin(-10.0, 40.0, 0.5, 1, default=0.0)
         self.p_rot = spin(-180, 180, 1, 0, None, "°", default=0)
-        r3 = QHBoxLayout()                          # ≡ 1.20 | AV 0.0 | ↻ 0°
-        r3.setSpacing(4)
-        r3.addWidget(field("≡", self.p_lsp, "Jarak antar baris (1.20 = default dari Pengaturan → Teks)"), 1)
+        r3 = QHBoxLayout()                          # ↕ 1.20 | AV 0
+        r3.setSpacing(6)
+        r3.addWidget(field("↕", self.p_lsp, "Jarak antar baris (1.20 = default dari Pengaturan → Teks)"), 1)
         r3.addWidget(field("AV", self.p_ls, "Jarak antar huruf (piksel)"), 1)
-        r3.addWidget(field("↻", self.p_rot, "Putar teks (derajat)"), 1)
         s2.lay.addLayout(r3)
 
         # jumlah baris
@@ -1019,12 +1037,8 @@ class MainWindow(QMainWindow):
         r3b.addWidget(self.p_lines_p, 1)
         s2.lay.addLayout(r3b)
 
-        # Posisi: ← ↑ ↓ → ⟲
-        r4 = QHBoxLayout()
-        r4.setSpacing(2)
-        lp = small_label("Posisi")
-        lp.setMinimumWidth(40)
-        r4.addWidget(lp)
+        # ↻ 0° | ‹ ˄ ˅ › ⟲
+        arrows = []
         for ico, dx, dy, tip in (("mv_left", -1, 0, "Geser kiri"), ("mv_up", 0, -1, "Geser atas"),
                                  ("mv_down", 0, 1, "Geser bawah"), ("mv_right", 1, 0, "Geser kanan"),
                                  ("mv_reset", 0, 0, "Kembalikan ke posisi semula")):
@@ -1034,7 +1048,13 @@ class MainWindow(QMainWindow):
             b.setAutoRepeatDelay(350)
             b.setAutoRepeatInterval(60)
             b.clicked.connect(lambda _=False, dx=dx, dy=dy: self._nudge(dx, dy))
-            r4.addWidget(b, 1)
+            arrows.append(b)
+        r4 = QHBoxLayout()
+        r4.setSpacing(6)
+        r4.addWidget(field("↻", self.p_rot, "Putar teks (derajat)"), 4)
+        pos = seg(*arrows)
+        pos.setToolTip("Geser posisi teks")
+        r4.addWidget(pos, 5)
         s2.lay.addLayout(r4)
 
         # warna teks (+ gradasi) | ambil dari teks asli
@@ -1057,8 +1077,8 @@ class MainWindow(QMainWindow):
         self.p_stroke_color = swatch("Warna garis tepi (stroke)", lambda: self._pick_color("stroke_color"))
         self.p_stroke = spin(0, 15, 1, 0, "-")
         self.p_stroke.setToolTip("Tebal garis tepi (- = tanpa garis tepi)")
-        for sw_ in (self.p_color, self.p_color2, self.p_stroke_color):      # bulatan warna kecil
-            sw_.setFixedSize(20, 20)
+        for sw_ in (self.p_color, self.p_color2, self.p_stroke_color):      # kotak warna kecil
+            sw_.setFixedSize(24, 24)
             sw_.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         s_col = Section("Warna")
         # satu baris: Teks ● ◌   Garis ● [3]   (pipet) -- gradasi: klik kanan bulatan kedua
@@ -1074,28 +1094,44 @@ class MainWindow(QMainWindow):
             a_.setEnabled(self.p_grad_off.isEnabled())
             m.exec(self.p_color2.mapToGlobal(pos))
         self.p_color2.customContextMenuRequested.connect(_grad_menu)
-        self.p_stroke.setFixedWidth(30)
-        self.p_stroke.setAlignment(Qt.AlignCenter)
+        self.p_stroke.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         sbox = QWidget()
         sbox.setObjectName("field")
         sh_ = QHBoxLayout(sbox)
-        sh_.setContentsMargins(4, 1, 4, 1)
+        sh_.setContentsMargins(8, 1, 6, 1)
+        pxl = QLabel("px")
+        pxl.setObjectName("fieldIcon")
+        sh_.addWidget(pxl)
         sh_.addWidget(self.p_stroke)
         sbox.setToolTip("Tebal garis tepi (0 atau - = tanpa garis tepi)")
         sbox.setFixedWidth(46)
-        r5 = QHBoxLayout()
-        r5.setSpacing(5)
+        self.p_pick.setText(" Ambil dari asli")
+        self.p_pick.setIcon(icon("eyedrop"))
+        self.p_pick.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.p_pick.setObjectName("pickBtn")
+        self.p_pick.setMinimumWidth(0)
+        self.p_pick.setMaximumWidth(16777215)
+        self.p_pick.setFixedHeight(26)
+        r5 = QHBoxLayout()                          # Teks ■ ⬚      [💧 Ambil dari asli]
+        r5.setSpacing(6)
         lt = small_label("Teks")
+        lt.setMinimumWidth(42)
         r5.addWidget(lt)
         r5.addWidget(self.p_color)
         r5.addWidget(self.p_color2)
-        r5.addSpacing(6)
-        r5.addWidget(small_label("Garis"))
-        r5.addWidget(self.p_stroke_color)
-        r5.addWidget(sbox)
         r5.addStretch(1)
         r5.addWidget(self.p_pick)
         s_col.lay.addLayout(r5)
+        r6 = QHBoxLayout()                          # Stroke ■ [px 3]
+        r6.setSpacing(6)
+        ls_ = small_label("Stroke")
+        ls_.setMinimumWidth(42)
+        r6.addWidget(ls_)
+        r6.addWidget(self.p_stroke_color)
+        sbox.setFixedWidth(70)
+        r6.addWidget(sbox)
+        r6.addStretch(1)
+        s_col.lay.addLayout(r6)
         self.p_font.currentIndexChanged.connect(self._on_prop_change)
         for sp in (self.p_size, self.p_stroke, self.p_lsp, self.p_ls, self.p_rot, self.p_lines):   # jangan pakai nama `w`!
             sp.valueChanged.connect(self._on_prop_change)
@@ -2192,7 +2228,7 @@ class MainWindow(QMainWindow):
     def _color_btn(btn, color):
         btn.setText("")
         btn.setToolTip(f"{btn.toolTip().split('  ·')[0]}  ·  {color.upper()}")
-        btn.setStyleSheet(f"background:{color}; border:1.5px solid rgba(255,255,255,0.45); border-radius:10px; padding:0; min-width:17px; max-width:17px; min-height:17px; max-height:17px;")
+        btn.setStyleSheet(f"background:{color}; border:1.5px solid rgba(255,255,255,0.45); border-radius:7px; padding:0; min-width:21px; max-width:21px; min-height:21px; max-height:21px;")
 
     def _on_src_text(self):
         if self._loading or not self.sel:
@@ -2516,10 +2552,10 @@ class MainWindow(QMainWindow):
             css = css_preview(b.grad_type or "linear", b.grad_angle if b.grad_angle is not None else 90,
                               b.color, b.color2, b.grad_pos if b.grad_pos is not None else 0.5,
                               b.grad_soft if b.grad_soft is not None else 1.0)
-            self.p_color2.setStyleSheet(f"background: {css}; border:1.5px solid rgba(255,255,255,0.45); border-radius:10px; padding:0; min-width:17px; max-width:17px; min-height:17px; max-height:17px;")
+            self.p_color2.setStyleSheet(f"background: {css}; border:1.5px solid rgba(255,255,255,0.45); border-radius:7px; padding:0; min-width:21px; max-width:21px; min-height:21px; max-height:21px;")
         else:
             self.p_color2.setText("")
-            self.p_color2.setStyleSheet("background: transparent; border:1.5px dashed rgba(255,255,255,0.35); border-radius:10px; padding:0; min-width:17px; max-width:17px; min-height:17px; max-height:17px;")
+            self.p_color2.setStyleSheet("background: transparent; border:1.5px dashed rgba(255,255,255,0.35); border-radius:7px; padding:0; min-width:21px; max-width:21px; min-height:21px; max-height:21px;")
         self.p_grad_off.setEnabled(bool(b.color2))
 
     def _clear_gradient(self):
@@ -4037,15 +4073,25 @@ STYLE += """
 #chrome QToolButton#mini:hover, #chrome QToolButton#presetBtn:hover { background: rgba(255,255,255,0.09); }
 #chrome QToolButton#mini:checked, #chrome QToolButton#presetBtn:checked { color: white; border: none;
   background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.30), stop:1 rgba(255,255,255,0.10)); }
-#chrome QToolButton#sectionHeader { background: transparent; color: #eef0f7; font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif;
-  font-weight: 700; font-size: 8.5pt; padding: 3px 0px; border-radius: 6px; text-align: left; }
+#chrome QToolButton#sectionHeader { background: transparent; border: none; color: #eef0f7; font-family: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif;
+  font-weight: 700; font-size: 9pt; padding: 2px 0px; }
 #chrome QToolButton#sectionHeader:hover { background: rgba(255,255,255,0.05); }
 #chrome QPushButton { color: #e6e9f4; border: none; border-radius: 12px; padding: 5px 10px;
   background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.13), stop:1 rgba(255,255,255,0.05)); }
 #chrome QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(255,255,255,0.20), stop:1 rgba(255,255,255,0.08)); }
 #chrome QPushButton#swatch { border: 2px solid rgba(255,255,255,0.45); border-radius: 10px; padding: 0; }
-#chrome QLabel#chip { color: rgba(225,229,242,0.7); font-size: 7pt; padding: 1px 7px; border-radius: 8px;
-  background: rgba(255,255,255,0.08); }
+#chrome QLabel#chip { color: white; font-size: 7pt; font-weight: 700; padding: 1px 8px; border-radius: 8px;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(111,143,232,0.75), stop:1 rgba(143,120,224,0.75)); }
+#chrome QWidget#sectionCard { background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.09); border-radius: 16px; }
+#chrome QWidget#seg { background: rgba(0,0,0,0.24); border: 1px solid rgba(255,255,255,0.07); border-radius: 11px; }
+#chrome QWidget#seg QToolButton#segBtn, #chrome QWidget#seg QToolButton#presetBtn { background: transparent; border: none;
+  border-radius: 8px; padding: 0; color: rgba(225,229,242,0.75); min-height: 20px; }
+#chrome QWidget#seg QToolButton#segBtn:hover, #chrome QWidget#seg QToolButton#presetBtn:hover { background: rgba(255,255,255,0.08); }
+#chrome QWidget#seg QToolButton#segBtn:checked, #chrome QWidget#seg QToolButton#presetBtn:checked { color: white;
+  background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(111,143,232,0.85), stop:1 rgba(143,120,224,0.85)); }
+#chrome QToolButton#pickBtn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 12px; padding: 2px 10px; color: #e6e9f4; font-weight: 600; }
+#chrome QToolButton#pickBtn:hover { background: rgba(255,255,255,0.12); }
 #chrome QLabel#fieldLabel { color: rgba(225,229,242,0.55); font-size: 7.5pt; }
 #chrome QPushButton#danger { color: #ff8a95; }
 #chrome QTabWidget#rightTabs::pane { border: none; background: transparent; top: 4px; }
