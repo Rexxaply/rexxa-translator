@@ -32,6 +32,7 @@ QComboBox QAbstractItemView::item:selected { color: white;
 QMenu { background: transparent;
     border: none; border-radius: 12px; padding: 6px; }
 QMenu::item { padding: 7px 20px 7px 12px; border-radius: 8px; color: #e3e7f3; }
+QMenu::item:disabled { color: rgba(225,229,242,0.62); }
 QMenu::item:selected { color: white; background: rgba(140,130,230,0.55); }
 QListWidget, QTableWidget, QTreeWidget { background: rgba(0,0,0,0.18); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; }
 QLabel#gTitle { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; font-size: 13pt; font-weight: 800; color: #f2f4fb; }
@@ -484,46 +485,67 @@ class GlassDialog(QDialog):
 class _Smooth(QObject):
     """Roda mouse -> bilah gulir meluncur ke tujuan dengan perlambatan (OutCubic, ±220 ms)."""
 
-    def __init__(self, area: QAbstractScrollArea):
+    def __init__(self, area: QAbstractScrollArea, step: int = 0, snap: int = 0, duration: int = 220,
+                 install: bool = True, snap_fine: int = 5):
         super().__init__(area)
         self.area = area
+        self.step = step              # piksel per satu klik roda (0 = otomatis dari ukuran daftar)
+        self.snap = snap              # >0: gerak roda selalu kelipatan sekian piksel (mis. 10)
+        self.snap_fine = snap_fine    # gerak touchpad / mouse presisi: kelipatan lebih halus (mis. 5)
+        self.duration = duration
         self.anims = {}
         self.target = {}
-        area.viewport().installEventFilter(self)
+        if install:
+            area.viewport().installEventFilter(self)
 
     def eventFilter(self, obj, ev):
         if ev.type() != QEvent.Wheel or ev.modifiers() & Qt.ControlModifier:
             return False
         d = ev.angleDelta()
         horiz = abs(d.x()) > abs(d.y()) or bool(ev.modifiers() & Qt.ShiftModifier)
+        vb = self.area.verticalScrollBar()
+        if not horiz and (vb is None or vb.maximum() - vb.minimum() < 10
+                          or self.area.verticalScrollBarPolicy() == Qt.ScrollBarAlwaysOff):
+            hb = self.area.horizontalScrollBar()          # daftar mendatar (strip halaman): roda = geser kiri/kanan
+            if hb is not None and hb.maximum() > hb.minimum():
+                horiz = True
         bar = self.area.horizontalScrollBar() if horiz else self.area.verticalScrollBar()
         if bar is None or bar.maximum() <= bar.minimum():
             return False
         delta = (d.x() or d.y()) if horiz else d.y()
-        if not delta:
+        px = ev.pixelDelta()
+        pxd = (px.x() or px.y()) if horiz else px.y()
+        if not delta and not pxd:
             return False
-        step = max(24, bar.singleStep() * 3, bar.pageStep() // 6)
+        step = self.step or max(24, bar.singleStep() * 3, bar.pageStep() // 6)
         key = "h" if horiz else "v"
         anim = self.anims.get(key)
         base = self.target.get(key) if anim is not None and anim.state() == QPropertyAnimation.Running else bar.value()
-        tgt = max(bar.minimum(), min(bar.maximum(), int(base - delta / 120.0 * step)))
+        move = pxd if pxd else delta / 120.0 * step       # touchpad: piksel asli; roda: per klik
+        q = (self.snap_fine if pxd else self.snap) or 0
+        if q:                                             # gerak per kelipatan (5 / 10 px), minimal satu langkah
+            n = round(move / q) or (1 if move > 0 else -1)
+            move = n * q
+        tgt = max(bar.minimum(), min(bar.maximum(), int(round(base - move))))
+        if q and tgt not in (bar.minimum(), bar.maximum()):
+            tgt = int(round(tgt / q) * q)
         self.target[key] = tgt
         if anim is None:
             anim = QPropertyAnimation(bar, b"value", self)
             anim.setEasingCurve(QEasingCurve.OutCubic)
             self.anims[key] = anim
         anim.stop()
-        anim.setDuration(220)
+        anim.setDuration(self.duration)
         anim.setStartValue(bar.value())
         anim.setEndValue(tgt)
         anim.start()
         return True
 
 
-def smooth_scroll(area: QAbstractScrollArea):
+def smooth_scroll(area: QAbstractScrollArea, step: int = 0, snap: int = 10, duration: int = 260):
     """Aktifkan gulir halus pada QScrollArea / QListWidget / QTableWidget / QTextEdit."""
     if isinstance(area, QAbstractScrollArea) and not getattr(area, "_smooth", None):
-        area._smooth = _Smooth(area)
+        area._smooth = _Smooth(area, step, snap, duration)
         from PySide6.QtWidgets import QAbstractItemView
         if isinstance(area, QAbstractItemView):          # daftar: gulir per piksel, bukan per baris
             area.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
@@ -534,6 +556,43 @@ def smooth_scroll(area: QAbstractScrollArea):
 def smooth_all(root: QWidget):
     for a in root.findChildren(QAbstractScrollArea):
         smooth_scroll(a)
+
+
+class _SmoothEverywhere(QObject):
+    """Semua daftar / panel / kotak teks yang bisa digulir di aplikasi (termasuk yang dibuat belakangan,
+    mis. daftar dropdown): roda mouse meluncur halus, gerak per 10 px (touchpad per 5 px).
+    Kanvas gambar tidak ikut: rodanya dipakai untuk zoom."""
+
+    def eventFilter(self, obj, ev):
+        if ev.type() != QEvent.Wheel or ev.modifiers() & Qt.ControlModifier:
+            return False
+        area = obj.parent() if isinstance(obj, QWidget) else None
+        if not isinstance(area, QAbstractScrollArea) or obj is not area.viewport():
+            return False
+        from PySide6.QtWidgets import QGraphicsView
+        if isinstance(area, QGraphicsView) or getattr(area, "_no_smooth", False):
+            return False
+        sm = getattr(area, "_smooth", None)
+        if sm is None:
+            from PySide6.QtWidgets import QAbstractItemView
+            if isinstance(area, QAbstractItemView):      # gulir per piksel, bukan per baris
+                area.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+                area.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+            from PySide6.QtWidgets import QPlainTextEdit
+            if isinstance(area, QPlainTextEdit):          # bilah gulirnya dalam satuan baris, bukan piksel
+                sm = area._smooth = _Smooth(area, 3, 0, 260, install=False, snap_fine=0)
+            else:
+                sm = area._smooth = _Smooth(area, 0, 10, 260, install=False)
+            area._smooth_lazy = True
+        elif not getattr(area, "_smooth_lazy", False):
+            return False                                 # sudah punya penyaring sendiri
+        return sm.eventFilter(obj, ev)
+
+
+def install_smooth_scroll(app):
+    f = _SmoothEverywhere(app)
+    app.installEventFilter(f)
+    app._smooth_everywhere = f
 
 
 # ---------------------------------------------------------------- dropdown & menu

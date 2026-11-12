@@ -23,6 +23,7 @@ class NumField(QLineEdit):
         self.setMinimumWidth(26)
         self.setFixedHeight(22)
         self.editingFinished.connect(self._commit_text)
+        self.textEdited.connect(self._live_special)
         self._show()
 
     # ---- API mirip QSpinBox
@@ -56,12 +57,27 @@ class NumField(QLineEdit):
             self.setText(self._fmt(self._val))
         self.setCursorPosition(0)
 
+    def _live_special(self, t):
+        """Mengetik nilai minimum (mis. 0 pada tebal garis) = langsung jadi teks khusus ("-")."""
+        if not self._special:
+            return
+        tt = t.strip().replace(",", ".")
+        try:
+            if tt == self._special or float(tt) <= self._lo:
+                self.setValue(self._lo, emit=True)
+                self.selectAll()
+        except ValueError:
+            pass
+
     def _commit_text(self):
         t = self.text().strip().replace(",", ".")
         if self._suffix:
             t = t.replace(self._suffix, "")
         if self._special and (t == self._special or t.lower().startswith(self._special.split()[0].lower())):
             self.setValue(self._lo, emit=True)
+            return
+        if self._special and t == "":
+            self.setValue(self._lo, emit=True)     # kosong = sama dengan teks khusus ("-" / Auto)
             return
         try:
             self.setValue(float(t), emit=True)

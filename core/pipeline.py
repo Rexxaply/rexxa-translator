@@ -214,6 +214,7 @@ def output_dir(page: Page, settings: dict) -> Path:
 
 def step_detect(page: Page, project: Project, settings: dict):
     img = detector.load_image(page.path)
+    notes = [b for b in page.blocks if getattr(b, "note", False)]     # teks bebas buatan sendiri tetap ada
     page.blocks = detector.detect(img, settings["detect_mode"], project.source_lang, settings["gpu"])
     page._clean_sigs = None           # balon baru semua -> hapus teks penuh
     for b in page.blocks:
@@ -229,6 +230,7 @@ def step_detect(page: Page, project: Project, settings: dict):
             idx = 0
         if idx < 3:
             add_title_block(img, page, project, settings, strict=True)
+    page.blocks.extend(notes)
     page.status = "dideteksi"
 
 
@@ -377,7 +379,8 @@ def match_sfx_fonts(img, blocks, settings):
 def step_ocr(page: Page, project: Project, settings: dict, progress=None, only=None):
     """only: daftar blok yang dibaca (None = semua)."""
     img = detector.load_image(page.path)
-    targets = [b for b in (page.blocks if only is None else only) if b.kind != "title"]
+    targets = [b for b in (page.blocks if only is None else only)
+               if b.kind != "title" and not getattr(b, "note", False)]
     if targets:
         ocr.ocr_page(img, targets, settings["ocr_engine"], project.source_lang, settings["gpu"], progress)
     # kotak yang dibuat manual / belum diberi gaya: baca warna teks aslinya
@@ -447,7 +450,8 @@ def step_translate(page: Page, project: Project, settings: dict, log=None, only=
     for b in page.blocks:
         if b.kind == "title" and project.series_title:
             b.translation = project.series_title       # judul seri: tidak diterjemahkan ulang
-    blocks = [b for b in (page.blocks if only is None else only) if b.kind != "title"]
+    blocks = [b for b in (page.blocks if only is None else only)
+              if b.kind != "title" and not getattr(b, "note", False)]
     if not blocks:
         page.status = "diterjemah"
         return

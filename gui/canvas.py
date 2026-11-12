@@ -143,10 +143,11 @@ class BoxItem(QGraphicsRectItem):
 
     # ------------------------------------------------------------ geser & ubah ukuran
     def mousePressEvent(self, e):
-        if e.button() != Qt.LeftButton or self.canvas.draw_mode:
+        temp = PageCanvas.ctrl_held                # Ctrl ditahan di alat lain = pindah/ubah ukuran saja
+        if e.button() != Qt.LeftButton or (self.canvas.draw_mode and not temp):
             e.ignore()
             return
-        if e.modifiers() & Qt.ControlModifier:     # Ctrl+klik = pilih lebih dari 1
+        if e.modifiers() & Qt.ControlModifier and not temp:     # Ctrl+klik = pilih lebih dari 1
             self._mode = None
             self.canvas.block_toggled.emit(self.block)
             e.accept()
@@ -210,6 +211,9 @@ class BoxItem(QGraphicsRectItem):
                 b.mask_poly = []
                 b.text_rect = []
             b.x, b.y, b.w, b.h = nx, ny, nw, nh
+            if getattr(b, "shape", "") == "oval":       # balon oval buatan sendiri: kontur ikut kotak
+                from core.models import ellipse_poly
+                b.mask_poly = ellipse_poly(nx, ny, nw, nh)
 
     def reload(self):
         """Ambil ulang posisi dari data blok (mis. setelah diubah di kanvas lain / undo)."""
@@ -231,12 +235,14 @@ class PageCanvas(QGraphicsView):
     box_drawn = Signal(QRectF)
     zoom_changed = Signal(float)
     heal_stroke = Signal(list, int)          # healing brush: titik-titik goresan, jari-jari kuas
+    text_click = Signal(object)              # alat Teks: klik di gambar (posisi adegan) -> teks baru
     region_done = Signal(list, object)       # pen / bentuk: titik poligon, posisi layar (QPoint) untuk menu
     patch_done = Signal(list)                # patch tool: titik poligon area yang ditambal
     line_stroke = Signal(list, int)          # (lama) garis langsung jadi
     draft_changed = Signal(bool)             # alat garis: ada / tidak ada pratinjau garis yang bisa diedit
     draft_menu = Signal(object)              # klik kanan di pratinjau garis -> posisi layar (QPoint)
     space_held = False                       # spasi ditahan = mode tangan (geser) sementara, semua kanvas
+    ctrl_held = False                        # Ctrl ditahan saat memakai alat lain = Pilih/geser sementara
 
     def __init__(self, parent=None, editable=True, ghost=False):
         super().__init__(parent)
@@ -255,6 +261,7 @@ class PageCanvas(QGraphicsView):
         self.boxes: list[BoxItem] = []
         self.show_boxes = True
         self.draw_mode = False
+        self.box_shape = "rect"                  # balon terjemah baru: "rect" | "oval"
         self.selected = None
         self.multi = []                          # pilihan ganda (Ctrl+klik), termasuk self.selected
         self._draw_start = None
@@ -361,7 +368,7 @@ class PageCanvas(QGraphicsView):
             item.selected = blk is self.selected or any(blk is m for m in self.multi)
             item.refresh_style()
             item.setVisible(self.show_boxes)
-            if self.tool != "select":
+            if self.tool != "select" and not PageCanvas.ctrl_held:
                 item.setAcceptedMouseButtons(Qt.NoButton)
             self.scene().addItem(item)
             self.boxes.append(item)
@@ -455,12 +462,24 @@ class PageCanvas(QGraphicsView):
             self.scene().removeItem(self._brush_item)
             self._brush_item = None
 
+    def set_temp_select(self, on: bool):
+        """Ctrl ditahan saat memegang alat lain: kotak balon bisa diklik, dipindah & diubah ukurannya;
+        Ctrl dilepas = alat semula aktif lagi."""
+        PageCanvas.ctrl_held = bool(on)
+        for b in self.boxes:
+            b.setAcceptedMouseButtons(Qt.AllButtons if on or self.tool == "select" else Qt.NoButton)
+        if self._brush_item is not None and self._brush_item.scene() is self.scene():
+            self._brush_item.setVisible(not on)
+        self.viewport().setCursor(self._tool_cursor())
+
     def _tool_cursor(self):
         if PageCanvas.space_held:
             return Qt.ClosedHandCursor if self._pan is not None else Qt.OpenHandCursor
+        if PageCanvas.ctrl_held:
+            return Qt.ArrowCursor
         if self.draw_mode:
             return Qt.CrossCursor
-        return {"heal": Qt.BlankCursor, "pen": Qt.CrossCursor, "shape": Qt.CrossCursor,
+        return {"heal": Qt.BlankCursor, "pen": Qt.CrossCursor, "shape": Qt.CrossCursor, "text": Qt.IBeamCursor,
                 "line": Qt.CrossCursor, "patch": Qt.CrossCursor}.get(self.tool, Qt.ArrowCursor)
 
     def set_space(self, on: bool):
@@ -525,7 +544,7 @@ class PageCanvas(QGraphicsView):
             self.region_done.emit(pts, screen_pos)
 
     def _tool_press(self, e) -> bool:
-        if self.tool == "select" or self.pix_item is None:
+        if self.tool == "select" or self.pix_item is None or PageCanvas.ctrl_held:
             return False
         if self.tool == "line":
             return self._line_press(e)
@@ -539,6 +558,14 @@ class PageCanvas(QGraphicsView):
             return True
         if e.button() != Qt.LeftButton:
             return False
+        if self.tool == "text":                  # klik teks yang ada = sunting; klik tempat kosong = teks baru
+            hit = self._item_at(e.position().toPoint())
+            if hit is not None:
+                self.request_select(hit.block)
+                self.block_double_clicked.emit(hit.block)
+            else:
+                self.text_click.emit(sp)
+            return True
         if self.tool == "patch":                 # lasso: seret melingkari area
             self._stroke = [(x, y)]
             pen = self._pen("#ffd166", 1.5, Qt.DashLine)
@@ -575,7 +602,7 @@ class PageCanvas(QGraphicsView):
         return False
 
     def _tool_move(self, e) -> bool:
-        if self.tool == "select" or self.pix_item is None:
+        if self.tool == "select" or self.pix_item is None or (PageCanvas.ctrl_held and self._stroke is None):
             return False
         if self.tool == "line":
             return self._line_move(e)
@@ -615,10 +642,10 @@ class PageCanvas(QGraphicsView):
                 r.setHeight(side)
             self._shape_item.setRect(r)
             return True
-        return self.tool in ("pen", "shape", "line", "patch")
+        return self.tool in ("pen", "shape", "line", "patch", "text")
 
     def _tool_release(self, e) -> bool:
-        if self.tool == "select" or self.pix_item is None:
+        if self.tool == "select" or self.pix_item is None or (PageCanvas.ctrl_held and self._stroke is None):
             return False
         if self.tool == "line":
             return self._line_release(e)
@@ -650,7 +677,7 @@ class PageCanvas(QGraphicsView):
                        [int(r.right()), int(r.bottom())], [int(r.left()), int(r.bottom())]]
             self.region_done.emit(pts, e.globalPosition().toPoint())
             return True
-        return self.tool in ("pen", "heal", "shape", "line", "patch")
+        return self.tool in ("pen", "heal", "shape", "line", "patch", "text")
 
     # ------------------------------------------------------------ alat garis: pratinjau yang bisa diedit
     def has_draft(self) -> bool:
@@ -914,11 +941,12 @@ class PageCanvas(QGraphicsView):
             return
         if e.button() != Qt.MiddleButton and self._tool_press(e):
             return
-        if self.draw_mode and e.button() == Qt.LeftButton and self.pix_item:
+        if self.draw_mode and e.button() == Qt.LeftButton and self.pix_item and not PageCanvas.ctrl_held:
             self._draw_start = self.mapToScene(pos)
             pen = QPen(QColor("#06d6a0"), 2, Qt.DashLine)
             pen.setCosmetic(True)
-            self._draw_rect = self.scene().addRect(QRectF(self._draw_start, self._draw_start), pen)
+            add = self.scene().addEllipse if getattr(self, "box_shape", "rect") == "oval" else self.scene().addRect
+            self._draw_rect = add(QRectF(self._draw_start, self._draw_start), pen, QBrush(QColor(6, 214, 160, 30)))
             self._draw_rect.setZValue(20)
             return
         if e.button() == Qt.MiddleButton or (e.button() == Qt.LeftButton and self._item_at(pos) is None):
@@ -933,7 +961,14 @@ class PageCanvas(QGraphicsView):
         if self._pan is None and self._tool_move(e):
             return
         if self._draw_rect is not None:
-            self._draw_rect.setRect(QRectF(self._draw_start, self.mapToScene(pos)).normalized())
+            r = QRectF(self._draw_start, self.mapToScene(pos)).normalized()
+            if e.modifiers() & Qt.ShiftModifier:      # Shift = persegi / lingkaran (dari titik awal)
+                side = max(r.width(), r.height())
+                end = self.mapToScene(pos)
+                sx = 1 if end.x() >= self._draw_start.x() else -1
+                sy = 1 if end.y() >= self._draw_start.y() else -1
+                r = QRectF(self._draw_start, self._draw_start + QPointF(sx * side, sy * side)).normalized()
+            self._draw_rect.setRect(r)
             return
         if self._pan is not None:
             d = pos - self._pan["start"]

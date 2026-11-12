@@ -50,6 +50,8 @@ class TextBlock:
     title_fit: str = "contain"  # contain (muat utuh) | cover (penuhi, terpotong) | stretch (regangkan)
     title_scale: float = 1.0  # skala gambar judul di dalam kotak
     title_keep_bg: bool = False  # True = logo asli TIDAK dihapus sebelum gambar ditempel
+    shape: str = ""           # "" = kotak, "oval" = balon oval buatan sendiri (kontur ikut kotak saat diubah)
+    note: bool = False        # teks bebas dari alat Teks (catatan / info): tidak di-OCR / diterjemah / dihapus latarnya
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
 
     @property
@@ -63,6 +65,14 @@ class TextBlock:
     def from_dict(d: dict) -> "TextBlock":
         known = {k: v for k, v in d.items() if k in TextBlock.__dataclass_fields__}
         return TextBlock(**known)
+
+
+def ellipse_poly(x: int, y: int, w: int, h: int, n: int = 72) -> list:
+    """Kontur oval di dalam kotak (x, y, w, h) -> [[x, y], ...]."""
+    import math
+    cx, cy, rx, ry = x + w / 2, y + h / 2, w / 2, h / 2
+    return [[int(round(cx + rx * math.cos(2 * math.pi * i / n))), int(round(cy + ry * math.sin(2 * math.pi * i / n)))]
+            for i in range(n)]
 
 
 @dataclass
