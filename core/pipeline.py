@@ -703,11 +703,51 @@ def _live_base(page: Page, settings: dict):
     return base
 
 
+def _clean_preview(page: Page, settings: dict, blocks: list, base):
+    """Kotak balon sedang digeser / diubah ukurannya: hapus teks di posisi barunya SEKETIKA (cara cepat,
+    tanpa AI berat) dan kembalikan gambar asli di posisi lamanya. Hasil kualitas penuh dibuat
+    setelah kotak dilepas. -> (gambar, True bila ada yang dibersihkan ulang)."""
+    old = getattr(page, "_clean_sigs", None)
+    if old is None:
+        return base, False
+    new = {b.id: _clean_sig(b) for b in blocks}
+    changed = [bid for bid, sg in new.items() if old.get(bid) != sg]
+    removed = [bid for bid in old if bid not in new]
+    if not changed and not removed:
+        return base, False
+    img = detector.load_image(page.path)
+    if img.shape != base.shape:
+        return base, False
+    H, W = img.shape[:2]
+    pad = 24
+    regions = []
+    for bid in changed + removed:
+        for sg in (old.get(bid), new.get(bid)):
+            if sg:
+                regions.append(_rect_pad(sg, pad, W, H))
+
+    def hits(b):
+        bx0, by0, bx1, by1 = _rect_pad((b.x, b.y, b.w, b.h), pad, W, H)
+        return any(bx0 < x1 and x0 < bx1 and by0 < y1 and y0 < by1 for x0, y0, x1, y1 in regions)
+    redo = [b for b in blocks if hits(b)]
+    for b in redo:
+        regions.append(_rect_pad((b.x, b.y, b.w, b.h), pad, W, H))
+    out = base.copy()
+    for x0, y0, x1, y1 in regions:
+        out[y0:y1, x0:x1] = img[y0:y1, x0:x1]
+    m = settings.get("clean_method", "auto")
+    fast = m if m in ("opencv", "none") else "fill"
+    return inpaint.clean_page(img, redo, fast, base=out, patch=False, lines=False, bubble_blocks=blocks), True
+
+
 def render_live(page: Page, project: Project, settings: dict, blocks: list):
-    """Hasil halaman di memori untuk `blocks` (salinan blok milik tampilan). Tidak menulis file."""
+    """Hasil halaman di memori untuk `blocks` (salinan blok milik tampilan). Tidak menulis file.
+    -> (gambar, pratinjau_hapus): pratinjau_hapus True = area teks dihapus dengan cara cepat
+    (kotak sedang digeser), hasil kualitas penuh menyusul lewat render biasa."""
     base = _live_base(page, settings)
     if getattr(page, "_clean_sigs", None) is None:
         page._clean_sigs = {b.id: _clean_sig(b) for b in page.blocks}
+    base, previewed = _clean_preview(page, settings, blocks, base)
     sync_default_style(settings)
     final = typeset.render_page(base, blocks, project.target_lang, settings.get("font", ""),
                                 settings.get("uppercase", True), int(settings.get("max_font_size", 48)),
@@ -715,7 +755,7 @@ def render_live(page: Page, project: Project, settings: dict, blocks: list):
                                 default_size=int(settings.get("default_font_size", 0) or 0),
                                 default_bold=bool(settings.get("default_bold", False)),
                                 line_spacing=float(settings.get("line_spacing", 1.2) or 1.2))
-    return _apply_titles(page, project, settings, final)
+    return _apply_titles(page, project, settings, final), previewed
 
 
 def commit_live(page: Page, project: Project, settings: dict, final):

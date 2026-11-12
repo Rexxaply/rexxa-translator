@@ -523,6 +523,7 @@ class MainWindow(QMainWindow):
             cv.nudge_key.connect(self._nudge)
             cv.edit_started.connect(self._on_edit_started)
             cv.block_moving.connect(lambda b, o=other: o.reload_boxes())
+            cv.block_moving.connect(self._on_block_moving)
             cv.block_geometry_changed.connect(self._on_geom_changed)
             cv.block_double_clicked.connect(self._focus_translation)
         self.cv_src.box_drawn.connect(self._add_box)
@@ -2691,6 +2692,12 @@ class MainWindow(QMainWindow):
             else:
                 self.render_timer.start()
 
+    def _on_block_moving(self, _b):
+        """Kotak sedang digeser / diubah ukurannya: teks & area hapus ikut bergerak seketika."""
+        p = self.page()
+        if p and not self.thread and p.path not in self.need_clean and pipeline.can_render_live(p):
+            self._live_timer.start()
+
     def _live_kick(self):
         p = self.page()
         if not p or self.thread or p.path in self.need_clean or not pipeline.can_render_live(p):
@@ -2708,17 +2715,17 @@ class MainWindow(QMainWindow):
 
         def work():
             try:
-                img = pipeline.render_live(p, proj, st, blocks)
+                img, previewed = pipeline.render_live(p, proj, st, blocks)
                 rect = "full"
                 if prev is not None and prev.shape == img.shape:
                     rect = PageCanvas.changed_rect(img, prev)      # dihitung di latar, bukan di thread tampilan
-                self._live_bridge.done.emit((p, blocks, img, rect, None))
+                self._live_bridge.done.emit((p, blocks, img, rect, previewed, None))
             except Exception as e:                # jatuh ke render biasa
-                self._live_bridge.done.emit((p, blocks, None, None, e))
+                self._live_bridge.done.emit((p, blocks, None, None, False, e))
         self._live_pool.submit(work)
 
     def _live_done(self, res):
-        p, blocks, img, rect, err = res
+        p, blocks, img, rect, previewed, err = res
         self._live_busy = False
         if self.thread:                           # proses lain sedang jalan: hasil ini sudah basi
             self._live_again = False
@@ -2740,11 +2747,24 @@ class MainWindow(QMainWindow):
             self._live_prev = (p.path, img)
             if self.sel is not None:
                 self._update_fit_text()
-        self._live_last = (p, img)
-        self._live_commit_timer.start()
+        if previewed:
+            # area hapus masih versi cepat: jangan disimpan; hasil kualitas penuh dibuat saat kotak dilepas
+            # (atau sekarang juga, bila yang berubah bukan kotak, mis. balon baru diberi terjemahan)
+            self._live_last = None
+            self._live_commit_timer.stop()
+            if not self._dragging_box():
+                self.need_clean.add(p.path)
+                self.render_timer.start()
+        else:
+            self._live_last = (p, img)
+            self._live_commit_timer.start()
         if self._live_again:
             self._live_again = False
             self._live_kick()
+
+    def _dragging_box(self) -> bool:
+        from PySide6.QtWidgets import QApplication as _QA
+        return bool(_QA.mouseButtons() & Qt.LeftButton)
 
     def _live_commit(self):
         """Pengguna berhenti menyunting sejenak: simpan hasil, perbarui thumbnail & proyek."""
