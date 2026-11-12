@@ -94,15 +94,16 @@ def main(out):
         shots.append(ImageGrab.grab(bbox=box, all_screens=True))
     pump(1.2)
     # ---- geser kotak balon 2 ke bawah-kanan (seperti menyeret dengan mouse), lalu lepas
-    item = next(bx for bx in w.cv_out.boxes if bx.block is p.blocks[1])
     shows_before = len(shows)
-    w.cv_out._on_edit = None
     w._on_edit_started(p.blocks[1])
+    pump(0.2)
+    item = next(bx for bx in w.cv_out.boxes if bx.block is p.blocks[1])
     start = item.pos()
     drag = []
     dshots = []
     for k in range(1, 13):
         drag.append(time.perf_counter())
+        item = next(bx for bx in w.cv_out.boxes if bx.block is p.blocks[1])
         item.setPos(start.x() + k * 12, start.y() + k * 22)
         item.sync()
         w.cv_out.block_moving.emit(p.blocks[1])
