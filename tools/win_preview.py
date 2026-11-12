@@ -81,19 +81,23 @@ def main(out):
         g = fc.mapToGlobal(fc.rect().topLeft())
         x0, y0 = g.x() - 40, g.y() - 40
         return ImageGrab.grab(bbox=(x0, y0, x0 + 420, y0 + 460), all_screens=True)
-    for q in ("a", "ar", "ari", "aria", "arial b"):
-        QTest.keyClicks(le, q[-1])
+    typed = ""
+    for ch in ("a", "r", "i", "x", "BS"):
+        if ch == "BS":
+            QTest.keyClick(le, Qt.Key_Backspace)
+            typed = typed[:-1]
+        else:
+            QTest.keyClicks(le, ch)
+            typed += ch
         pump(0.35)
         pop = fc._comp.popup()
-        print("ketik", repr(q), "-> tampil", pop.isVisible(), "hasil", fc._proxy.rowCount(),
+        print("ketik", repr(typed), "-> kotak", repr(le.text()), "daftar tampil", pop.isVisible(), "hasil",
               [fc._proxy.index(i, 0).data() for i in range(min(5, fc._proxy.rowCount()))], flush=True)
         shots.append(grab())
-    QTest.keyClick(le, Qt.Key_Backspace)
-    QTest.keyClick(le, Qt.Key_Backspace)
-    pump(0.3)
-    QTest.keyClick(fc._comp.popup(), Qt.Key_Down)
+    pop = fc._comp.popup()
+    QTest.keyClick(pop if pop.isVisible() else le, Qt.Key_Down)
     pump(0.2)
-    QTest.keyClick(fc._comp.popup(), Qt.Key_Return)
+    QTest.keyClick(pop if pop.isVisible() else le, Qt.Key_Return)
     pump(0.6)
     shots.append(grab())
     print("font balon sebelum:", before, "| sesudah:", p.blocks[1].font, "| teks kotak:", le.text(), flush=True)

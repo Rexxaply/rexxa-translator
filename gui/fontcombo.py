@@ -233,8 +233,6 @@ class FontCombo(QComboBox):
             if ix.isValid():
                 self._picked(ix.data())
                 return True
-        elif obj is pop and ev.type() == QEvent.Hide:
-            QTimer.singleShot(0, lambda: (not self.hasFocus()) and self._revert())
         return super().eventFilter(obj, ev)
 
     # QComboBox meneruskan fokus ke kotak ketiknya secara langsung (tanpa event filter), jadi ditangani di sini
