@@ -286,7 +286,7 @@ class GlassDialog(QDialog):
         p.setBrush(Qt.NoBrush)
         p.drawRoundedRect(r.adjusted(0.6, 0.6, -0.6, -0.6), RADIUS, RADIUS)
 
-    def _card(self, content: QPixmap | None) -> QPixmap:
+    def _glass_card(self, content: QPixmap | None) -> QPixmap:
         """Seluruh dialog (kaca + isi) dirender SEKALI ke satu gambar; animasi cukup menskalakan gambar ini."""
         dpr = self.devicePixelRatioF()
         pm = QPixmap(int(self.width() * dpr), int(self.height() * dpr))
@@ -341,7 +341,7 @@ class GlassDialog(QDialog):
 
     def _start(self, direction: int):
         self.layout().activate()
-        self._begin(direction, self._card(self.sheet.grab()))
+        self._begin(direction, self._glass_card(self.sheet.grab()))
         self.update()
 
     def _tick(self):
@@ -403,7 +403,7 @@ class GlassDialog(QDialog):
         content = self.sheet.grab()
         QWidget.setVisible(self, False)
         self.setAttribute(Qt.WA_DontShowOnScreen, False)
-        self._begin(1, self._card(content))
+        self._begin(1, self._glass_card(content))
 
     def _prepare_show(self):
         host = self.parentWidget().window() if self.parentWidget() is not None else None
