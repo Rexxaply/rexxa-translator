@@ -8,6 +8,12 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.4.0 · Minor update
+- Render langsung: hasil terjemahan berubah di setiap ketikan, tanpa menunggu dan tanpa tampilan berkedip.
+- Mengubah warna, ukuran, font, perataan, posisi teks, serta undo/redo juga langsung terlihat.
+- Menggeser / mengubah ukuran kotak balon: teks asli di posisi lama kembali, area baru langsung dihapus dan teks ikut pindah. Setelah kotak dilepas, area itu dihapus ulang dengan kualitas penuh.
+- Hasil, thumbnail, dan proyek disimpan otomatis setelah berhenti menyunting sejenak.
+
 ## 2.3.6 · Patch update
 - Membuka Pengaturan: tidak ada lagi jendela kecil berbar judul "Rexxa Translator" yang muncul sesaat sebelum pop-up.
 - Animasi pop-up tidak lagi tertahan di panel kaca kosong lalu meloncat; kalau PC sempat tersendat, animasi berhenti sejenak lalu lanjut mulus.
@@ -28,8 +34,3 @@ Penomoran MAJOR.MINOR.PATCH:
 - Perbaikan: tidak ada lagi garis buram sekilas sebelum pop-up Pengaturan muncul
 - Perbaikan: tidak ada bayangan ganda saat Pengaturan & kotak pesan dibuka / ditutup (kaca muncul dulu, lalu isinya; saat tutup isinya hilang dulu)
 - Dropdown tidak lagi tembus pandang saat muncul; kaca frosted lebih lembut
-
-## 2.3.2 · Patch update
-
-- Perbaikan: glitch saat membuka Pengaturan & kotak pesan (batang gulir yang tiba-tiba muncul di akhir animasi, animasi bawaan Windows yang bertabrakan)
-- Keterangan pengaturan kini hanya muncul saat kursor diarahkan ke ikon (i)
