@@ -72,9 +72,9 @@ def main(out):
     shows = []
     orig = w.cv_out.show_live
 
-    def spy(img, prev=None):
+    def spy(img, rect=None):
         t0 = time.perf_counter()
-        orig(img, prev)
+        orig(img, rect)
         shows.append((time.perf_counter(), (time.perf_counter() - t0) * 1000))
     w.cv_out.show_live = spy
     w.e_tr.setFocus()

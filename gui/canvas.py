@@ -312,24 +312,29 @@ class PageCanvas(QGraphicsView):
         if fit:
             self.fit()
 
-    def show_live(self, img, prev=None):
+    @staticmethod
+    def changed_rect(img, prev):
+        """Kotak (x0, y0, x1, y1) yang berbeda antara dua gambar BGR, None = sama persis.
+        Cepat (±5 ms untuk halaman webtoon) sehingga bisa dipanggil di setiap ketikan."""
+        import cv2
+        h = img.shape[0]
+        d = cv2.absdiff(img.reshape(h, -1), prev.reshape(h, -1))
+        bx, by, bw, bh = cv2.boundingRect(d)
+        if bw == 0 or bh == 0:
+            return None
+        return bx // 3, by, (bx + bw + 2) // 3, by + bh
+
+    def show_live(self, img, rect=None):
         """Ganti gambar yang tampil dengan `img` (numpy BGR) TANPA membangun ulang adegan.
-        Kalau `prev` (gambar yang sedang tampil) diberikan, hanya area yang berubah yang digambar ulang."""
+        rect = area yang berubah (lihat changed_rect): hanya area itu yang digambar ulang."""
         if self.pix_item is None or img is None:
             return
         import numpy as np
         from PySide6.QtGui import QImage, QPainter
         h, w = img.shape[:2]
-        x0 = y0 = 0
-        x1, y1 = w, h
         pm = self._pm
-        if prev is not None and prev.shape == img.shape and pm is not None and pm.width() == w and pm.height() == h:
-            diff = (img != prev).any(axis=2)
-            rows = np.flatnonzero(diff.any(axis=1))
-            if rows.size == 0:
-                return
-            cols = np.flatnonzero(diff[rows[0]:rows[-1] + 1].any(axis=0))
-            y0, y1, x0, x1 = int(rows[0]), int(rows[-1]) + 1, int(cols[0]), int(cols[-1]) + 1
+        if rect is not None and pm is not None and pm.width() == w and pm.height() == h:
+            x0, y0, x1, y1 = rect
             part = np.ascontiguousarray(img[y0:y1, x0:x1])
             qi = QImage(part.data, x1 - x0, y1 - y0, part.strides[0], QImage.Format.Format_BGR888)
             p = QPainter(pm)

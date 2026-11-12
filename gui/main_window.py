@@ -2703,18 +2703,22 @@ class MainWindow(QMainWindow):
         import copy
         blocks = [copy.copy(b) for b in p.blocks]
         st, proj = dict(self.settings), self.project
+        prev = self._live_prev[1] if self._live_prev and self._live_prev[0] == p.path else None
         self._live_busy = True
 
         def work():
             try:
                 img = pipeline.render_live(p, proj, st, blocks)
-                self._live_bridge.done.emit((p, blocks, img, None))
+                rect = "full"
+                if prev is not None and prev.shape == img.shape:
+                    rect = PageCanvas.changed_rect(img, prev)      # dihitung di latar, bukan di thread tampilan
+                self._live_bridge.done.emit((p, blocks, img, rect, None))
             except Exception as e:                # jatuh ke render biasa
-                self._live_bridge.done.emit((p, blocks, None, e))
+                self._live_bridge.done.emit((p, blocks, None, None, e))
         self._live_pool.submit(work)
 
     def _live_done(self, res):
-        p, blocks, img, err = res
+        p, blocks, img, rect, err = res
         self._live_busy = False
         if self.thread:                           # proses lain sedang jalan: hasil ini sudah basi
             self._live_again = False
@@ -2731,8 +2735,8 @@ class MainWindow(QMainWindow):
                 o.fit_size = c.fit_size
                 o._fit_lines = getattr(c, "_fit_lines", 0)
         if p is self.page() and self.cv_out.pix_item is not None:
-            prev = self._live_prev[1] if self._live_prev and self._live_prev[0] == p.path else None
-            self.cv_out.show_live(img, prev)
+            if rect is not None:                  # None = tidak ada yang berubah
+                self.cv_out.show_live(img, None if rect == "full" else rect)
             self._live_prev = (p.path, img)
             if self.sel is not None:
                 self._update_fit_text()
