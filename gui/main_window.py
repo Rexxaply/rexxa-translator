@@ -2586,9 +2586,16 @@ class MainWindow(QMainWindow):
         if not p:
             return
         self._snap()
-        w_, h_ = 280, 90
+        try:                                      # ukuran ikut lebar halaman supaya selalu terbaca
+            from core import detector
+            pw = detector.load_image(p.path).shape[1]
+        except Exception:
+            pw = 900
+        fs = max(22, int(pw / 30))
+        w_, h_ = int(pw * 0.36), int(fs * 3.2)
+        # catatan / info: ukuran tetap (tidak ikut dikecilkan balon lain), huruf sesuai ketikan, tidak miring
         b = TextBlock(x=int(pt.x() - w_ / 2), y=int(pt.y() - h_ / 2), w=w_, h=h_, kind="free", clean=False,
-                      source="", translation="",
+                      source="", translation="", font_size=fs, italic=False, case="none",
                       stroke_width=int(self.settings.get("default_stroke", 0)))
         p.blocks.append(b)
         self.sel = b
