@@ -115,7 +115,8 @@ class GroupToolButton(QToolButton):
         m = QMenu(self)
         m.setObjectName("toolFly")
         if self.tip_title:
-            m.addSection(self.tip_title.upper())
+            hd = m.addAction(self.tip_title.upper())
+            hd.setEnabled(False)
         grp = QActionGroup(m)
         for vid, ico, name, key in self.variants:
             a = QAction(icon(ico), f"{name}\t{key}", m)
@@ -195,6 +196,7 @@ class SlidePanel(QWidget):
 
     def _step(self, u):
         u = float(u)
+        self.trace.append(u) if hasattr(self, "trace") else None
         k = spring(u) if self.open else 1 - (1 - u) ** 3
         w = int(round(self._from + (self._to - self._from) * k))
         w = max(0, min(self.full, w))

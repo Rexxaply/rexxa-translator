@@ -105,12 +105,14 @@ def main(out):
     pump(1.0)
     print("balon oval:", p.blocks[-1].kind, p.blocks[-1].shape, len(p.blocks[-1].mask_poly), flush=True)
     frames = []
+    w.insp_slide.trace = []
     w.toggle_inspector(False)
     t0 = time.time()
     while time.time() - t0 < 0.6:
         app.processEvents()
         frames.append(round(w.insp_slide.width()))
     print("lebar panel selama animasi:", frames[::max(1, len(frames) // 25)], flush=True)
+    print("nilai animasi:", [round(x, 2) for x in w.insp_slide.trace][:40], flush=True)
     pump(0.8)
     w.b_layers.setChecked(False)
     pump(0.5)

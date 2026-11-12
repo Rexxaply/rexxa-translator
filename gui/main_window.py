@@ -617,9 +617,9 @@ class MainWindow(QMainWindow):
         insp = GlassPanel(radius=20)
         insp.setObjectName("inspector")
         il = QVBoxLayout(insp)
-        il.setContentsMargins(8, 8, 6, 8)
+        il.setContentsMargins(6, 8, 4, 8)
         il.addWidget(self.tabs)
-        self.insp_slide = SlidePanel(insp, 236)
+        self.insp_slide = SlidePanel(insp, 256)
         self.insp_slide.toggled.connect(lambda _on: QTimer.singleShot(0, self._fit_both))
 
         # ---- kiri: kolom alat mengambang
@@ -751,6 +751,9 @@ class MainWindow(QMainWindow):
         self.cap_opt = capsule(self.b_line_color, self.brush_field, self.b_line_ok, self.b_line_cancel, name="capOpt")
         arrow = QLabel("→")
         arrow.setObjectName("dim")
+        for cb in (self.src, self.tgt):           # lebar mengikuti isi (kapsul tidak melar)
+            cb.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+            cb.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         cap_r = capsule(self.src, arrow, self.tgt, 6, self.b_go, self.b_stop, "sep", self.b_export, self.b_skill,
                         self.b_settings, name="capR")
         for b_ in (self.b_open, self.b_save, self.b_undo, self.b_redo, self.b_stop, self.b_export, self.b_skill,
@@ -1255,7 +1258,7 @@ class MainWindow(QMainWindow):
             self._update_page_item(i)
         self.pages.blockSignals(False)
         n = len(self.project.pages)
-        self.pages_hdr.setText(f"HALAMAN ({n})")
+        self.pages_hdr.setText(f"Halaman · {n}")
         self.pages.setVisible(n > 0)
         self.pages_empty.setVisible(n == 0)
         if hasattr(self, "center_stack"):
@@ -1441,7 +1444,7 @@ class MainWindow(QMainWindow):
     def _place_float_btn(self):
         ed = getattr(self, "_editor", None)
         if ed is not None:
-            self.b_insp_open.move(ed.width() - self.b_insp_open.width(), 0)
+            self.b_insp_open.move(ed.width() - self.b_insp_open.width(), 40)
             self.b_insp_open.raise_()
 
     def _toggle_boxes(self, on: bool):
