@@ -593,7 +593,7 @@ class PageCanvas(QGraphicsView):
         return False
 
     def _tool_move(self, e) -> bool:
-        if self.tool == "select" or self.pix_item is None:
+        if self.tool == "select" or self.pix_item is None or (PageCanvas.ctrl_held and self._stroke is None):
             return False
         if self.tool == "line":
             return self._line_move(e)
@@ -636,7 +636,7 @@ class PageCanvas(QGraphicsView):
         return self.tool in ("pen", "shape", "line", "patch")
 
     def _tool_release(self, e) -> bool:
-        if self.tool == "select" or self.pix_item is None:
+        if self.tool == "select" or self.pix_item is None or (PageCanvas.ctrl_held and self._stroke is None):
             return False
         if self.tool == "line":
             return self._line_release(e)
