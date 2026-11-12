@@ -12,7 +12,7 @@ import math
 
 from PySide6.QtCore import (QEasingCurve, QElapsedTimer, QEvent, QObject, QPoint, QPointF, QPropertyAnimation,
                             QRectF, Qt, QTimer)
-from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient
+from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap, QRadialGradient
 from PySide6.QtWidgets import (QAbstractScrollArea, QDialog, QHBoxLayout, QLabel, QPushButton, QSizeGrip,
                                QVBoxLayout, QWidget)
 
@@ -105,27 +105,49 @@ def frosted(host, rect=None, sigma: float = 10.0):
 
 
 class _Dim(QWidget):
-    """Lapisan gelap di atas jendela utama selama dialog terbuka."""
+    """Lapisan gelap di atas jendela utama selama dialog terbuka.
+
+    Selama animasi, lapisan ini menggambar FOTO jendela utama + gelap (mode pekat). Dengan begitu tiap frame animasi
+    hanya satu drawPixmap — jendela utama di bawahnya tidak ikut digambar ulang 60x per detik (itu yang dulu membuat
+    animasi tersendat lalu 'loncat' di PC dengan layar besar). Setelah animasi selesai kembali ke mode transparan."""
 
     def __init__(self, host: QWidget):
         super().__init__(host)
         self.alpha = 0.0
+        self._shot = None
+        if not isinstance(host, GlassDialog):
+            try:
+                self._shot = host.grab()
+            except Exception:
+                self._shot = None
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WA_OpaquePaintEvent, self._shot is not None)
         self.setGeometry(host.rect())
         host.installEventFilter(self)
         self.show()
         self.raise_()
 
+    def live(self):
+        """Animasi selesai: lepas foto, gambar gelap transparan di atas jendela asli."""
+        if self._shot is not None:
+            self._shot = None
+            self.setAttribute(Qt.WA_OpaquePaintEvent, False)
+            self.update()
+
     def eventFilter(self, obj, ev):
         if ev.type() == QEvent.Resize:
             self.setGeometry(obj.rect())
+            self.live()
         return False
 
     def paintEvent(self, _e):
         p = QPainter(self)
         col = QColor(6, 8, 14, int(150 * self.alpha))
         host = self.parentWidget()
-        if isinstance(host, GlassDialog):            # dialog di atas dialog: redupkan panel kacanya saja
+        if self._shot is not None:
+            p.drawPixmap(0, 0, self._shot)
+            p.fillRect(self.rect(), col)
+        elif isinstance(host, GlassDialog):          # dialog di atas dialog: redupkan panel kacanya saja
             p.setRenderHint(QPainter.Antialiasing)
             path = QPainterPath()
             path.addRoundedRect(host._panel_rect(), RADIUS, RADIUS)
@@ -264,49 +286,62 @@ class GlassDialog(QDialog):
         p.setBrush(Qt.NoBrush)
         p.drawRoundedRect(r.adjusted(0.6, 0.6, -0.6, -0.6), RADIUS, RADIUS)
 
+    def _card(self, content: QPixmap | None) -> QPixmap:
+        """Seluruh dialog (kaca + isi) dirender SEKALI ke satu gambar; animasi cukup menskalakan gambar ini."""
+        dpr = self.devicePixelRatioF()
+        pm = QPixmap(int(self.width() * dpr), int(self.height() * dpr))
+        pm.setDevicePixelRatio(dpr)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        self._paint_glass(p, self._panel_rect())
+        if content is not None:
+            p.drawPixmap(self.sheet.geometry().topLeft(), content)
+        p.end()
+        return pm
+
     def paintEvent(self, _e):
         p = QPainter(self)
-        p.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
-        r = self._panel_rect()
         a = self._anim
         if a is None:
-            self._paint_glass(p, r)
+            p.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+            self._paint_glass(p, self._panel_rect())
             return
-        u = min(1.0, (self._clock.elapsed() - a["t0"]) / (self.POP_IN_MS if a["dir"] > 0 else self.POP_OUT_MS))
-        def ramp(x, a0, a1):                       # 0 -> 1 halus antara a0..a1
-            t = min(1.0, max(0.0, (x - a0) / (a1 - a0)))
-            return t * t * (3 - 2 * t)
+        if not a.get("shown"):                     # frame pertama belum boleh terlihat (jendela masih opacity 0)
+            a["painted"] = True
+        u = a["u"]
         if a["dir"] > 0:
-            # Kaca langsung PEKAT sejak frame pertama (tidak ada fase kaca setengah transparan yang terlihat seperti
-            # lapisan hantu), hanya mengembang ala pegas dari 92%. Isi menyusul memudar di atas kaca yang sudah pekat.
             scale = 0.92 + 0.08 * _spring(u)
-            op_glass = 1.0
-            op_content = 1.0            # isi ikut muncul hampir bersamaan (±50 ms): satu kesatuan
+            op = 1.0
         else:
-            # tutup: isi hilang dulu; kaca tetap pekat sambil mengecil, lalu lenyap di frame terakhir
-            # (tidak ada fase kaca setengah transparan)
-            scale = 1.0 - 0.14 * u * u
-            op_content = 1 - ramp(u, 0.0, 0.30)
-            op_glass = 1 - ramp(u, 0.82, 1.0)
-        c = r.center()
+            scale = 1.0 - 0.10 * u * u
+            op = 1.0 - u * u
+        p.setCompositionMode(QPainter.CompositionMode_Source)
+        p.fillRect(self.rect(), Qt.transparent)
+        p.setCompositionMode(QPainter.CompositionMode_SourceOver)
+        p.setRenderHint(QPainter.SmoothPixmapTransform)
+        c = QRectF(self.rect()).center()
         p.translate(c)
         p.scale(scale, scale)
         p.translate(-c)
-        p.setOpacity(op_glass)
-        self._paint_glass(p, r)
-        p.setOpacity(op_content)
-        p.drawPixmap(a["rect"].topLeft(), a["pix"])
+        p.setOpacity(op)
+        p.drawPixmap(0, 0, a["card"])
 
     # ------------------------------------------------------------ animasi
-    def _start(self, direction: int):
-        self.layout().activate()
-        rect = self.sheet.geometry()
-        pix = self.sheet.grab()
-        self._anim = {"dir": direction, "t0": 0, "pix": pix, "rect": rect}
+    # Waktu animasi maju per frame dengan langkah maksimum MAX_STEP_MS. Kalau PC sempat tersendat (mis. Windows
+    # menyiapkan jendela baru), animasi berhenti sejenak lalu lanjut mulus — tidak pernah loncat ke akhir.
+    MAX_STEP_MS = 34
+
+    def _begin(self, direction: int, card: QPixmap):
+        self._anim = {"dir": direction, "u": 0.0, "card": card, "shown": direction < 0, "painted": False}
         self.sheet.setUpdatesEnabled(False)
         self.sheet.hide()
         self._clock.start()
         self._timer.start()
+
+    def _start(self, direction: int):
+        self.layout().activate()
+        self._begin(direction, self._card(self.sheet.grab()))
         self.update()
 
     def _tick(self):
@@ -314,8 +349,19 @@ class GlassDialog(QDialog):
         if a is None:
             self._timer.stop()
             return
+        if not a["shown"]:
+            # jendela sudah ada tapi masih tak terlihat: tunggu frame pertamanya benar-benar tergambar,
+            # baru dimunculkan. Jadi tidak pernah ada panel setengah jadi di layar.
+            if not a["painted"]:
+                self.update()
+                return
+            a["shown"] = True
+            self.setWindowOpacity(1.0)
+            self._clock.start()
+            return
+        dt = min(self._clock.restart(), self.MAX_STEP_MS)
         dur = self.POP_IN_MS if a["dir"] > 0 else self.POP_OUT_MS
-        u = min(1.0, self._clock.elapsed() / dur)
+        a["u"] = u = min(1.0, a["u"] + dt / dur)
         if self._dim is not None:
             self._dim.alpha = min(1.0, u * 2.5) if a["dir"] > 0 else (1 - u) ** 2
             self._dim.update()
@@ -327,22 +373,23 @@ class GlassDialog(QDialog):
                 self.sheet.show()
                 self.sheet.setUpdatesEnabled(True)
                 self.update()
+                if self._dim is not None:
+                    self._dim.live()
             else:
                 self._finish_close()
 
     def setVisible(self, visible: bool):
         # Urutan tanpa glitch:
-        #  1. posisi, latar frosted & lapisan redup disiapkan SEBELUM tampil (tidak ada loncatan posisi);
-        #  2. tata letak diselesaikan di belakang layar (WA_DontShowOnScreen: tidak ada jendela asli di monitor),
-        #     isi difoto -> foto animasi = tampilan akhir (batang gulir dll. sudah ada);
-        #  3. baru jendela asli ditampilkan; frame pertamanya sudah frame awal animasi (transparan).
+        #  1. posisi, latar frosted & lapisan redup disiapkan SEBELUM tampil;
+        #  2. tata letak diselesaikan di belakang layar, kaca + isi dirender jadi satu gambar;
+        #  3. jendela asli dibuat dengan opacity 0, frame pertamanya digambar tanpa terlihat,
+        #     baru dimunculkan & animasi dimulai.
         if visible and not self.isVisible() and not self._popped:
             self._popped = True
             self._prepare_show()
             self._snapshot_offscreen()
+            self.setWindowOpacity(0.0)
             super().setVisible(True)
-            self._clock.start()
-            self._timer.start()
             return
         super().setVisible(visible)
 
@@ -353,13 +400,10 @@ class GlassDialog(QDialog):
         QCoreApplication.sendPostedEvents()
         self.layout().activate()
         QCoreApplication.sendPostedEvents()
-        pix, rect = self.sheet.grab(), self.sheet.geometry()
+        content = self.sheet.grab()
         QWidget.setVisible(self, False)
         self.setAttribute(Qt.WA_DontShowOnScreen, False)
-        self._anim = {"dir": 1, "t0": 0, "pix": pix, "rect": rect}
-        self.sheet.setUpdatesEnabled(False)
-        self.sheet.hide()
-        self._clock.start()
+        self._begin(1, self._card(content))
 
     def _prepare_show(self):
         host = self.parentWidget().window() if self.parentWidget() is not None else None
@@ -396,6 +440,7 @@ class GlassDialog(QDialog):
         if self._anim is not None:          # masih animasi masuk: langsung balik keluar
             self._timer.stop()
             self._anim = None
+            self.setWindowOpacity(1.0)
             self.sheet.show()
             self.sheet.setUpdatesEnabled(True)
         self._start(-1)
