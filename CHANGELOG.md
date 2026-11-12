@@ -8,6 +8,11 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.5.0 · Minor update
+- Cari font di panel properti: ketik di kotak font, daftar langsung tersaring di setiap huruf (nama boleh cocok di bagian mana saja, bisa beberapa kata).
+- Bagian nama yang cocok disorot; font yang diawali ketikan tampil paling atas.
+- Pilih dengan klik atau ↑/↓ + Enter; Enter langsung memakai hasil teratas. Daftar lengkap tetap bisa dibuka lewat panah.
+
 ## 2.4.0 · Minor update
 - Render langsung: hasil terjemahan berubah di setiap ketikan, tanpa menunggu dan tanpa tampilan berkedip.
 - Mengubah warna, ukuran, font, perataan, posisi teks, serta undo/redo juga langsung terlihat.
@@ -27,10 +32,3 @@ Penomoran MAJOR.MINOR.PATCH:
 
 - Perbaikan: tidak ada lagi lapisan kaca setengah transparan ("hantu") sebelum Pengaturan & kotak pesan muncul — kaca langsung pekat lalu mengembang, isi menyusul; saat ditutup kaca mengecil lalu lenyap
 - Perbaikan: dropdown & menu tidak lagi punya pojok hitam di lengkungannya
-
-## 2.3.3 · Patch update
-
-- Perbaikan: dropdown & menu tidak lagi menjalankan animasi ganda (efek bawaan Windows dimatikan untuk aplikasi ini)
-- Perbaikan: tidak ada lagi garis buram sekilas sebelum pop-up Pengaturan muncul
-- Perbaikan: tidak ada bayangan ganda saat Pengaturan & kotak pesan dibuka / ditutup (kaca muncul dulu, lalu isinya; saat tutup isinya hilang dulu)
-- Dropdown tidak lagi tembus pandang saat muncul; kaca frosted lebih lembut
