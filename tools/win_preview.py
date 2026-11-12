@@ -105,7 +105,7 @@ def main(out):
             th.start()
         dlg.show()
         print(label, "show() selesai", round((time.perf_counter() - T0[0]) * 1000), "ms", flush=True)
-        while time.perf_counter() - T0[0] < 0.9:
+        while time.perf_counter() - T0[0] < (1.6 if grab else 0.9):
             app.processEvents()
             time.sleep(0.001)
         stop[0] = True
@@ -122,6 +122,8 @@ def main(out):
     pump(app, 0.6)
     dlg, shots = run("B", True)
     print("foto:", [s_[0] for s_ in shots][:40], flush=True)
+    t_show = next((t for t, u, op in [] ), None)
+    shots = [x for x in shots if x[0] >= 700] or shots
     idx = sorted({round(i * (len(shots) - 1) / 7) for i in range(8)})
     sw, sh = 550, 360
     sheet = Image.new("RGB", (sw * 4, sh * 2), "black")
