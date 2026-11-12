@@ -44,6 +44,11 @@ ACCENT = "#7c6cff"
 
 
 # ====================================================================== worker
+class _LiveBridge(QObject):
+    """Hasil render langsung dari thread latar -> thread tampilan."""
+    done = Signal(object)
+
+
 class Worker(QObject):
     log = Signal(str)
     progress = Signal(int, int)
@@ -204,6 +209,19 @@ class MainWindow(QMainWindow):
 
         self.render_timer = QTimer(self, singleShot=True, interval=250)
         self.render_timer.timeout.connect(self._auto_render)
+        # render langsung: hasil berubah di setiap ketikan (tanpa menunggu, tanpa menulis ke disk dulu)
+        from concurrent.futures import ThreadPoolExecutor
+        self._live_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rexxa-live")
+        self._live_bridge = _LiveBridge()
+        self._live_bridge.done.connect(self._live_done)
+        self._live_busy = False
+        self._live_again = False
+        self._live_prev = None             # (path halaman, gambar yang sedang tampil di panel hasil)
+        self._live_last = None             # (halaman, gambar) yang belum disimpan ke disk
+        self._live_timer = QTimer(self, singleShot=True, interval=0)
+        self._live_timer.timeout.connect(self._live_kick)
+        self._live_commit_timer = QTimer(self, singleShot=True, interval=700)
+        self._live_commit_timer.timeout.connect(self._live_commit)
         # hasil render langsung diserahkan ke tampilan (tanpa membaca ulang file dari disk)
         from core import perf
         from . import imgcache
@@ -1706,6 +1724,7 @@ class MainWindow(QMainWindow):
             self._load_props(None)
             self.count_lbl.setText("0 balon")
             return
+        self._live_prev = None
         z = self.cv_src.zoom()
         hs, vs = self.cv_src.horizontalScrollBar().value(), self.cv_src.verticalScrollBar().value()
         self.cv_src.set_page(p.path, p.blocks, fit=False)
@@ -2667,7 +2686,86 @@ class MainWindow(QMainWindow):
             return
         # hanya kalau halaman ini sudah pernah dirender (ada gambar bersih)
         if p and p.cleaned_path and Path(p.cleaned_path).exists():
+            if not self.thread and p.path not in self.need_clean:
+                self._live_timer.start()          # langsung, di ketikan ini juga
+            else:
+                self.render_timer.start()
+
+    def _live_kick(self):
+        p = self.page()
+        if not p or self.thread or p.path in self.need_clean or not pipeline.can_render_live(p):
+            if p:
+                self.render_timer.start()
+            return
+        if self._live_busy:                       # masih menggambar: ulangi dengan keadaan terbaru sesudahnya
+            self._live_again = True
+            return
+        import copy
+        blocks = [copy.copy(b) for b in p.blocks]
+        st, proj = dict(self.settings), self.project
+        self._live_busy = True
+
+        def work():
+            try:
+                img = pipeline.render_live(p, proj, st, blocks)
+                self._live_bridge.done.emit((p, blocks, img, None))
+            except Exception as e:                # jatuh ke render biasa
+                self._live_bridge.done.emit((p, blocks, None, e))
+        self._live_pool.submit(work)
+
+    def _live_done(self, res):
+        p, blocks, img, err = res
+        self._live_busy = False
+        if self.thread:                           # proses lain sedang jalan: hasil ini sudah basi
+            self._live_again = False
+            self._render_after_job = True
+            return
+        if err is not None or img is None:
+            self.log(f"render langsung gagal, pakai render biasa: {err}")
             self.render_timer.start()
+            return
+        by_id = {b.id: b for b in p.blocks}
+        for c in blocks:                          # info ukuran Auto untuk panel
+            o = by_id.get(c.id)
+            if o is not None:
+                o.fit_size = c.fit_size
+                o._fit_lines = getattr(c, "_fit_lines", 0)
+        if p is self.page() and self.cv_out.pix_item is not None:
+            prev = self._live_prev[1] if self._live_prev and self._live_prev[0] == p.path else None
+            self.cv_out.show_live(img, prev)
+            self._live_prev = (p.path, img)
+            if self.sel is not None:
+                self._update_fit_text()
+        self._live_last = (p, img)
+        self._live_commit_timer.start()
+        if self._live_again:
+            self._live_again = False
+            self._live_kick()
+
+    def _live_commit(self):
+        """Pengguna berhenti menyunting sejenak: simpan hasil, perbarui thumbnail & proyek."""
+        if not self._live_last:
+            return
+        if self._live_busy or self._live_again:
+            self._live_commit_timer.start()
+            return
+        p, img = self._live_last
+        self._live_last = None
+        try:
+            pipeline.commit_live(p, self.project, dict(self.settings), img)
+        except Exception as e:
+            self.log(f"gagal menyimpan hasil: {e}")
+            return
+        if p in self.project.pages:
+            i = self.project.pages.index(p)
+            self._update_page_item(i)
+            if p.output_path:
+                self.pages.item(i).setIcon(self._thumb(p.output_path))
+            if p is self.page():                  # tampilan sudah benar; samakan kunci cache agar tidak dibaca ulang
+                from . import imgcache
+                self.cv_out._pm_key = (p.output_path, imgcache.key(p.output_path))
+        if self.project.file:
+            self.project.save()
 
     def _auto_render(self):
         if self.thread:
@@ -2679,6 +2777,11 @@ class MainWindow(QMainWindow):
     def _start(self, job, label):
         if self.thread:
             return
+        self._live_commit_timer.stop()
+        self._live_timer.stop()
+        if self._live_last and not self._live_busy:
+            self._live_commit()                   # simpan dulu suntingan yang belum tersimpan
+        self._live_last = None
         self._set_busy(True)
         self.progress.setRange(0, 0)
         self.log(f"— {label} —")
@@ -3421,6 +3524,8 @@ class MainWindow(QMainWindow):
         return choice == "discard"
 
     def closeEvent(self, e):
+        if self._live_last and not self._live_busy:
+            self._live_commit()
         if getattr(self, "_closing_confirmed", False) or self.confirm_unsaved():
             from core import detector
             detector.flush_writes(30)           # hasil render terakhir benar-benar tersimpan

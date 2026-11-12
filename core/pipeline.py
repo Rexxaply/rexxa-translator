@@ -668,6 +668,66 @@ def step_render(page: Page, project: Project, settings: dict, recalc_clean: bool
     return final
 
 
+# ---------------------------------------------------------------- render langsung (saat menyunting)
+# Mengetik terjemahan / mengubah gaya: hasil tampil di setiap ketikan. Gambar dasar (bersih + suntingan
+# manual) disimpan di memori, hanya teks yang ditata ulang (balon lain diambil dari cache), dan tidak ada
+# yang ditulis ke disk sampai pengguna berhenti menyunting (commit_live).
+_LIVE_BASE: dict = {}
+
+
+def can_render_live(page: Page) -> bool:
+    return bool(page.cleaned_path and Path(page.cleaned_path).exists())
+
+
+def _live_base(page: Page, settings: dict):
+    try:
+        mt = Path(page.cleaned_path).stat().st_mtime
+    except OSError:
+        mt = 0
+    try:
+        ek = hash(repr(page.edits)) if page.edits else 0
+    except Exception:
+        ek = id(page.edits)
+    key = (page.cleaned_path, mt, ek, settings.get("clean_method"))
+    hit = _LIVE_BASE.get(page.path)
+    if hit is not None and hit[0] == key:
+        return hit[1]
+    base = detector.load_image(page.cleaned_path)
+    if page.edits:
+        from . import edits as ED
+        base = ED.apply_all(page, base, detector.load_image(page.path), settings["clean_method"],
+                            base_key=f"{page.cleaned_path}:{mt}")
+    if len(_LIVE_BASE) > 3:
+        _LIVE_BASE.clear()
+    _LIVE_BASE[page.path] = (key, base)
+    return base
+
+
+def render_live(page: Page, project: Project, settings: dict, blocks: list):
+    """Hasil halaman di memori untuk `blocks` (salinan blok milik tampilan). Tidak menulis file."""
+    base = _live_base(page, settings)
+    if getattr(page, "_clean_sigs", None) is None:
+        page._clean_sigs = {b.id: _clean_sig(b) for b in page.blocks}
+    sync_default_style(settings)
+    final = typeset.render_page(base, blocks, project.target_lang, settings.get("font", ""),
+                                settings.get("uppercase", True), int(settings.get("max_font_size", 48)),
+                                italic=settings.get("italic", True),
+                                default_size=int(settings.get("default_font_size", 0) or 0),
+                                default_bold=bool(settings.get("default_bold", False)),
+                                line_spacing=float(settings.get("line_spacing", 1.2) or 1.2))
+    return _apply_titles(page, project, settings, final)
+
+
+def commit_live(page: Page, project: Project, settings: dict, final):
+    """Simpan hasil render langsung (dipanggil setelah pengguna berhenti menyunting sejenak)."""
+    p = str(output_dir(page, settings) / output_name(page, project, settings))
+    page.output_path = p
+    _saved(p, final, pending=True)
+    detector.save_image_later(p, final)
+    page.status = "selesai"
+    return p
+
+
 def _auto_fonts_safe(page, project, settings, log=None, only=None):
     try:
         auto_fonts(detector.load_image(page.path), page, project, settings, log=log, only=only)

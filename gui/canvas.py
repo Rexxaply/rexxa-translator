@@ -312,6 +312,39 @@ class PageCanvas(QGraphicsView):
         if fit:
             self.fit()
 
+    def show_live(self, img, prev=None):
+        """Ganti gambar yang tampil dengan `img` (numpy BGR) TANPA membangun ulang adegan.
+        Kalau `prev` (gambar yang sedang tampil) diberikan, hanya area yang berubah yang digambar ulang."""
+        if self.pix_item is None or img is None:
+            return
+        import numpy as np
+        from PySide6.QtGui import QImage, QPainter
+        h, w = img.shape[:2]
+        x0 = y0 = 0
+        x1, y1 = w, h
+        pm = self._pm
+        if prev is not None and prev.shape == img.shape and pm is not None and pm.width() == w and pm.height() == h:
+            diff = (img != prev).any(axis=2)
+            rows = np.flatnonzero(diff.any(axis=1))
+            if rows.size == 0:
+                return
+            cols = np.flatnonzero(diff[rows[0]:rows[-1] + 1].any(axis=0))
+            y0, y1, x0, x1 = int(rows[0]), int(rows[-1]) + 1, int(cols[0]), int(cols[-1]) + 1
+            part = np.ascontiguousarray(img[y0:y1, x0:x1])
+            qi = QImage(part.data, x1 - x0, y1 - y0, part.strides[0], QImage.Format.Format_BGR888)
+            p = QPainter(pm)
+            p.setCompositionMode(QPainter.CompositionMode_Source)
+            p.drawImage(x0, y0, qi)
+            p.end()
+        else:
+            arr = np.ascontiguousarray(img)
+            qi = QImage(arr.data, w, h, arr.strides[0], QImage.Format.Format_BGR888)
+            pm = QPixmap.fromImage(qi)
+            if pm.width() != self.scene().sceneRect().width() or pm.height() != self.scene().sceneRect().height():
+                self.scene().setSceneRect(QRectF(pm.rect()))
+        self._pm, self._pm_key = pm, ("live", id(img))
+        self.pix_item.setPixmap(pm)
+
     def set_blocks(self, blocks):
         for b in self.boxes:
             self.scene().removeItem(b)
