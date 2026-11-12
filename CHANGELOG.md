@@ -8,6 +8,10 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 2.5.1 · Patch update
+- Kotak font: klik kotaknya langsung menampilkan daftar semua font (font yang dipakai sudah terpilih di tengah daftar), tanpa harus mengetik dulu.
+- Saat daftar terbuka, nama font lama terseleksi: huruf pertama yang diketik langsung menggantikannya dan menyaring daftar.
+
 ## 2.5.0 · Minor update
 - Cari font di panel properti: ketik di kotak font, daftar langsung tersaring di setiap huruf (nama boleh cocok di bagian mana saja, bisa beberapa kata).
 - Bagian nama yang cocok disorot; font yang diawali ketikan tampil paling atas.
@@ -27,8 +31,3 @@ Penomoran MAJOR.MINOR.PATCH:
 ## 2.3.5 · Patch update
 - Dropdown & menu di Windows: tidak ada lagi warna hitam di pojok lengkungan (popup kini benar-benar transparan).
 - Pop-up Pengaturan & dialog lain: kaca dan isinya muncul bersamaan sejak frame pertama, tanpa panel kaca kosong yang terlihat seperti glitch.
-
-## 2.3.4 · Patch update
-
-- Perbaikan: tidak ada lagi lapisan kaca setengah transparan ("hantu") sebelum Pengaturan & kotak pesan muncul — kaca langsung pekat lalu mengembang, isi menyusul; saat ditutup kaca mengecil lalu lenyap
-- Perbaikan: dropdown & menu tidak lagi punya pojok hitam di lengkungannya
