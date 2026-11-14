@@ -13,15 +13,17 @@ from PySide6.QtCore import QTimer  # noqa: E402
 from PySide6.QtWidgets import QApplication, QFileDialog  # noqa: E402
 
 
-def main():
-    app = QApplication(sys.argv)
+def main(mode):
+    app = QApplication(sys.argv[:1])
     app.setStyle("Fusion")
     from gui import main_window as mw
     from gui import exportdlg
     from gui.glass import install_popup_fx, install_smooth_scroll
     from core.models import Page, Project, TextBlock
-    install_popup_fx(app)
-    install_smooth_scroll(app)
+    if mode != "nofx":
+        install_popup_fx(app)
+    if mode != "nosmooth":
+        install_smooth_scroll(app)
     app.setStyleSheet(mw.STYLE)
     w = mw.MainWindow()
     w.resize(1020, 720)
@@ -72,6 +74,16 @@ def main():
 
     out_dir = d / "out"
     out_dir.mkdir()
+    if mode == "dlgonly":
+        for k in range(3):
+            dd = exportdlg.ExportDialog(w.project, 0, w.settings, w)
+            QTimer.singleShot(400, dd.reject)
+            dd.exec()
+            dd.deleteLater()
+            print(f"  dialog {k} ditutup", flush=True)
+            pump(0.8)
+        print("SEMUA SELESAI", flush=True)
+        return
     for fmt in ("pdf", "cbz", "zip", "psd", "img"):
         target = str(out_dir / f"hasil_{fmt}") + {"pdf": ".pdf", "cbz": ".cbz", "zip": ".zip", "psd": ".zip"}.get(fmt, "")
         if fmt == "img":
@@ -107,4 +119,21 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1:
+        main(sys.argv[1])
+    else:
+        import subprocess
+        for m in ("full", "dlgonly", "nosmooth", "nofx"):
+            print(f"===== MODE {m}", flush=True)
+            r = subprocess.run([sys.executable, "-X", "faulthandler", __file__, m], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", timeout=400)
+            lines = (r.stdout + r.stderr).splitlines()
+            keep = [x for x in lines if x.startswith(("---", "  selesai", "  dialog", "SEMUA", "Windows fatal",
+                                                      "render", "  EXC"))]
+            print("\n".join(keep), flush=True)
+            if r.returncode:
+                print("EXIT", r.returncode, flush=True)
+                cur = [x for x in lines if "File" in x]
+                i = next((k for k, x in enumerate(lines) if x.startswith("Current thread")), None)
+                if i is not None:
+                    print("\n".join(lines[i:i + 14]), flush=True)
