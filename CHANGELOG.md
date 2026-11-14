@@ -8,6 +8,10 @@ Penomoran MAJOR.MINOR.PATCH:
 - **Minor update** (2.X.0) — fitur baru; proyek & pengaturan lama tetap jalan
 - **Patch update** (2.0.X) — perbaikan bug & penyempurnaan kecil tanpa fitur baru
 
+## 3.2.1 · Patch update
+- Perbaikan: aplikasi tertutup sendiri saat export ke CBZ, ZIP, PSD, atau gambar ke folder. Sekarang semua format export berjalan normal, termasuk export berulang kali.
+- Bar progres di bawah kini selalu diperbarui dengan aman, juga saat terjemahkan / proses semua halaman.
+
 ## 3.2.0 · Minor update
 - Pilih semua balon di halaman sekaligus: tombol "Pilih semua" di kartu Balon, tombol di atas panel saat belum ada yang dipilih, atau Ctrl+A di gambar. Gaya yang diubah dan tombol "Hapus N balon" berlaku ke semuanya (teks bebas & gambar tidak ikut).
 - Kotak teks asli & terjemahan kini menyesuaikan isinya: 1 baris = kotak kecil, bertambah sampai 3 baris, lebih dari itu bisa digulir dengan halus. Tingginya berubah dengan animasi lembut saat mengetik.
@@ -40,8 +44,3 @@ Penomoran MAJOR.MINOR.PATCH:
 ## 2.5.1 · Patch update
 - Kotak font: klik kotaknya langsung menampilkan daftar semua font (font yang dipakai sudah terpilih di tengah daftar), tanpa harus mengetik dulu.
 - Saat daftar terbuka, nama font lama terseleksi: huruf pertama yang diketik langsung menggantikannya dan menyaring daftar.
-
-## 2.5.0 · Minor update
-- Cari font di panel properti: ketik di kotak font, daftar langsung tersaring di setiap huruf (nama boleh cocok di bagian mana saja, bisa beberapa kata).
-- Bagian nama yang cocok disorot; font yang diawali ketikan tampil paling atas.
-- Pilih dengan klik atau ↑/↓ + Enter; Enter langsung memakai hasil teratas. Daftar lengkap tetap bisa dibuka lewat panah.
