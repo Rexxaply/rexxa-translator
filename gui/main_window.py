@@ -3488,10 +3488,16 @@ class MainWindow(QMainWindow):
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
         self.worker.log.connect(self.log)
-        self.worker.progress.connect(lambda a, b: (self.progress.setRange(0, b), self.progress.setValue(a)))
+        # HARUS metode milik jendela (bukan lambda): lambda tanpa penerima dijalankan PySide6 di thread
+        # pekerja, dan mengubah widget dari thread lain membuat aplikasi tertutup paksa (access violation).
+        self.worker.progress.connect(self._on_progress)
         self.worker.page_updated.connect(self._on_page_updated)
         self.worker.finished.connect(self._on_finished)
         self.thread.start()
+
+    def _on_progress(self, a, b):
+        self.progress.setRange(0, b)
+        self.progress.setValue(a)
 
     def _on_page_updated(self, i):
         self._update_page_item(i)
