@@ -102,7 +102,7 @@ def main():
         out = list(out_dir.rglob("*"))
         print(f"  selesai {time.time() - t0:.1f}s, file:", [(p.name, p.stat().st_size) for p in out if p.is_file()][-4:],
               flush=True)
-        print("  log terakhir:", w.logbox.toPlainText().splitlines()[-2:], flush=True)
+        print("  log terakhir:", ascii(w.logbox.toPlainText().splitlines()[-2:]), flush=True)
     print("SEMUA SELESAI, aplikasi masih hidup", flush=True)
 
 
