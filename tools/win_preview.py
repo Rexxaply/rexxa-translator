@@ -126,7 +126,7 @@ if __name__ == "__main__":
         main(sys.argv[1])
     else:
         import subprocess
-        for m in ("only:cbz", "only:zip", "only:psd", "only:img", "only:pdf,pdf", "only:zip,pdf", "only:img,zip,psd"):
+        for m in ("full", "only:cbz,cbz,zip,zip"):
             print(f"===== MODE {m}", flush=True)
             r = subprocess.run([sys.executable, "-X", "faulthandler", __file__, m], capture_output=True, text=True,
                                encoding="utf-8", errors="replace", timeout=400)
