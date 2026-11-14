@@ -84,7 +84,10 @@ def main(mode):
             pump(0.8)
         print("SEMUA SELESAI", flush=True)
         return
-    for fmt in ("pdf", "cbz", "zip", "psd", "img"):
+    fmts = ("pdf", "cbz", "zip", "psd", "img")
+    if mode.startswith("only:"):
+        fmts = tuple(mode[5:].split(","))
+    for fmt in fmts:
         target = str(out_dir / f"hasil_{fmt}") + {"pdf": ".pdf", "cbz": ".cbz", "zip": ".zip", "psd": ".zip"}.get(fmt, "")
         if fmt == "img":
             target = str(out_dir / "gambar")
@@ -123,7 +126,7 @@ if __name__ == "__main__":
         main(sys.argv[1])
     else:
         import subprocess
-        for m in ("full", "dlgonly", "nosmooth", "nofx"):
+        for m in ("only:cbz", "only:zip", "only:psd", "only:img", "only:pdf,pdf", "only:zip,pdf", "only:img,zip,psd"):
             print(f"===== MODE {m}", flush=True)
             r = subprocess.run([sys.executable, "-X", "faulthandler", __file__, m], capture_output=True, text=True,
                                encoding="utf-8", errors="replace", timeout=400)
